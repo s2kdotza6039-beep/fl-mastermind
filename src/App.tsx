@@ -14,6 +14,7 @@ import ProductionCoachPage from "./pages/ProductionCoachPage";
 import MixingCoachPage from "./pages/MixingCoachPage";
 import MasteringCoachPage from "./pages/MasteringCoachPage";
 import ChainBuilderPage from "./pages/ChainBuilderPage";
+import KeyDetectionPage from "./pages/KeyDetectionPage";
 import ChecklistPage from "./pages/ChecklistPage";
 import UploadPage from "./pages/UploadPage";
 import NotFound from "./pages/NotFound.tsx";
@@ -38,6 +39,7 @@ const App = () => (
               <Route path="/mixing" element={<MixingCoachPage />} />
               <Route path="/mastering" element={<MasteringCoachPage />} />
               <Route path="/chains" element={<ChainBuilderPage />} />
+              <Route path="/key" element={<KeyDetectionPage />} />
               <Route path="/checklist" element={<ChecklistPage />} />
               <Route path="/upload" element={<UploadPage />} />
               <Route path="*" element={<NotFound />} />
