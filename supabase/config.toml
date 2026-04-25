@@ -1,1 +1,4 @@
 project_id = "vfifwtmyktjvseonzkno"
+
+[functions.sensei-chat]
+verify_jwt = false
