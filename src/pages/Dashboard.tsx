@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import {
   Wrench, MessageCircle, Disc3, Music2, Sliders, Volume2, Crown, Layers, ListChecks, UploadCloud,
-  Mic, Speaker, Sparkles, TrendingUp, Trash2,
+  Mic, Speaker, Sparkles, TrendingUp, Trash2, KeyRound,
 } from "lucide-react";
 import { useSession } from "@/context/SessionContext";
 import { PageHeader } from "@/components/PageHeader";
@@ -17,6 +17,7 @@ const FEATURES = [
   { to: "/production", icon: Sliders, title: "Production Coach", desc: "Beats, arrangement, groove." },
   { to: "/mixing", icon: Volume2, title: "Mixing Coach", desc: "EQ, compression, balance." },
   { to: "/mastering", icon: Crown, title: "Mastering Coach", desc: "Loudness, polish, export." },
+  { to: "/key", icon: KeyRound, title: "Key Detection", desc: "Lock root + align everything." },
   { to: "/chains", icon: Layers, title: "Plugin Chains", desc: "FL Studio chain templates." },
   { to: "/checklist", icon: ListChecks, title: "Session Checklist", desc: "Track every stage." },
   { to: "/upload", icon: UploadCloud, title: "Upload Audio", desc: "Reference your file." },
