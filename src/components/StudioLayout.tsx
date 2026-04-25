@@ -1,0 +1,23 @@
+import { ReactNode } from "react";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { AppSidebar } from "./AppSidebar";
+import { SessionHeader } from "./SessionHeader";
+
+export const StudioLayout = ({ children }: { children: ReactNode }) => {
+  return (
+    <SidebarProvider>
+      <div className="min-h-screen flex w-full bg-background">
+        <AppSidebar />
+        <div className="flex-1 flex flex-col min-w-0">
+          <header className="h-14 border-b border-border flex items-center px-4 bg-card/40 backdrop-blur sticky top-0 z-30">
+            <SidebarTrigger className="text-muted-foreground hover:text-primary" />
+            <div className="ml-3 flex-1 min-w-0">
+              <SessionHeader />
+            </div>
+          </header>
+          <main className="flex-1 overflow-auto scrollbar-thin">{children}</main>
+        </div>
+      </div>
+    </SidebarProvider>
+  );
+};
