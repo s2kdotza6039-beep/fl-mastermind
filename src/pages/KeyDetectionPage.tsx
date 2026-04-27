@@ -43,12 +43,13 @@ function scaleNotes(root: Note, scale: Scale): string[] {
 
 const STEPS = [
   { id: 0, label: "Pick Source", icon: Music2 },
-  { id: 1, label: "Detect Key", icon: Wand2 },
-  { id: 2, label: "Confirm", icon: Check },
-  { id: 3, label: "Align 808s", icon: Activity },
-  { id: 4, label: "Align Melodies", icon: KeyRound },
-  { id: 5, label: "Align Vocals", icon: Mic },
-  { id: 6, label: "Sensei Review", icon: Sparkles },
+  { id: 1, label: "Auto-Detect", icon: UploadCloud },
+  { id: 2, label: "Manual Tune", icon: Wand2 },
+  { id: 3, label: "Confirm", icon: Check },
+  { id: 4, label: "Align 808s", icon: Activity },
+  { id: 5, label: "Align Melodies", icon: KeyRound },
+  { id: 6, label: "Align Vocals", icon: Mic },
+  { id: 7, label: "Sensei Review", icon: Sparkles },
 ];
 
 type Source = "beat" | "melody" | "vocal" | "unknown";
