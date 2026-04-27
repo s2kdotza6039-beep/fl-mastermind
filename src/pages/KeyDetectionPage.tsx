@@ -1,11 +1,15 @@
-import { useMemo, useState } from "react";
-import { KeyRound, Music2, Wand2, Mic, Activity, ArrowRight, ArrowLeft, RotateCcw, Sparkles, Check } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import {
+  KeyRound, Music2, Wand2, Mic, Activity, ArrowRight, ArrowLeft, RotateCcw,
+  Sparkles, Check, UploadCloud, Loader2, FileAudio,
+} from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { SenseiChat } from "@/components/SenseiChat";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const;
