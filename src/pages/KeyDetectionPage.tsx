@@ -415,8 +415,8 @@ export default function KeyDetectionPage() {
         </Card>
       )}
 
-      {/* STEP 2 — Confirm key */}
-      {step === 2 && (
+      {/* STEP 3 — Confirm key */}
+      {step === 3 && (
         <Card className="studio-card-gold p-6 animate-fade-in-up">
           <div className="text-center mb-6">
             <div className="text-xs uppercase tracking-widest text-primary/80 mb-2">Detected Key</div>
@@ -436,13 +436,13 @@ export default function KeyDetectionPage() {
             </div>
           </div>
           <div className="flex items-center justify-between gap-3">
-            <Button variant="outline" onClick={() => setStep(1)}>
-              <ArrowLeft className="w-4 h-4 mr-2" /> Re-detect
+            <Button variant="outline" onClick={() => setStep(2)}>
+              <ArrowLeft className="w-4 h-4 mr-2" /> Re-tune
             </Button>
             <Button
               onClick={() => {
                 setConfirmed(true);
-                setStep(3);
+                setStep(4);
               }}
               className="bg-gradient-gold text-primary-foreground hover:opacity-90"
             >
@@ -452,8 +452,8 @@ export default function KeyDetectionPage() {
         </Card>
       )}
 
-      {/* STEP 3 — Align 808s */}
-      {step === 3 && (
+      {/* STEP 4 — Align 808s */}
+      {step === 4 && (
         <AlignStep
           icon={<Activity className="w-5 h-5" />}
           title="Align your 808s & sub bass"
@@ -471,13 +471,13 @@ export default function KeyDetectionPage() {
             ["Sampler Root", `${root}5`],
             ["Sub focus", "40–80 Hz"],
           ]}
-          onBack={() => setStep(2)}
-          onNext={() => setStep(4)}
+          onBack={() => setStep(3)}
+          onNext={() => setStep(5)}
         />
       )}
 
-      {/* STEP 4 — Align melodies */}
-      {step === 4 && (
+      {/* STEP 5 — Align melodies */}
+      {step === 5 && (
         <AlignStep
           icon={<KeyRound className="w-5 h-5" />}
           title="Align melodies & samples"
@@ -494,13 +494,13 @@ export default function KeyDetectionPage() {
             ["Safe triads", triadList(root, scale)],
             ["Borrow zone", rel],
           ]}
-          onBack={() => setStep(3)}
-          onNext={() => setStep(5)}
+          onBack={() => setStep(4)}
+          onNext={() => setStep(6)}
         />
       )}
 
-      {/* STEP 5 — Align vocals */}
-      {step === 5 && (
+      {/* STEP 6 — Align vocals */}
+      {step === 6 && (
         <AlignStep
           icon={<Mic className="w-5 h-5" />}
           title="Tune your vocals to key"
@@ -519,14 +519,14 @@ export default function KeyDetectionPage() {
             ["Speed (trap)", "90–100%"],
             ["Formant", "0"],
           ]}
-          onBack={() => setStep(4)}
+          onBack={() => setStep(5)}
           onNext={goReview}
           nextLabel="Get Sensei Review"
         />
       )}
 
-      {/* STEP 6 — Sensei review */}
-      {step === 6 && (
+      {/* STEP 7 — Sensei review */}
+      {step === 7 && (
         <Card className="studio-card overflow-hidden h-[70vh] flex flex-col animate-fade-in-up">
           <SenseiChat initialPrompt={reviewPrompt} />
         </Card>
