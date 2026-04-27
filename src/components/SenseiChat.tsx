@@ -106,7 +106,7 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
                 <p className="text-sm leading-relaxed">{m.content}</p>
               ) : (
                 <>
-                  <SenseiMarkdown content={m.content || "…"} />
+                  <SenseiMarkdown content={m.content || "…"} messageId={`m-${i}`} />
                   {!loading && i === messages.length - 1 && m.content.length > 50 && (
                     <Button
                       size="sm"

@@ -1,11 +1,15 @@
-import { useMemo, useState } from "react";
-import { KeyRound, Music2, Wand2, Mic, Activity, ArrowRight, ArrowLeft, RotateCcw, Sparkles, Check } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import {
+  KeyRound, Music2, Wand2, Mic, Activity, ArrowRight, ArrowLeft, RotateCcw,
+  Sparkles, Check, UploadCloud, Loader2, FileAudio,
+} from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { SenseiChat } from "@/components/SenseiChat";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const;
@@ -39,12 +43,13 @@ function scaleNotes(root: Note, scale: Scale): string[] {
 
 const STEPS = [
   { id: 0, label: "Pick Source", icon: Music2 },
-  { id: 1, label: "Detect Key", icon: Wand2 },
-  { id: 2, label: "Confirm", icon: Check },
-  { id: 3, label: "Align 808s", icon: Activity },
-  { id: 4, label: "Align Melodies", icon: KeyRound },
-  { id: 5, label: "Align Vocals", icon: Mic },
-  { id: 6, label: "Sensei Review", icon: Sparkles },
+  { id: 1, label: "Auto-Detect", icon: UploadCloud },
+  { id: 2, label: "Manual Tune", icon: Wand2 },
+  { id: 3, label: "Confirm", icon: Check },
+  { id: 4, label: "Align 808s", icon: Activity },
+  { id: 5, label: "Align Melodies", icon: KeyRound },
+  { id: 6, label: "Align Vocals", icon: Mic },
+  { id: 7, label: "Sensei Review", icon: Sparkles },
 ];
 
 type Source = "beat" | "melody" | "vocal" | "unknown";
@@ -61,8 +66,15 @@ export default function KeyDetectionPage() {
   const [source, setSource] = useState<Source>("beat");
   const [root, setRoot] = useState<Note>("C");
   const [scale, setScale] = useState<Scale>("Minor");
-  const [confirmed, setConfirmed] = useState(false);
+  const [, setConfirmed] = useState(false);
   const [reviewPrompt, setReviewPrompt] = useState<string>();
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{
+    filename: string;
+    durationSec: number;
+    confidence: number;
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const notes = useMemo(() => scaleNotes(root, scale), [root, scale]);
   const rel = useMemo(() => relativeKey(root, scale), [root, scale]);
@@ -76,6 +88,49 @@ export default function KeyDetectionPage() {
     setScale("Minor");
     setConfirmed(false);
     setReviewPrompt(undefined);
+    setUploadResult(null);
+  };
+
+  const handleUpload = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".wav")) {
+      toast.error("Please upload a WAV file. Bounce to WAV in FL Studio (File → Export → WAV).");
+      return;
+    }
+    if (file.size > 30 * 1024 * 1024) {
+      toast.error("File too large. Max 30 MB. Try a shorter loop.");
+      return;
+    }
+    setUploading(true);
+    setUploadResult(null);
+    try {
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/detect-key`;
+      const fd = new FormData();
+      fd.append("file", file);
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: fd,
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        toast.error(data.error ?? "Detection failed.");
+        return;
+      }
+      setRoot(data.root as Note);
+      setScale(data.scale as Scale);
+      setUploadResult({
+        filename: data.filename,
+        durationSec: data.durationSec,
+        confidence: data.confidence,
+      });
+      toast.success(`Detected: ${data.root} ${data.scale} (${data.confidence}% confidence)`);
+    } catch {
+      toast.error("Network error. Try again.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const goReview = () => {
@@ -83,12 +138,13 @@ export default function KeyDetectionPage() {
       `I've identified my track key as ${display}. The diatonic notes are: ${notes.join(", ")}. Relative key: ${rel}.\n\n` +
         `Please give me a complete alignment plan for FL Studio:\n` +
         `1) How to lock my 808 to ${root} and the bassline notes I should stay on for ${scale.toLowerCase()} feel.\n` +
-        `2) Which scale modes/chords to use for melodies that won't clash.\n` +
+        `2) Which scale modes/chords (with Roman numerals) to use for melodies that won't clash.\n` +
         `3) How to tune/Pitcher my vocal so it sits inside ${display} without sounding robotic.\n` +
         `4) A sanity check for hooks that drift between ${display} and ${rel}.\n` +
+        `5) 3 chord progression ideas in ${display} for verse, hook, and bridge.\n` +
         `Stick to native FL Studio plugins (Pitcher, Edison, Patcher, Fruity Parametric EQ 2).`,
     );
-    setStep(6);
+    setStep(7);
   };
 
   return (
@@ -170,19 +226,116 @@ export default function KeyDetectionPage() {
           </div>
           <div className="flex justify-end">
             <Button onClick={() => setStep(1)} className="bg-gradient-gold text-primary-foreground hover:opacity-90">
-              Detect Key <ArrowRight className="w-4 h-4 ml-2" />
+              Auto-Detect from Audio <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           </div>
         </Card>
       )}
 
-      {/* STEP 1 — Detection how-to + manual entry */}
+      {/* STEP 1 — Auto-detect from upload */}
       {step === 1 && (
         <Card className="studio-card p-6 animate-fade-in-up space-y-5">
           <div>
-            <h2 className="font-display text-xl font-bold mb-1">Detect the root note</h2>
+            <h2 className="font-display text-xl font-bold mb-1 flex items-center gap-2">
+              <UploadCloud className="w-5 h-5 text-primary" />
+              Auto-detect key from audio
+            </h2>
             <p className="text-sm text-muted-foreground">
-              FL Studio doesn't auto-key for you, but its native tools nail it fast. Pick the path that matches your source.
+              Upload a WAV bounce of your loop, beat, or vocal. Sensei reads the pitch profile and prefills your root note + scale.
+            </p>
+          </div>
+
+          <div
+            onClick={() => !uploading && fileInputRef.current?.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              const f = e.dataTransfer.files?.[0];
+              if (f) handleUpload(f);
+            }}
+            className={cn(
+              "border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer",
+              uploading ? "border-primary/40 bg-primary/5" : "border-border hover:border-primary/50 hover:bg-primary/5",
+            )}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".wav,audio/wav,audio/x-wav"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleUpload(f);
+              }}
+            />
+            {uploading ? (
+              <>
+                <Loader2 className="w-10 h-10 text-primary mx-auto mb-3 animate-spin" />
+                <div className="font-semibold text-sm">Analyzing pitch profile…</div>
+                <div className="text-xs text-muted-foreground mt-1">Krumhansl-Schmuckler key estimation in progress</div>
+              </>
+            ) : uploadResult ? (
+              <>
+                <FileAudio className="w-10 h-10 text-primary mx-auto mb-3" />
+                <div className="font-semibold text-sm truncate">{uploadResult.filename}</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {uploadResult.durationSec}s analyzed · upload another to redo
+                </div>
+              </>
+            ) : (
+              <>
+                <UploadCloud className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                <div className="font-semibold text-sm">Drop a WAV file here, or click to browse</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Max 30 MB · WAV only · For MP3 → bounce to WAV in FL Studio first
+                </div>
+              </>
+            )}
+          </div>
+
+          {uploadResult && (
+            <div className="rounded-lg border border-primary/30 bg-gradient-gold-soft p-4 flex items-center justify-between">
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-primary/80">Detected Key</div>
+                <div className="font-display text-2xl font-bold text-gold">{display}</div>
+                <div className="text-xs text-muted-foreground mt-0.5">Relative: {rel}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Confidence</div>
+                <div className="font-display text-2xl font-bold text-primary tabular-nums">
+                  {uploadResult.confidence}%
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-3 pt-2">
+            <Button variant="outline" onClick={() => setStep(0)}>
+              <ArrowLeft className="w-4 h-4 mr-2" /> Back
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setStep(2)}>
+                Skip — Tune Manually
+              </Button>
+              <Button
+                onClick={() => setStep(2)}
+                disabled={!uploadResult}
+                className="bg-gradient-gold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              >
+                Use Detected Key <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* STEP 2 — Manual tune */}
+      {step === 2 && (
+        <Card className="studio-card p-6 animate-fade-in-up space-y-5">
+          <div>
+            <h2 className="font-display text-xl font-bold mb-1">Fine-tune the root note</h2>
+            <p className="text-sm text-muted-foreground">
+              Confirm or override the auto-detected key. FL Studio's native tools nail it fast — pick the path that matches your source.
             </p>
           </div>
 
@@ -214,63 +367,56 @@ export default function KeyDetectionPage() {
 
           <div className="border-t border-border pt-5">
             <h3 className="font-semibold mb-3 text-sm uppercase tracking-widest text-muted-foreground">
-              Enter what you found
+              Root note
             </h3>
-            <div className="space-y-4">
-              <div>
-                <div className="text-xs text-muted-foreground mb-2">Root note</div>
-                <div className="grid grid-cols-6 md:grid-cols-12 gap-1.5">
-                  {NOTES.map((n) => (
-                    <button
-                      key={n}
-                      onClick={() => setRoot(n)}
-                      className={cn(
-                        "h-10 rounded-md text-sm font-bold transition-all",
-                        root === n
-                          ? "bg-gradient-gold text-primary-foreground glow-gold"
-                          : "bg-secondary text-foreground hover:bg-primary/15 hover:text-primary",
-                      )}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-2">Scale</div>
-                <div className="grid grid-cols-2 gap-2 max-w-xs">
-                  {(["Minor", "Major"] as Scale[]).map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => setScale(s)}
-                      className={cn(
-                        "h-10 rounded-md text-sm font-semibold transition-all border",
-                        scale === s
-                          ? "bg-gradient-gold text-primary-foreground border-transparent"
-                          : "bg-secondary text-foreground border-border hover:border-primary/40",
-                      )}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            <div className="grid grid-cols-6 md:grid-cols-12 gap-1.5 mb-4">
+              {NOTES.map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setRoot(n)}
+                  className={cn(
+                    "h-10 rounded-md text-sm font-bold transition-all",
+                    root === n
+                      ? "bg-gradient-gold text-primary-foreground glow-gold"
+                      : "bg-secondary text-foreground hover:bg-primary/15 hover:text-primary",
+                  )}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            <h3 className="font-semibold mb-3 text-sm uppercase tracking-widest text-muted-foreground">Scale</h3>
+            <div className="grid grid-cols-2 gap-2 max-w-xs">
+              {(["Minor", "Major"] as Scale[]).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setScale(s)}
+                  className={cn(
+                    "h-10 rounded-md text-sm font-semibold transition-all border",
+                    scale === s
+                      ? "bg-gradient-gold text-primary-foreground border-transparent"
+                      : "bg-secondary text-foreground border-border hover:border-primary/40",
+                  )}
+                >
+                  {s}
+                </button>
+              ))}
             </div>
           </div>
 
           <div className="flex justify-between pt-2">
-            <Button variant="outline" onClick={() => setStep(0)}>
+            <Button variant="outline" onClick={() => setStep(1)}>
               <ArrowLeft className="w-4 h-4 mr-2" /> Back
             </Button>
-            <Button onClick={() => setStep(2)} className="bg-gradient-gold text-primary-foreground hover:opacity-90">
+            <Button onClick={() => setStep(3)} className="bg-gradient-gold text-primary-foreground hover:opacity-90">
               Confirm <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           </div>
         </Card>
       )}
 
-      {/* STEP 2 — Confirm key */}
-      {step === 2 && (
+      {/* STEP 3 — Confirm key */}
+      {step === 3 && (
         <Card className="studio-card-gold p-6 animate-fade-in-up">
           <div className="text-center mb-6">
             <div className="text-xs uppercase tracking-widest text-primary/80 mb-2">Detected Key</div>
@@ -290,13 +436,13 @@ export default function KeyDetectionPage() {
             </div>
           </div>
           <div className="flex items-center justify-between gap-3">
-            <Button variant="outline" onClick={() => setStep(1)}>
-              <ArrowLeft className="w-4 h-4 mr-2" /> Re-detect
+            <Button variant="outline" onClick={() => setStep(2)}>
+              <ArrowLeft className="w-4 h-4 mr-2" /> Re-tune
             </Button>
             <Button
               onClick={() => {
                 setConfirmed(true);
-                setStep(3);
+                setStep(4);
               }}
               className="bg-gradient-gold text-primary-foreground hover:opacity-90"
             >
@@ -306,8 +452,8 @@ export default function KeyDetectionPage() {
         </Card>
       )}
 
-      {/* STEP 3 — Align 808s */}
-      {step === 3 && (
+      {/* STEP 4 — Align 808s */}
+      {step === 4 && (
         <AlignStep
           icon={<Activity className="w-5 h-5" />}
           title="Align your 808s & sub bass"
@@ -325,13 +471,13 @@ export default function KeyDetectionPage() {
             ["Sampler Root", `${root}5`],
             ["Sub focus", "40–80 Hz"],
           ]}
-          onBack={() => setStep(2)}
-          onNext={() => setStep(4)}
+          onBack={() => setStep(3)}
+          onNext={() => setStep(5)}
         />
       )}
 
-      {/* STEP 4 — Align melodies */}
-      {step === 4 && (
+      {/* STEP 5 — Align melodies */}
+      {step === 5 && (
         <AlignStep
           icon={<KeyRound className="w-5 h-5" />}
           title="Align melodies & samples"
@@ -348,13 +494,13 @@ export default function KeyDetectionPage() {
             ["Safe triads", triadList(root, scale)],
             ["Borrow zone", rel],
           ]}
-          onBack={() => setStep(3)}
-          onNext={() => setStep(5)}
+          onBack={() => setStep(4)}
+          onNext={() => setStep(6)}
         />
       )}
 
-      {/* STEP 5 — Align vocals */}
-      {step === 5 && (
+      {/* STEP 6 — Align vocals */}
+      {step === 6 && (
         <AlignStep
           icon={<Mic className="w-5 h-5" />}
           title="Tune your vocals to key"
@@ -373,14 +519,14 @@ export default function KeyDetectionPage() {
             ["Speed (trap)", "90–100%"],
             ["Formant", "0"],
           ]}
-          onBack={() => setStep(4)}
+          onBack={() => setStep(5)}
           onNext={goReview}
           nextLabel="Get Sensei Review"
         />
       )}
 
-      {/* STEP 6 — Sensei review */}
-      {step === 6 && (
+      {/* STEP 7 — Sensei review */}
+      {step === 7 && (
         <Card className="studio-card overflow-hidden h-[70vh] flex flex-col animate-fade-in-up">
           <SenseiChat initialPrompt={reviewPrompt} />
         </Card>
