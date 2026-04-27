@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   KeyRound, Music2, Wand2, Mic, Activity, ArrowRight, ArrowLeft, RotateCcw,
-  Sparkles, Check, UploadCloud, Loader2, FileAudio,
+  Sparkles, Check, UploadCloud, Loader2, FileAudio, AlertTriangle, Music,
+  Play, Pause,
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
@@ -11,12 +12,11 @@ import { Progress } from "@/components/ui/progress";
 import { SenseiChat } from "@/components/SenseiChat";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { decodeToMonoWav } from "@/lib/audio-decode";
+import { diatonicChords, suggestedProgressions, type Note, type Scale } from "@/lib/music-theory";
 
-const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const;
-type Note = typeof NOTES[number];
-type Scale = "Major" | "Minor";
+const NOTES: Note[] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
-// Semitone offsets from root for each scale
 const SCALE_INTERVALS: Record<Scale, number[]> = {
   Major: [0, 2, 4, 5, 7, 9, 11],
   Minor: [0, 2, 3, 5, 7, 8, 10],
@@ -26,14 +26,13 @@ const FLAT_NAMES: Record<string, string> = {
   "C#": "Db", "D#": "Eb", "F#": "Gb", "G#": "Ab", "A#": "Bb",
 };
 
+const CONFIDENCE_THRESHOLD = 50;
+const CHECKLIST_STORAGE_KEY = "studio-sensei-key-checklist-v1";
+
 function relativeKey(root: Note, scale: Scale): string {
   const idx = NOTES.indexOf(root);
-  if (scale === "Minor") {
-    const rel = NOTES[(idx + 3) % 12];
-    return `${rel} Major`;
-  }
-  const rel = NOTES[(idx + 9) % 12];
-  return `${rel} Minor`;
+  if (scale === "Minor") return `${NOTES[(idx + 3) % 12]} Major`;
+  return `${NOTES[(idx + 9) % 12]} Minor`;
 }
 
 function scaleNotes(root: Note, scale: Scale): string[] {
@@ -46,10 +45,11 @@ const STEPS = [
   { id: 1, label: "Auto-Detect", icon: UploadCloud },
   { id: 2, label: "Manual Tune", icon: Wand2 },
   { id: 3, label: "Confirm", icon: Check },
-  { id: 4, label: "Align 808s", icon: Activity },
-  { id: 5, label: "Align Melodies", icon: KeyRound },
-  { id: 6, label: "Align Vocals", icon: Mic },
-  { id: 7, label: "Sensei Review", icon: Sparkles },
+  { id: 4, label: "Chords", icon: Music },
+  { id: 5, label: "Align 808s", icon: Activity },
+  { id: 6, label: "Align Melodies", icon: KeyRound },
+  { id: 7, label: "Align Vocals", icon: Mic },
+  { id: 8, label: "Sensei Review", icon: Sparkles },
 ];
 
 type Source = "beat" | "melody" | "vocal" | "unknown";
@@ -61,6 +61,16 @@ const SOURCES: { id: Source; label: string; hint: string }[] = [
   { id: "unknown", label: "I'm not sure", hint: "Sensei will guide you from scratch" },
 ];
 
+const ACCEPT_AUDIO = ".wav,.mp3,.m4a,.ogg,.flac,.aac,audio/*";
+const MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
+
+interface UploadResult {
+  filename: string;
+  durationSec: number;
+  confidence: number;
+  previewUrl: string;
+}
+
 export default function KeyDetectionPage() {
   const [step, setStep] = useState(0);
   const [source, setSource] = useState<Source>("beat");
@@ -69,12 +79,32 @@ export default function KeyDetectionPage() {
   const [, setConfirmed] = useState(false);
   const [reviewPrompt, setReviewPrompt] = useState<string>();
   const [uploading, setUploading] = useState(false);
-  const [uploadResult, setUploadResult] = useState<{
-    filename: string;
-    durationSec: number;
-    confidence: number;
-  } | null>(null);
+  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
+  const [lowConfidenceAck, setLowConfidenceAck] = useState(false);
+  const [doneItems, setDoneItems] = useState<Record<string, boolean>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load persisted checklist on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CHECKLIST_STORAGE_KEY);
+      if (raw) setDoneItems(JSON.parse(raw));
+    } catch { /* ignore */ }
+  }, []);
+
+  // Persist on change
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHECKLIST_STORAGE_KEY, JSON.stringify(doneItems));
+    } catch { /* ignore */ }
+  }, [doneItems]);
+
+  // Free preview URL on unmount / replace
+  useEffect(() => {
+    return () => {
+      if (uploadResult?.previewUrl) URL.revokeObjectURL(uploadResult.previewUrl);
+    };
+  }, [uploadResult?.previewUrl]);
 
   const notes = useMemo(() => scaleNotes(root, scale), [root, scale]);
   const rel = useMemo(() => relativeKey(root, scale), [root, scale]);
@@ -82,6 +112,7 @@ export default function KeyDetectionPage() {
   const progress = Math.round((step / (STEPS.length - 1)) * 100);
 
   const reset = () => {
+    if (uploadResult?.previewUrl) URL.revokeObjectURL(uploadResult.previewUrl);
     setStep(0);
     setSource("beat");
     setRoot("C");
@@ -89,48 +120,73 @@ export default function KeyDetectionPage() {
     setConfirmed(false);
     setReviewPrompt(undefined);
     setUploadResult(null);
+    setLowConfidenceAck(false);
+  };
+
+  const toggleItem = (id: string) =>
+    setDoneItems((prev) => ({ ...prev, [id]: !prev[id] }));
+
+  const clearChecklist = () => {
+    setDoneItems({});
+    toast.success("Checklist cleared");
   };
 
   const handleUpload = async (file: File) => {
-    if (!file.name.toLowerCase().endsWith(".wav")) {
-      toast.error("Please upload a WAV file. Bounce to WAV in FL Studio (File → Export → WAV).");
-      return;
-    }
-    if (file.size > 30 * 1024 * 1024) {
+    if (file.size > MAX_UPLOAD_BYTES) {
       toast.error("File too large. Max 30 MB. Try a shorter loop.");
       return;
     }
     setUploading(true);
+    setLowConfidenceAck(false);
+    if (uploadResult?.previewUrl) URL.revokeObjectURL(uploadResult.previewUrl);
     setUploadResult(null);
+
     try {
+      // Browser-side decode → mono WAV (handles MP3, M4A, OGG, FLAC, WAV)
+      toast.loading("Decoding audio…", { id: "decode" });
+      const decoded = await decodeToMonoWav(file);
+      toast.dismiss("decode");
+
+      const previewUrl = URL.createObjectURL(file);
+
       const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/detect-key`;
       const fd = new FormData();
-      fd.append("file", file);
+      fd.append("file", new File([decoded.wavBlob], "decoded.wav", { type: "audio/wav" }));
       const resp = await fetch(url, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
+        headers: { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
         body: fd,
       });
       const data = await resp.json();
       if (!resp.ok) {
+        URL.revokeObjectURL(previewUrl);
         toast.error(data.error ?? "Detection failed.");
         return;
       }
       setRoot(data.root as Note);
       setScale(data.scale as Scale);
       setUploadResult({
-        filename: data.filename,
-        durationSec: data.durationSec,
+        filename: file.name,
+        durationSec: decoded.durationSec,
         confidence: data.confidence,
+        previewUrl,
       });
       toast.success(`Detected: ${data.root} ${data.scale} (${data.confidence}% confidence)`);
-    } catch {
-      toast.error("Network error. Try again.");
+    } catch (e) {
+      toast.dismiss("decode");
+      toast.error(e instanceof Error ? e.message : "Decoding failed.");
     } finally {
       setUploading(false);
     }
+  };
+
+  const proceedFromDetect = () => {
+    if (uploadResult && uploadResult.confidence < CONFIDENCE_THRESHOLD && !lowConfidenceAck) {
+      // Surface confidence warning UI inside step 1 — handled by render below
+      toast.warning("Low confidence — review the warning below.");
+      return;
+    }
+    setStep(2);
   };
 
   const goReview = () => {
@@ -144,8 +200,11 @@ export default function KeyDetectionPage() {
         `5) 3 chord progression ideas in ${display} for verse, hook, and bridge.\n` +
         `Stick to native FL Studio plugins (Pitcher, Edison, Patcher, Fruity Parametric EQ 2).`,
     );
-    setStep(7);
+    setStep(8);
   };
+
+  const showLowConfidence =
+    !!uploadResult && uploadResult.confidence < CONFIDENCE_THRESHOLD && !lowConfidenceAck;
 
   return (
     <div className="container max-w-6xl py-8 px-4 md:px-8">
@@ -241,7 +300,7 @@ export default function KeyDetectionPage() {
               Auto-detect key from audio
             </h2>
             <p className="text-sm text-muted-foreground">
-              Upload a WAV bounce of your loop, beat, or vocal. Sensei reads the pitch profile and prefills your root note + scale.
+              Drop in MP3, WAV, M4A, OGG, or FLAC. Sensei decodes it in your browser and reads the pitch profile.
             </p>
           </div>
 
@@ -261,7 +320,7 @@ export default function KeyDetectionPage() {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".wav,audio/wav,audio/x-wav"
+              accept={ACCEPT_AUDIO}
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -271,7 +330,7 @@ export default function KeyDetectionPage() {
             {uploading ? (
               <>
                 <Loader2 className="w-10 h-10 text-primary mx-auto mb-3 animate-spin" />
-                <div className="font-semibold text-sm">Analyzing pitch profile…</div>
+                <div className="font-semibold text-sm">Decoding & analyzing…</div>
                 <div className="text-xs text-muted-foreground mt-1">Krumhansl-Schmuckler key estimation in progress</div>
               </>
             ) : uploadResult ? (
@@ -279,19 +338,24 @@ export default function KeyDetectionPage() {
                 <FileAudio className="w-10 h-10 text-primary mx-auto mb-3" />
                 <div className="font-semibold text-sm truncate">{uploadResult.filename}</div>
                 <div className="text-xs text-muted-foreground mt-1">
-                  {uploadResult.durationSec}s analyzed · upload another to redo
+                  {uploadResult.durationSec}s analyzed · click to upload another
                 </div>
               </>
             ) : (
               <>
                 <UploadCloud className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-                <div className="font-semibold text-sm">Drop a WAV file here, or click to browse</div>
+                <div className="font-semibold text-sm">Drop an audio file here, or click to browse</div>
                 <div className="text-xs text-muted-foreground mt-1">
-                  Max 30 MB · WAV only · For MP3 → bounce to WAV in FL Studio first
+                  MP3 · WAV · M4A · OGG · FLAC · max 30 MB · first 30s analyzed
                 </div>
               </>
             )}
           </div>
+
+          {/* Audio preview player */}
+          {uploadResult && (
+            <PreviewPlayer src={uploadResult.previewUrl} filename={uploadResult.filename} />
+          )}
 
           {uploadResult && (
             <div className="rounded-lg border border-primary/30 bg-gradient-gold-soft p-4 flex items-center justify-between">
@@ -302,9 +366,49 @@ export default function KeyDetectionPage() {
               </div>
               <div className="text-right">
                 <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Confidence</div>
-                <div className="font-display text-2xl font-bold text-primary tabular-nums">
+                <div
+                  className={cn(
+                    "font-display text-2xl font-bold tabular-nums",
+                    uploadResult.confidence >= 70 ? "text-primary"
+                      : uploadResult.confidence >= CONFIDENCE_THRESHOLD ? "text-gold"
+                      : "text-destructive",
+                  )}
+                >
                   {uploadResult.confidence}%
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Low confidence warning */}
+          {showLowConfidence && (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="font-semibold text-sm text-destructive">Low confidence — re-upload recommended</div>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                    Sensei isn't sure about this key ({uploadResult!.confidence}%). For an accurate read, try one of these:
+                  </p>
+                  <ul className="text-xs text-muted-foreground mt-2 space-y-1 list-disc list-inside">
+                    <li>Bounce a <span className="text-foreground font-medium">longer section</span> (8–16 bars instead of 1–2)</li>
+                    <li>Use a <span className="text-foreground font-medium">cleaner stem</span> — solo the melody, bass, or chord track</li>
+                    <li>Mute drums and percussion before bouncing — they confuse pitch detection</li>
+                    <li>Avoid sections with key changes, drops, or heavy FX tails</li>
+                  </ul>
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button size="sm" variant="outline" onClick={() => setLowConfidenceAck(true)}>
+                  Use it anyway
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="bg-gradient-gold text-primary-foreground hover:opacity-90"
+                >
+                  <UploadCloud className="w-4 h-4 mr-2" /> Upload a better bounce
+                </Button>
               </div>
             </div>
           )}
@@ -318,8 +422,8 @@ export default function KeyDetectionPage() {
                 Skip — Tune Manually
               </Button>
               <Button
-                onClick={() => setStep(2)}
-                disabled={!uploadResult}
+                onClick={proceedFromDetect}
+                disabled={!uploadResult || showLowConfidence}
                 className="bg-gradient-gold text-primary-foreground hover:opacity-90 disabled:opacity-50"
               >
                 Use Detected Key <ArrowRight className="w-4 h-4 ml-2" />
@@ -446,15 +550,27 @@ export default function KeyDetectionPage() {
               }}
               className="bg-gradient-gold text-primary-foreground hover:opacity-90"
             >
-              Lock Key & Align 808s <ArrowRight className="w-4 h-4 ml-2" />
+              Verify Chord Progression <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           </div>
         </Card>
       )}
 
-      {/* STEP 4 — Align 808s */}
+      {/* STEP 4 — Chord progression verification */}
       {step === 4 && (
+        <ChordsStep
+          root={root}
+          scale={scale}
+          display={display}
+          onBack={() => setStep(3)}
+          onNext={() => setStep(5)}
+        />
+      )}
+
+      {/* STEP 5 — Align 808s */}
+      {step === 5 && (
         <AlignStep
+          stepKey="808s"
           icon={<Activity className="w-5 h-5" />}
           title="Align your 808s & sub bass"
           subtitle={`Lock every 808 hit to a note inside ${display}.`}
@@ -471,14 +587,17 @@ export default function KeyDetectionPage() {
             ["Sampler Root", `${root}5`],
             ["Sub focus", "40–80 Hz"],
           ]}
-          onBack={() => setStep(3)}
-          onNext={() => setStep(5)}
+          doneItems={doneItems}
+          toggleItem={toggleItem}
+          onBack={() => setStep(4)}
+          onNext={() => setStep(6)}
         />
       )}
 
-      {/* STEP 5 — Align melodies */}
-      {step === 5 && (
+      {/* STEP 6 — Align melodies */}
+      {step === 6 && (
         <AlignStep
+          stepKey="melodies"
           icon={<KeyRound className="w-5 h-5" />}
           title="Align melodies & samples"
           subtitle={`Force every melodic loop into ${display}.`}
@@ -494,14 +613,17 @@ export default function KeyDetectionPage() {
             ["Safe triads", triadList(root, scale)],
             ["Borrow zone", rel],
           ]}
-          onBack={() => setStep(4)}
-          onNext={() => setStep(6)}
+          doneItems={doneItems}
+          toggleItem={toggleItem}
+          onBack={() => setStep(5)}
+          onNext={() => setStep(7)}
         />
       )}
 
-      {/* STEP 6 — Align vocals */}
-      {step === 6 && (
+      {/* STEP 7 — Align vocals */}
+      {step === 7 && (
         <AlignStep
+          stepKey="vocals"
           icon={<Mic className="w-5 h-5" />}
           title="Tune your vocals to key"
           subtitle={`Sit the vocal inside ${display} naturally — no robot artifacts.`}
@@ -519,14 +641,21 @@ export default function KeyDetectionPage() {
             ["Speed (trap)", "90–100%"],
             ["Formant", "0"],
           ]}
-          onBack={() => setStep(5)}
+          doneItems={doneItems}
+          toggleItem={toggleItem}
+          onBack={() => setStep(6)}
           onNext={goReview}
           nextLabel="Get Sensei Review"
+          footerExtra={
+            <Button size="sm" variant="ghost" onClick={clearChecklist} className="text-xs text-muted-foreground">
+              <RotateCcw className="w-3 h-3 mr-1.5" /> Clear saved checklist
+            </Button>
+          }
         />
       )}
 
-      {/* STEP 7 — Sensei review */}
-      {step === 7 && (
+      {/* STEP 8 — Sensei review */}
+      {step === 8 && (
         <Card className="studio-card overflow-hidden h-[70vh] flex flex-col animate-fade-in-up">
           <SenseiChat initialPrompt={reviewPrompt} />
         </Card>
@@ -534,6 +663,158 @@ export default function KeyDetectionPage() {
     </div>
   );
 }
+
+/* --- Audio preview player --- */
+
+const PreviewPlayer = ({ src, filename }: { src: string; filename: string }) => {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    const onEnd = () => setPlaying(false);
+    a.addEventListener("play", onPlay);
+    a.addEventListener("pause", onPause);
+    a.addEventListener("ended", onEnd);
+    return () => {
+      a.removeEventListener("play", onPlay);
+      a.removeEventListener("pause", onPause);
+      a.removeEventListener("ended", onEnd);
+    };
+  }, [src]);
+
+  const toggle = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (a.paused) a.play().catch(() => {});
+    else a.pause();
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-card/50 p-4">
+      <div className="flex items-center gap-3 mb-3">
+        <button
+          type="button"
+          onClick={toggle}
+          className="w-10 h-10 rounded-full bg-gradient-gold text-primary-foreground flex items-center justify-center hover:opacity-90 transition flex-shrink-0"
+          aria-label={playing ? "Pause preview" : "Play preview"}
+        >
+          {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Preview</div>
+          <div className="text-sm font-semibold truncate">{filename}</div>
+          <div className="text-xs text-muted-foreground">Confirm this is the section you want to key.</div>
+        </div>
+      </div>
+      <audio ref={audioRef} src={src} controls className="w-full h-9" preload="metadata" />
+    </div>
+  );
+};
+
+/* --- Chord verification step --- */
+
+interface ChordsStepProps {
+  root: Note;
+  scale: Scale;
+  display: string;
+  onBack: () => void;
+  onNext: () => void;
+}
+
+const ChordsStep = ({ root, scale, display, onBack, onNext }: ChordsStepProps) => {
+  const chords = useMemo(() => diatonicChords(root, scale), [root, scale]);
+  const progressions = useMemo(() => suggestedProgressions(root, scale), [root, scale]);
+
+  return (
+    <Card className="studio-card p-6 animate-fade-in-up space-y-6">
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-lg bg-gradient-gold-soft border border-primary/20 flex items-center justify-center text-primary flex-shrink-0">
+          <Music className="w-5 h-5" />
+        </div>
+        <div>
+          <h2 className="font-display text-xl font-bold">Verify chord progression</h2>
+          <p className="text-sm text-muted-foreground">
+            These are the diatonic chords for <span className="text-primary font-semibold">{display}</span>.
+            Play them in Piano Roll before alignment to make sure the key feels right.
+          </p>
+        </div>
+      </div>
+
+      {/* Diatonic chord table */}
+      <div>
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
+          Diatonic chords (Roman numerals)
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
+          {chords.map((c) => (
+            <div
+              key={c.numeral}
+              className="rounded-md border border-border bg-card/50 p-3 hover:border-primary/40 transition"
+            >
+              <div className="flex items-baseline justify-between gap-1 mb-1">
+                <span className="font-display text-lg font-bold text-gold">{c.numeral}</span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{c.function}</span>
+              </div>
+              <div className="text-base font-semibold text-primary">{c.symbol}</div>
+              <div className="text-xs text-muted-foreground mt-1 font-mono">{c.notes.join(" · ")}</div>
+              <div className="text-[10px] text-muted-foreground mt-1">7th: <span className="text-foreground/80">{c.seventh}</span></div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Suggested progressions */}
+      <div>
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
+          Try these progressions in Piano Roll
+        </div>
+        <div className="space-y-2">
+          {progressions.map((p) => (
+            <div
+              key={p.name}
+              className="rounded-md border border-border bg-card/50 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
+            >
+              <div>
+                <div className="text-sm font-semibold">{p.name}</div>
+                <div className="text-xs text-muted-foreground font-mono mt-0.5">
+                  {p.numerals.join(" – ")}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {p.chords.map((ch, i) => (
+                  <Badge key={`${ch}-${i}`} className="bg-primary/15 text-primary border-primary/30">
+                    {ch}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* FL Studio playback hint */}
+      <div className="rounded-lg border border-primary/20 bg-gradient-gold-soft p-4 text-xs text-foreground/90 leading-relaxed">
+        <div className="font-semibold text-sm text-primary mb-1">Play these in FL Studio</div>
+        Open Piano Roll → keyboard ▾ → <span className="text-foreground font-medium">Helpers → Scale highlighting</span> → set to{" "}
+        <span className="text-foreground font-medium">{root} {scale}</span>. Drop one chord per bar from the table above and loop the
+        progression. If the chords feel right against your beat, your detected key is correct — proceed to alignment.
+      </div>
+
+      <div className="flex justify-between pt-2">
+        <Button variant="outline" onClick={onBack}>
+          <ArrowLeft className="w-4 h-4 mr-2" /> Back
+        </Button>
+        <Button onClick={onNext} className="bg-gradient-gold text-primary-foreground hover:opacity-90">
+          Chords Sound Right — Align 808s <ArrowRight className="w-4 h-4 ml-2" />
+        </Button>
+      </div>
+    </Card>
+  );
+};
 
 /* --- helpers --- */
 
@@ -551,67 +832,108 @@ const DetectCard = ({ n, tool, copy }: { n: string; tool: string; copy: string }
 
 function triadList(root: Note, scale: Scale): string {
   const n = scaleNotes(root, scale);
-  // I, IV, V (or i, iv, v)
   const tag = scale === "Minor" ? ["i", "iv", "v"] : ["I", "IV", "V"];
   return `${tag[0]}=${n[0]}, ${tag[1]}=${n[3]}, ${tag[2]}=${n[4]}`;
 }
 
 interface AlignStepProps {
+  stepKey: string;
   icon: React.ReactNode;
   title: string;
   subtitle: string;
   steps: string[];
   settings: [string, string][];
+  doneItems: Record<string, boolean>;
+  toggleItem: (id: string) => void;
   onBack: () => void;
   onNext: () => void;
   nextLabel?: string;
+  footerExtra?: React.ReactNode;
 }
 
-const AlignStep = ({ icon, title, subtitle, steps, settings, onBack, onNext, nextLabel = "Next" }: AlignStepProps) => (
-  <Card className="studio-card p-6 animate-fade-in-up space-y-5">
-    <div className="flex items-start gap-3">
-      <div className="w-10 h-10 rounded-lg bg-gradient-gold-soft border border-primary/20 flex items-center justify-center text-primary flex-shrink-0">
-        {icon}
+const AlignStep = ({
+  stepKey, icon, title, subtitle, steps, settings,
+  doneItems, toggleItem, onBack, onNext, nextLabel = "Next", footerExtra,
+}: AlignStepProps) => {
+  const total = steps.length;
+  const completed = steps.filter((_, i) => doneItems[`${stepKey}-${i}`]).length;
+  return (
+    <Card className="studio-card p-6 animate-fade-in-up space-y-5">
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-lg bg-gradient-gold-soft border border-primary/20 flex items-center justify-center text-primary flex-shrink-0">
+          {icon}
+        </div>
+        <div className="flex-1">
+          <h2 className="font-display text-xl font-bold">{title}</h2>
+          <p className="text-sm text-muted-foreground">{subtitle}</p>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Progress</div>
+          <div className="text-sm font-semibold text-primary tabular-nums">{completed} / {total}</div>
+        </div>
       </div>
+
       <div>
-        <h2 className="font-display text-xl font-bold">{title}</h2>
-        <p className="text-sm text-muted-foreground">{subtitle}</p>
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
+          Action checklist (saved automatically)
+        </div>
+        <ul className="space-y-1.5">
+          {steps.map((s, i) => {
+            const id = `${stepKey}-${i}`;
+            const done = !!doneItems[id];
+            return (
+              <li key={id}>
+                <button
+                  type="button"
+                  onClick={() => toggleItem(id)}
+                  className={cn(
+                    "w-full text-left flex items-start gap-3 p-3 rounded-md border transition-all",
+                    done
+                      ? "border-primary/30 bg-gradient-gold-soft"
+                      : "border-border bg-card/40 hover:border-primary/40 hover:bg-primary/5",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "w-5 h-5 rounded border flex-shrink-0 mt-0.5 flex items-center justify-center transition",
+                      done ? "bg-primary border-primary" : "border-primary/40",
+                    )}
+                  >
+                    {done && <Check className="w-3.5 h-3.5 text-primary-foreground" />}
+                  </span>
+                  <span className={cn("text-sm leading-relaxed flex-1", done && "line-through text-muted-foreground")}>
+                    {s}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       </div>
-    </div>
 
-    <div>
-      <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">Step-by-step</div>
-      <ol className="space-y-2">
-        {steps.map((s, i) => (
-          <li key={i} className="flex gap-3 text-sm">
-            <span className="w-5 h-5 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-              {i + 1}
-            </span>
-            <span className="leading-relaxed">{s}</span>
-          </li>
-        ))}
-      </ol>
-    </div>
-
-    <div>
-      <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">Suggested settings</div>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-        {settings.map(([k, v]) => (
-          <div key={k} className="rounded-md bg-secondary border border-border px-3 py-2">
-            <div className="text-[10px] uppercase tracking-widest text-muted-foreground">{k}</div>
-            <div className="text-sm font-semibold text-primary">{v}</div>
-          </div>
-        ))}
+      <div>
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">Suggested settings</div>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+          {settings.map(([k, v]) => (
+            <div key={k} className="rounded-md bg-secondary border border-border px-3 py-2">
+              <div className="text-[10px] uppercase tracking-widest text-muted-foreground">{k}</div>
+              <div className="text-sm font-semibold text-primary">{v}</div>
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
 
-    <div className="flex justify-between pt-2">
-      <Button variant="outline" onClick={onBack}>
-        <ArrowLeft className="w-4 h-4 mr-2" /> Back
-      </Button>
-      <Button onClick={onNext} className="bg-gradient-gold text-primary-foreground hover:opacity-90">
-        {nextLabel} <ArrowRight className="w-4 h-4 ml-2" />
-      </Button>
-    </div>
-  </Card>
-);
+      <div className="flex items-center justify-between pt-2 gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={onBack}>
+            <ArrowLeft className="w-4 h-4 mr-2" /> Back
+          </Button>
+          {footerExtra}
+        </div>
+        <Button onClick={onNext} className="bg-gradient-gold text-primary-foreground hover:opacity-90">
+          {nextLabel} <ArrowRight className="w-4 h-4 ml-2" />
+        </Button>
+      </div>
+    </Card>
+  );
+};
