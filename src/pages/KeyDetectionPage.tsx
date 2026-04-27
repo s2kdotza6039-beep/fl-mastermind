@@ -66,8 +66,15 @@ export default function KeyDetectionPage() {
   const [source, setSource] = useState<Source>("beat");
   const [root, setRoot] = useState<Note>("C");
   const [scale, setScale] = useState<Scale>("Minor");
-  const [confirmed, setConfirmed] = useState(false);
+  const [, setConfirmed] = useState(false);
   const [reviewPrompt, setReviewPrompt] = useState<string>();
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{
+    filename: string;
+    durationSec: number;
+    confidence: number;
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const notes = useMemo(() => scaleNotes(root, scale), [root, scale]);
   const rel = useMemo(() => relativeKey(root, scale), [root, scale]);
@@ -81,6 +88,49 @@ export default function KeyDetectionPage() {
     setScale("Minor");
     setConfirmed(false);
     setReviewPrompt(undefined);
+    setUploadResult(null);
+  };
+
+  const handleUpload = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".wav")) {
+      toast.error("Please upload a WAV file. Bounce to WAV in FL Studio (File → Export → WAV).");
+      return;
+    }
+    if (file.size > 30 * 1024 * 1024) {
+      toast.error("File too large. Max 30 MB. Try a shorter loop.");
+      return;
+    }
+    setUploading(true);
+    setUploadResult(null);
+    try {
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/detect-key`;
+      const fd = new FormData();
+      fd.append("file", file);
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: fd,
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        toast.error(data.error ?? "Detection failed.");
+        return;
+      }
+      setRoot(data.root as Note);
+      setScale(data.scale as Scale);
+      setUploadResult({
+        filename: data.filename,
+        durationSec: data.durationSec,
+        confidence: data.confidence,
+      });
+      toast.success(`Detected: ${data.root} ${data.scale} (${data.confidence}% confidence)`);
+    } catch {
+      toast.error("Network error. Try again.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const goReview = () => {
@@ -88,12 +138,13 @@ export default function KeyDetectionPage() {
       `I've identified my track key as ${display}. The diatonic notes are: ${notes.join(", ")}. Relative key: ${rel}.\n\n` +
         `Please give me a complete alignment plan for FL Studio:\n` +
         `1) How to lock my 808 to ${root} and the bassline notes I should stay on for ${scale.toLowerCase()} feel.\n` +
-        `2) Which scale modes/chords to use for melodies that won't clash.\n` +
+        `2) Which scale modes/chords (with Roman numerals) to use for melodies that won't clash.\n` +
         `3) How to tune/Pitcher my vocal so it sits inside ${display} without sounding robotic.\n` +
         `4) A sanity check for hooks that drift between ${display} and ${rel}.\n` +
+        `5) 3 chord progression ideas in ${display} for verse, hook, and bridge.\n` +
         `Stick to native FL Studio plugins (Pitcher, Edison, Patcher, Fruity Parametric EQ 2).`,
     );
-    setStep(6);
+    setStep(7);
   };
 
   return (
