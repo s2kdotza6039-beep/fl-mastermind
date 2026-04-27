@@ -226,19 +226,116 @@ export default function KeyDetectionPage() {
           </div>
           <div className="flex justify-end">
             <Button onClick={() => setStep(1)} className="bg-gradient-gold text-primary-foreground hover:opacity-90">
-              Detect Key <ArrowRight className="w-4 h-4 ml-2" />
+              Auto-Detect from Audio <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           </div>
         </Card>
       )}
 
-      {/* STEP 1 — Detection how-to + manual entry */}
+      {/* STEP 1 — Auto-detect from upload */}
       {step === 1 && (
         <Card className="studio-card p-6 animate-fade-in-up space-y-5">
           <div>
-            <h2 className="font-display text-xl font-bold mb-1">Detect the root note</h2>
+            <h2 className="font-display text-xl font-bold mb-1 flex items-center gap-2">
+              <UploadCloud className="w-5 h-5 text-primary" />
+              Auto-detect key from audio
+            </h2>
             <p className="text-sm text-muted-foreground">
-              FL Studio doesn't auto-key for you, but its native tools nail it fast. Pick the path that matches your source.
+              Upload a WAV bounce of your loop, beat, or vocal. Sensei reads the pitch profile and prefills your root note + scale.
+            </p>
+          </div>
+
+          <div
+            onClick={() => !uploading && fileInputRef.current?.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              const f = e.dataTransfer.files?.[0];
+              if (f) handleUpload(f);
+            }}
+            className={cn(
+              "border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer",
+              uploading ? "border-primary/40 bg-primary/5" : "border-border hover:border-primary/50 hover:bg-primary/5",
+            )}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".wav,audio/wav,audio/x-wav"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleUpload(f);
+              }}
+            />
+            {uploading ? (
+              <>
+                <Loader2 className="w-10 h-10 text-primary mx-auto mb-3 animate-spin" />
+                <div className="font-semibold text-sm">Analyzing pitch profile…</div>
+                <div className="text-xs text-muted-foreground mt-1">Krumhansl-Schmuckler key estimation in progress</div>
+              </>
+            ) : uploadResult ? (
+              <>
+                <FileAudio className="w-10 h-10 text-primary mx-auto mb-3" />
+                <div className="font-semibold text-sm truncate">{uploadResult.filename}</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {uploadResult.durationSec}s analyzed · upload another to redo
+                </div>
+              </>
+            ) : (
+              <>
+                <UploadCloud className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                <div className="font-semibold text-sm">Drop a WAV file here, or click to browse</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Max 30 MB · WAV only · For MP3 → bounce to WAV in FL Studio first
+                </div>
+              </>
+            )}
+          </div>
+
+          {uploadResult && (
+            <div className="rounded-lg border border-primary/30 bg-gradient-gold-soft p-4 flex items-center justify-between">
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-primary/80">Detected Key</div>
+                <div className="font-display text-2xl font-bold text-gold">{display}</div>
+                <div className="text-xs text-muted-foreground mt-0.5">Relative: {rel}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Confidence</div>
+                <div className="font-display text-2xl font-bold text-primary tabular-nums">
+                  {uploadResult.confidence}%
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-3 pt-2">
+            <Button variant="outline" onClick={() => setStep(0)}>
+              <ArrowLeft className="w-4 h-4 mr-2" /> Back
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setStep(2)}>
+                Skip — Tune Manually
+              </Button>
+              <Button
+                onClick={() => setStep(2)}
+                disabled={!uploadResult}
+                className="bg-gradient-gold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              >
+                Use Detected Key <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* STEP 2 — Manual tune */}
+      {step === 2 && (
+        <Card className="studio-card p-6 animate-fade-in-up space-y-5">
+          <div>
+            <h2 className="font-display text-xl font-bold mb-1">Fine-tune the root note</h2>
+            <p className="text-sm text-muted-foreground">
+              Confirm or override the auto-detected key. FL Studio's native tools nail it fast — pick the path that matches your source.
             </p>
           </div>
 
@@ -270,55 +367,48 @@ export default function KeyDetectionPage() {
 
           <div className="border-t border-border pt-5">
             <h3 className="font-semibold mb-3 text-sm uppercase tracking-widest text-muted-foreground">
-              Enter what you found
+              Root note
             </h3>
-            <div className="space-y-4">
-              <div>
-                <div className="text-xs text-muted-foreground mb-2">Root note</div>
-                <div className="grid grid-cols-6 md:grid-cols-12 gap-1.5">
-                  {NOTES.map((n) => (
-                    <button
-                      key={n}
-                      onClick={() => setRoot(n)}
-                      className={cn(
-                        "h-10 rounded-md text-sm font-bold transition-all",
-                        root === n
-                          ? "bg-gradient-gold text-primary-foreground glow-gold"
-                          : "bg-secondary text-foreground hover:bg-primary/15 hover:text-primary",
-                      )}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-2">Scale</div>
-                <div className="grid grid-cols-2 gap-2 max-w-xs">
-                  {(["Minor", "Major"] as Scale[]).map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => setScale(s)}
-                      className={cn(
-                        "h-10 rounded-md text-sm font-semibold transition-all border",
-                        scale === s
-                          ? "bg-gradient-gold text-primary-foreground border-transparent"
-                          : "bg-secondary text-foreground border-border hover:border-primary/40",
-                      )}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            <div className="grid grid-cols-6 md:grid-cols-12 gap-1.5 mb-4">
+              {NOTES.map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setRoot(n)}
+                  className={cn(
+                    "h-10 rounded-md text-sm font-bold transition-all",
+                    root === n
+                      ? "bg-gradient-gold text-primary-foreground glow-gold"
+                      : "bg-secondary text-foreground hover:bg-primary/15 hover:text-primary",
+                  )}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            <h3 className="font-semibold mb-3 text-sm uppercase tracking-widest text-muted-foreground">Scale</h3>
+            <div className="grid grid-cols-2 gap-2 max-w-xs">
+              {(["Minor", "Major"] as Scale[]).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setScale(s)}
+                  className={cn(
+                    "h-10 rounded-md text-sm font-semibold transition-all border",
+                    scale === s
+                      ? "bg-gradient-gold text-primary-foreground border-transparent"
+                      : "bg-secondary text-foreground border-border hover:border-primary/40",
+                  )}
+                >
+                  {s}
+                </button>
+              ))}
             </div>
           </div>
 
           <div className="flex justify-between pt-2">
-            <Button variant="outline" onClick={() => setStep(0)}>
+            <Button variant="outline" onClick={() => setStep(1)}>
               <ArrowLeft className="w-4 h-4 mr-2" /> Back
             </Button>
-            <Button onClick={() => setStep(2)} className="bg-gradient-gold text-primary-foreground hover:opacity-90">
+            <Button onClick={() => setStep(3)} className="bg-gradient-gold text-primary-foreground hover:opacity-90">
               Confirm <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           </div>
