@@ -29,6 +29,9 @@
  *                              synthetic error) and assert GoTrue redirects
  *                              the user back to each APP_ORIGIN.
  *   E2E_MAX_REDIRECTS          max redirects to follow per origin (default: 5)
+ *   PKCE_NEGATIVE_TESTS        "true" to additionally probe with omitted /
+ *                              "plain" PKCE and assert the validator fails
+ *                              with the expected error messages.
  *
  * Usage:
  *   node scripts/check-google-oauth.mjs
