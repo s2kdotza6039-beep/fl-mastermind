@@ -2440,31 +2440,38 @@ async function tokenProbe({
     }
 
     // STRICT CONTRACT — `error` code must be in the allow-list.
-    const codeOk = expectedErrorCodes
-      ? expectedErrorCodes.some((c) => errorCode.toLowerCase() === c.toLowerCase())
-      : true;
-    if (!codeOk) {
-      record(
-        "fail",
-        label,
-        `error="${errorCode}" not in expected set [${expectedErrorCodes.join(", ")}]${tail}`,
-        "GoTrue returned an unexpected error code. Either the deployed version changed its vocabulary (update expectedErrorCodes) or the endpoint is misbehaving.",
-        meta
+    // Probes that opted out (negative-contract / allowMissingContract) skip
+    // both the code and description checks; everything else gets ZERO
+    // fallback (the config guard above already proved the allow-list is
+    // a non-empty array and the regex is a RegExp).
+    if (!contractOptOut) {
+      const codeOk = expectedErrorCodes.some(
+        (c) => errorCode.toLowerCase() === c.toLowerCase()
       );
-      return;
-    }
+      if (!codeOk) {
+        record(
+          "fail",
+          label,
+          `error="${errorCode}" not in expected allow-list [${expectedErrorCodes.join(", ")}]${tail}`,
+          "GoTrue returned an unexpected error code. Either the deployed version changed its vocabulary (update expectedErrorCodes for this probe) or the endpoint is misbehaving.",
+          { ...meta, contractViolation: { kind: "error_code", expected: expectedErrorCodes, actual: errorCode } }
+        );
+        return;
+      }
 
-    // STRICT CONTRACT — `error_description` must match the topical regex.
-    const descOk = expectedDescriptionRe ? expectedDescriptionRe.test(errorDescription) : true;
-    if (!descOk) {
-      record(
-        "warn",
-        label,
-        `error_description="${errorDescription}" does not match ${expectedDescriptionRe}${tail}`,
-        "Description text drifted from expectation — confirm the message is still meaningful to end users.",
-        meta
-      );
-      return;
+      // STRICT CONTRACT — `error_description` must match the per-probe regex.
+      // Mismatch is a `fail` (was previously a `warn`); user-visible error
+      // text drifting from expectation is a real regression.
+      if (!expectedDescriptionRe.test(errorDescription)) {
+        record(
+          "fail",
+          label,
+          `error_description="${errorDescription}" does not match per-probe allow-list ${expectedDescriptionRe}${tail}`,
+          "Description text drifted from the per-probe contract. Either the deployed GoTrue changed its wording (update expectedDescriptionRe for this probe) or the endpoint is returning the wrong error for this case.",
+          { ...meta, contractViolation: { kind: "error_description", expected: String(expectedDescriptionRe), actual: errorDescription } }
+        );
+        return;
+      }
     }
 
     record(
