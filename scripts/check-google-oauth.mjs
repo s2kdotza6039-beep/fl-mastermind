@@ -105,37 +105,42 @@ async function main() {
     }
   }
 
-  // 3. Authorize endpoint actually returns a Google redirect
-  try {
-    const url = `${SUPABASE_URL}/auth/v1/authorize?provider=google&skip_http_redirect=true&redirect_to=${encodeURIComponent(APP_ORIGIN)}`;
-    const res = await fetch(url, { headers: { apikey: ANON_KEY } });
-    let body = null;
-    try { body = await res.json(); } catch { /* non-json */ }
+  // 3. Authorize endpoint actually returns a Google redirect — per allowed origin
+  console.log(`\n${DIM}Probing ${APP_ORIGINS.length} allowed origin(s)…${RESET}`);
+  for (const origin of APP_ORIGINS) {
+    const label = `Authorize allows redirect_to=${origin}`;
+    try {
+      const url = `${SUPABASE_URL}/auth/v1/authorize?provider=google&skip_http_redirect=true&redirect_to=${encodeURIComponent(origin)}`;
+      const res = await fetch(url, { headers: { apikey: ANON_KEY } });
+      let body = null;
+      try { body = await res.json(); } catch { /* non-json */ }
 
-    if (res.ok && body?.url && /accounts\.google\.com/i.test(body.url)) {
-      record(
-        "pass",
-        "Authorize endpoint returns Google redirect",
-        body.url.slice(0, 120) + (body.url.length > 120 ? "…" : "")
-      );
-    } else if (res.ok && body?.url) {
-      record(
-        "warn",
-        "Authorize endpoint returns Google redirect",
-        `Got URL but not a Google one: ${body.url.slice(0, 120)}`
-      );
-    } else {
-      const msg =
-        body?.error_description || body?.msg || body?.error || `HTTP ${res.status}`;
-      const hint = /missing oauth secret|client_id|client_secret/i.test(msg)
-        ? "Google client ID/secret missing — set them in Cloud auth settings or enable Lovable's managed credentials."
-        : /not enabled|unsupported provider/i.test(msg)
-        ? "Provider not enabled — re-run social auth setup in Cloud."
-        : undefined;
-      record("fail", "Authorize endpoint returns Google redirect", msg, hint);
+      if (res.ok && body?.url && /accounts\.google\.com/i.test(body.url)) {
+        // Confirm Supabase forwarded our redirect_to (Google's `redirect_uri` param
+        // points at Supabase callback, but `state` carries our origin; if the URL
+        // mentions our host anywhere it's a strong positive signal).
+        record("pass", label, body.url.slice(0, 120) + (body.url.length > 120 ? "…" : ""));
+      } else if (res.ok && body?.url) {
+        record("warn", label, `Got non-Google URL: ${body.url.slice(0, 120)}`);
+      } else {
+        const msg =
+          body?.error_description || body?.msg || body?.error || `HTTP ${res.status}`;
+        // Origin-allowlist rejections from GoTrue look like:
+        //   "redirect_to URL is not allowed" / "Invalid redirect URL"
+        const isAllowlist =
+          /redirect.*url.*not.*allowed|invalid.*redirect|not.*in.*allow.*list/i.test(msg);
+        const hint = isAllowlist
+          ? `Add "${origin}" to Cloud → Auth Settings → URL Configuration → Redirect URLs (and to your Google OAuth client's Authorized JavaScript origins).`
+          : /missing oauth secret|client_id|client_secret/i.test(msg)
+          ? "Google client ID/secret missing — set them in Cloud auth settings or enable Lovable's managed credentials."
+          : /not enabled|unsupported provider/i.test(msg)
+          ? "Provider not enabled — re-run social auth setup in Cloud."
+          : undefined;
+        record("fail", label, msg, hint);
+      }
+    } catch (e) {
+      record("fail", label, e.message);
     }
-  } catch (e) {
-    record("fail", "Authorize endpoint returns Google redirect", e.message);
   }
 
   await finish();
