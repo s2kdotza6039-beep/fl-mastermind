@@ -1,0 +1,133 @@
+{
+  "canonical_invalid_grant_400": {
+    "kind": "envelope",
+    "statusClass": "4xx",
+    "contentTypeFamily": "application/json",
+    "jsonParseable": true,
+    "bodyTruncated": false,
+    "parsedKeys": [
+      "error",
+      "error_description"
+    ],
+    "canonicalFieldsPresent": [
+      "error",
+      "error_description"
+    ],
+    "legacyFieldsPresent": [],
+    "errorCode": "invalid_grant",
+    "codeFamily": null
+  },
+  "canonical_invalid_grant_with_uri": {
+    "kind": "envelope",
+    "statusClass": "4xx",
+    "contentTypeFamily": "application/json",
+    "jsonParseable": true,
+    "bodyTruncated": false,
+    "parsedKeys": [
+      "error",
+      "error_description",
+      "error_uri"
+    ],
+    "canonicalFieldsPresent": [
+      "error",
+      "error_description",
+      "error_uri"
+    ],
+    "legacyFieldsPresent": [],
+    "errorCode": "invalid_grant",
+    "codeFamily": null
+  },
+  "canonical_invalid_request_missing_verifier": {
+    "kind": "envelope",
+    "statusClass": "4xx",
+    "contentTypeFamily": "application/json",
+    "jsonParseable": true,
+    "bodyTruncated": false,
+    "parsedKeys": [
+      "error",
+      "error_description"
+    ],
+    "canonicalFieldsPresent": [
+      "error",
+      "error_description"
+    ],
+    "legacyFieldsPresent": [],
+    "errorCode": "invalid_request",
+    "codeFamily": null
+  },
+  "legacy_no_api_key_401": {
+    "kind": "envelope",
+    "statusClass": "4xx",
+    "contentTypeFamily": "application/json",
+    "jsonParseable": true,
+    "bodyTruncated": false,
+    "parsedKeys": [
+      "code",
+      "msg"
+    ],
+    "canonicalFieldsPresent": [],
+    "legacyFieldsPresent": [
+      "code",
+      "msg"
+    ],
+    "errorCode": null,
+    "codeFamily": "4xx"
+  },
+  "malformed_json_400": {
+    "kind": "envelope",
+    "statusClass": "4xx",
+    "contentTypeFamily": "text/plain",
+    "jsonParseable": false,
+    "bodyTruncated": false,
+    "parsedKeys": null,
+    "canonicalFieldsPresent": [],
+    "legacyFieldsPresent": [],
+    "errorCode": null,
+    "codeFamily": null
+  },
+  "mixed_validation_failed_422": {
+    "kind": "envelope",
+    "statusClass": "4xx",
+    "contentTypeFamily": "application/json",
+    "jsonParseable": true,
+    "bodyTruncated": false,
+    "parsedKeys": [
+      "code",
+      "error",
+      "error_description"
+    ],
+    "canonicalFieldsPresent": [
+      "error",
+      "error_description"
+    ],
+    "legacyFieldsPresent": [
+      "code"
+    ],
+    "errorCode": "validation_failed",
+    "codeFamily": "4xx"
+  },
+  "proxy_html_502": {
+    "kind": "envelope",
+    "statusClass": "5xx",
+    "contentTypeFamily": "text/html",
+    "jsonParseable": false,
+    "bodyTruncated": false,
+    "parsedKeys": null,
+    "canonicalFieldsPresent": [],
+    "legacyFieldsPresent": [],
+    "errorCode": null,
+    "codeFamily": null
+  },
+  "transport_error": {
+    "kind": "envelope",
+    "statusClass": "0xx",
+    "contentTypeFamily": null,
+    "jsonParseable": false,
+    "bodyTruncated": false,
+    "parsedKeys": null,
+    "canonicalFieldsPresent": [],
+    "legacyFieldsPresent": [],
+    "errorCode": null,
+    "codeFamily": null
+  }
+}
