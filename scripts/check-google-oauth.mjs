@@ -188,17 +188,20 @@ async function main() {
     const label = `Authorize allows redirect_to=${origin}`;
     try {
       const url = `${SUPABASE_URL}/auth/v1/authorize?provider=google&skip_http_redirect=true&redirect_to=${encodeURIComponent(origin)}`;
-      const res = await fetch(url, { headers: { apikey: ANON_KEY } });
+      const { res, attempts, elapsedMs } = await fetchWithRetry(
+        url,
+        { headers: { apikey: ANON_KEY } },
+        `GET /authorize (${origin})`
+      );
       let body = null;
       try { body = await res.json(); } catch { /* non-json */ }
+      const tail = ` (${attempts} attempt${attempts > 1 ? "s" : ""}, ${elapsedMs}ms)`;
 
       if (res.ok && body?.url && /accounts\.google\.com/i.test(body.url)) {
-        // Confirm Supabase forwarded our redirect_to (Google's `redirect_uri` param
-        // points at Supabase callback, but `state` carries our origin; if the URL
-        // mentions our host anywhere it's a strong positive signal).
-        record("pass", label, body.url.slice(0, 120) + (body.url.length > 120 ? "…" : ""));
+        const preview = body.url.slice(0, 120) + (body.url.length > 120 ? "…" : "");
+        record("pass", label, preview + tail);
       } else if (res.ok && body?.url) {
-        record("warn", label, `Got non-Google URL: ${body.url.slice(0, 120)}`);
+        record("warn", label, `Got non-Google URL: ${body.url.slice(0, 120)}` + tail);
       } else {
         const msg =
           body?.error_description || body?.msg || body?.error || `HTTP ${res.status}`;
@@ -212,11 +215,18 @@ async function main() {
           ? "Google client ID/secret missing — set them in Cloud auth settings or enable Lovable's managed credentials."
           : /not enabled|unsupported provider/i.test(msg)
           ? "Provider not enabled — re-run social auth setup in Cloud."
+          : res.status >= 500
+          ? "Auth server error after retries — likely a transient outage; re-run later."
           : undefined;
-        record("fail", label, msg, hint);
+        record("fail", label, msg + tail, hint);
       }
     } catch (e) {
-      record("fail", label, e.message);
+      record(
+        "fail",
+        label,
+        e.message,
+        "Network or timeout — check runner connectivity to the Cloud project URL."
+      );
     }
   }
 
