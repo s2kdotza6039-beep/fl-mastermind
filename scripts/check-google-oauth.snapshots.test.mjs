@@ -172,7 +172,7 @@ for (const name of Object.keys(FIXTURES)) {
 }
 
 // Guard against orphaned snapshots (fixture deleted but snapshot lingers).
-test("snapshot: no orphaned fixtures in snapshot file", () => {
+test("snapshot: no orphaned fixtures in snapshot file", { skip: UPDATE ? "UPDATE_SNAPSHOTS=1" : false }, () => {
   const orphans = Object.keys(stored).filter((k) => !(k in FIXTURES));
   assert.deepStrictEqual(
     orphans,
