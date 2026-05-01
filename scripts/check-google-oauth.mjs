@@ -1574,6 +1574,20 @@ async function finish() {
     }
   }
 
+  // Optional standalone remediation export (--export-remediation=<origin|all>).
+  // Runs after the suite so the exported file reflects whatever remediation
+  // hints the validators accumulated this run.
+  if (CLI.exportRemediation) {
+    try {
+      const written = await runRemediationExport();
+      for (const w of written) {
+        console.log(`${DIM}Remediation export for ${w.origin} written to ${w.path}${RESET}`);
+      }
+    } catch (e) {
+      console.error(`${RED}Failed to write remediation export:${RESET}`, e.message);
+    }
+  }
+
   process.exit(exitCode);
 }
 
