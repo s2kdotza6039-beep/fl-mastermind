@@ -2280,6 +2280,9 @@ async function tokenProbe({
       errorDescription,
       hasErrorField: !!parsed?.error,
       hasDescriptionField: !!parsed?.error_description,
+      // Verbatim error envelope (canonical + legacy fields + capped raw body)
+      // so report.json shows exactly what GoTrue returned on contract breaks.
+      rawErrorPayload: buildRawErrorPayload({ status: res.status, contentType: ct, text, parsed }),
       expectedErrorCodes: expectedErrorCodes || null,
       attempts,
       elapsedMs,
