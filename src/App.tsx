@@ -23,6 +23,7 @@ import KeyDetectionPage from "./pages/KeyDetectionPage";
 import ChecklistPage from "./pages/ChecklistPage";
 import UploadPage from "./pages/UploadPage";
 import AuthPage from "./pages/AuthPage";
+import OAuthCheckPage from "./pages/OAuthCheckPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import AdminPage from "./pages/AdminPage";
 import TermsPage from "./pages/TermsPage";
