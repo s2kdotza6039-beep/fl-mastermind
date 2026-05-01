@@ -1142,6 +1142,179 @@ async function runTokenExchangeCheck() {
       ),
     rejectError: () => false,
   });
+
+  // ---- Probe 4..N: header-sensitivity check (audience/auth headers).
+  await runTokenAuthHeaderCheck();
+}
+
+/**
+ * Verify that /auth/v1/token actually validates its auth-related headers
+ * (`apikey`, `Authorization`) instead of silently accepting/ignoring them.
+ *
+ * Strategy: send the SAME well-formed body four times with different
+ * header combos, then assert the responses differ in the documented way:
+ *
+ *   A. apikey + Bearer ANON_KEY     → baseline (4xx invalid_grant — bogus code)
+ *   B. NO apikey, NO Authorization  → must reject with 401/403, NOT a grant error
+ *   C. apikey only (no Authorization) → must succeed past the auth gate
+ *      (same 4xx grant error as A — Authorization is optional when apikey present)
+ *   D. apikey + Bearer "garbage.jwt.token" → must reject the bad bearer
+ *      (401/403) OR return a different error than A (proves the bearer is parsed)
+ *
+ * If the server returns identical responses for A and B (or A and D), the
+ * audience/header validation is broken — anyone could call this endpoint.
+ */
+async function runTokenAuthHeaderCheck() {
+  const verifier = randomBytes(32).toString("base64url");
+  const fakeCode = "lovable-oauth-check-hdr-" + randomBytes(8).toString("hex");
+  const url = `${SUPABASE_URL}/auth/v1/token?grant_type=pkce`;
+  const body = JSON.stringify({ auth_code: fakeCode, code_verifier: verifier });
+
+  const variants = [
+    {
+      key: "A",
+      desc: "apikey + Bearer anon",
+      headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` },
+    },
+    {
+      key: "B",
+      desc: "no apikey, no Authorization",
+      headers: {},
+    },
+    {
+      key: "C",
+      desc: "apikey only (no Authorization)",
+      headers: { apikey: ANON_KEY },
+    },
+    {
+      key: "D",
+      desc: "apikey + bogus Bearer",
+      headers: { apikey: ANON_KEY, Authorization: "Bearer not.a.real.jwt" },
+    },
+  ];
+
+  const responses = {};
+  for (const v of variants) {
+    try {
+      const { res, elapsedMs } = await fetchWithRetry(
+        url,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...v.headers },
+          body,
+        },
+        `token hdr-probe ${v.key} (${v.desc})`
+      );
+      const text = await res.text();
+      let parsed = null;
+      try { parsed = JSON.parse(text); } catch { /* non-json */ }
+      responses[v.key] = {
+        status: res.status,
+        error: parsed?.error || null,
+        errorDescription: parsed?.error_description || parsed?.msg || null,
+        contentType: res.headers.get("content-type") || "",
+        elapsedMs,
+        body: text.slice(0, 200),
+      };
+    } catch (e) {
+      responses[v.key] = { error: e.message, status: 0 };
+    }
+  }
+
+  // Stash full per-variant results in the report.
+  if (!originSummaries.__token_auth_headers__) {
+    originSummaries.__token_auth_headers__ = { variants: responses };
+  }
+
+  const A = responses.A, B = responses.B, C = responses.C, D = responses.D;
+  const sig = (r) => r ? `${r.status}|${r.error || ""}|${r.errorDescription || ""}` : "(error)";
+
+  // Assertion 1: B (no auth headers) must be rejected by the auth gate
+  // BEFORE the grant logic runs — typically 401/403 with a "missing/invalid
+  // auth" style error, not the bogus-code error A returns.
+  if (B?.status === 401 || B?.status === 403) {
+    record(
+      "pass",
+      "Token endpoint rejects requests without apikey/Authorization",
+      `B → HTTP ${B.status} ${B.error || ""} ${B.errorDescription || ""}`.trim(),
+      undefined,
+      responses
+    );
+  } else if (sig(A) === sig(B)) {
+    record(
+      "fail",
+      "Token endpoint rejects requests without apikey/Authorization",
+      `B returned the SAME response as A (${sig(A)}) — auth headers are not being validated`,
+      "/auth/v1/token must require an apikey. Check the project's Auth proxy / API gateway configuration.",
+      responses
+    );
+  } else {
+    record(
+      "warn",
+      "Token endpoint rejects requests without apikey/Authorization",
+      `B → HTTP ${B?.status} (expected 401/403). Got: ${sig(B)}`,
+      "Endpoint differentiates from A but doesn't return a clean 401/403 — review GoTrue/proxy auth handling.",
+      responses
+    );
+  }
+
+  // Assertion 2: C (apikey only) should pass the auth gate and reach the
+  // grant logic — i.e. produce the SAME class of error as A (invalid_grant).
+  if (sig(C) === sig(A)) {
+    record(
+      "pass",
+      "Token endpoint treats Authorization as optional when apikey is present",
+      `C matches A (${sig(A)})`,
+      undefined,
+      responses
+    );
+  } else if (C?.status === 401 || C?.status === 403) {
+    record(
+      "fail",
+      "Token endpoint treats Authorization as optional when apikey is present",
+      `C → HTTP ${C.status} (apikey alone was rejected; expected behaviour matches A: ${sig(A)})`,
+      "GoTrue or the proxy is requiring a Bearer token in addition to apikey — clients using only the publishable key will be locked out.",
+      responses
+    );
+  } else {
+    record(
+      "warn",
+      "Token endpoint treats Authorization as optional when apikey is present",
+      `C diverges from A but isn't a hard rejection. C=${sig(C)} A=${sig(A)}`,
+      undefined,
+      responses
+    );
+  }
+
+  // Assertion 3: D (bogus Bearer) must NOT be treated identically to A.
+  // Either the server rejects the bad bearer (401/403) or it returns a
+  // different error — anything else means the Authorization header is
+  // being ignored, which would let attackers bypass audience checks.
+  if (D?.status === 401 || D?.status === 403) {
+    record(
+      "pass",
+      "Token endpoint validates Bearer audience/signature",
+      `D → HTTP ${D.status} ${D.error || ""}`.trim(),
+      undefined,
+      responses
+    );
+  } else if (sig(D) !== sig(A)) {
+    record(
+      "pass",
+      "Token endpoint validates Bearer audience/signature",
+      `D produced a different response than A (D=${sig(D)}, A=${sig(A)}) — bearer is being parsed`,
+      undefined,
+      responses
+    );
+  } else {
+    record(
+      "fail",
+      "Token endpoint validates Bearer audience/signature",
+      `D returned the SAME response as A (${sig(A)}) — bogus Bearer was silently accepted`,
+      "Authorization header is not being validated. Verify the Supabase project's JWT secret/audience config and that the auth proxy is enforcing it.",
+      responses
+    );
+  }
 }
 
 /**
