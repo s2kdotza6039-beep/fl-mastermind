@@ -747,7 +747,38 @@ function recordIntoBucket(bucket, hint) {
  * "implicit" or stripped query params) drop these silently and break
  * the browser-side `exchangeCodeForSession` call.
  */
-function validatePkce(googleUrl, sent, origin) {
+function validatePkce(googleUrl, sent, origin, ctx = null) {
+  // Build a single redacted snapshot of the upstream /authorize request that
+  // produced this googleUrl. We attach it on every failure path below so
+  // report.json carries the exact (sanitized) inputs that triggered the fail.
+  const upstreamSnap = ctx
+    ? snapshotPkceHttpRequest({
+        method: ctx.method || "GET",
+        url: ctx.url || null,
+        headerKeys: ctx.headerKeys || ["apikey"],
+        extra: {
+          stage: "authorize_upstream",
+          origin,
+          status: ctx.status ?? null,
+          attempts: ctx.attempts ?? null,
+          elapsedMs: ctx.elapsedMs ?? null,
+        },
+      })
+    : null;
+  const downstreamSnap = (() => {
+    try {
+      return snapshotPkceHttpRequest({
+        method: "GET",
+        url: googleUrl,
+        extra: { stage: "authorize_downstream", origin },
+      });
+    } catch { return null; }
+  })();
+  const noteFailure = (kind) => {
+    if (upstreamSnap) attachPkceFailureRequest(origin, kind, upstreamSnap);
+    if (downstreamSnap) attachPkceFailureRequest(origin, kind, downstreamSnap);
+  };
+
   let parsed;
   try { parsed = new URL(googleUrl); }
   catch {
