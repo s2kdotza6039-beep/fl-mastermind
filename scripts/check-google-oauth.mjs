@@ -214,6 +214,37 @@ function fingerprintPkce(challenge, method) {
   };
 }
 
+// RFC 7636 §4.1: code_verifier = 43..128 chars from [A-Z a-z 0-9 - . _ ~]
+const PKCE_VERIFIER_RE = /^[A-Za-z0-9\-._~]+$/;
+// RFC 7636 §4.2: code_challenge for S256 = BASE64URL(SHA256(verifier)) → 43 chars
+const PKCE_CHALLENGE_RE = /^[A-Za-z0-9\-_]+$/; // base64url, no padding
+
+/**
+ * Validate the format of a PKCE token (verifier OR challenge) per RFC 7636.
+ * `kind` is "verifier" or "challenge" — drives length bounds & charset.
+ * Returns { ok: boolean, reason?: string }.
+ */
+function validatePkceFormat(value, kind) {
+  if (!value) return { ok: false, reason: "missing" };
+  const len = value.length;
+  if (kind === "verifier") {
+    if (len < 43 || len > 128) return { ok: false, reason: `length ${len} (must be 43–128)` };
+    if (!PKCE_VERIFIER_RE.test(value)) {
+      return { ok: false, reason: "contains chars outside [A-Z a-z 0-9 - . _ ~]" };
+    }
+    return { ok: true };
+  }
+  // challenge (S256)
+  if (len !== 43) return { ok: false, reason: `length ${len} (S256 challenge must be exactly 43)` };
+  if (!PKCE_CHALLENGE_RE.test(value)) {
+    return { ok: false, reason: "not valid base64url (allowed: A-Z a-z 0-9 - _)" };
+  }
+  if (/[+/=]/.test(value)) {
+    return { ok: false, reason: "contains base64 padding/non-url chars (+/=) — must be base64url unpadded" };
+  }
+  return { ok: true };
+}
+
 /**
  * Validate that the authorize URL returned by GoTrue forwarded our PKCE
  * parameters to Google unchanged. Some misconfigurations (e.g. flow_type
@@ -233,13 +264,35 @@ function validatePkce(googleUrl, sent, origin) {
   // Sanitize challenges before serializing to the artifact: keep a short
   // prefix for visual diffing + a SHA-256 fingerprint for cryptographic
   // comparison without leaking the full verifier-derived value.
+  // RFC 7636 format checks — run on BOTH the verifier we generated (catches
+  // bugs in our own crypto path) AND the challenge GoTrue forwarded.
+  const verifierFmt = validatePkceFormat(sent.verifier, "verifier");
+  const challengeFmt = validatePkceFormat(gotChallenge, "challenge");
+
   summary.pkce = {
     sent: fingerprintPkce(sent.challenge, sent.method),
     received: fingerprintPkce(gotChallenge, gotMethod),
     challengeMatches: !!gotChallenge && gotChallenge === sent.challenge,
     methodMatches: (gotMethod || "").toUpperCase() === (sent.method || "").toUpperCase(),
     methodIsS256: (gotMethod || "").toUpperCase() === "S256",
+    verifierFormat: verifierFmt,
+    challengeFormat: challengeFmt,
   };
+
+  // Verifier format (script-side sanity).
+  if (sent.verifier !== undefined) {
+    if (verifierFmt.ok) {
+      record("pass", `PKCE verifier format valid (${origin})`, `${sent.verifier.length} chars, RFC 7636 charset`);
+    } else {
+      noteMismatch(origin, `pkce: verifier ${verifierFmt.reason}`);
+      record(
+        "fail",
+        `PKCE verifier format valid (${origin})`,
+        verifierFmt.reason,
+        "code_verifier must be 43–128 chars from [A-Z a-z 0-9 - . _ ~] — check the script's randomBytes/base64url path."
+      );
+    }
+  }
 
   if (!gotChallenge || !gotMethod) {
     const miss = `${!gotChallenge ? "code_challenge" : ""}${!gotChallenge && !gotMethod ? " & " : ""}${!gotMethod ? "code_challenge_method" : ""}`;
@@ -252,17 +305,37 @@ function validatePkce(googleUrl, sent, origin) {
     );
     return { challenge: gotChallenge, method: gotMethod };
   }
-  if (gotMethod.toUpperCase() !== "S256") {
+
+  // STRICT: any non-S256 method is a hard fail. Plain is insecure; anything
+  // else (e.g. typo) is a misconfiguration.
+  if (gotMethod !== "S256") {
+    const reason = gotMethod.toUpperCase() === "S256"
+      ? `case mismatch: "${gotMethod}" (must be exact "S256")`
+      : `code_challenge_method="${gotMethod}" (only "S256" is accepted)`;
     noteMismatch(origin, `pkce: method=${gotMethod} (expected S256)`);
     record(
       "fail",
       `PKCE method is S256 (${origin})`,
-      `code_challenge_method=${gotMethod}`,
-      "Plain PKCE is insecure — use S256."
+      reason,
+      "Plain PKCE is insecure and case-sensitive aliases are not interoperable — use exactly 'S256'."
     );
   } else {
     record("pass", `PKCE method is S256 (${origin})`, "code_challenge_method=S256");
   }
+
+  // Challenge format (RFC 7636 §4.2 for S256).
+  if (challengeFmt.ok) {
+    record("pass", `PKCE challenge format valid (${origin})`, `43-char base64url, no padding`);
+  } else {
+    noteMismatch(origin, `pkce: challenge ${challengeFmt.reason}`);
+    record(
+      "fail",
+      `PKCE challenge format valid (${origin})`,
+      challengeFmt.reason,
+      "code_challenge for S256 must be exactly 43 base64url chars (A-Z a-z 0-9 - _) with no padding. A different length or charset means GoTrue rewrote or mis-encoded the value."
+    );
+  }
+
   if (gotChallenge !== sent.challenge) {
     noteMismatch(origin, "pkce: challenge rewritten by server");
     record(
@@ -272,7 +345,7 @@ function validatePkce(googleUrl, sent, origin) {
       "GoTrue rewrote the challenge — token exchange will fail. Verify the project isn't running an old GoTrue version."
     );
   } else {
-    record("pass", `PKCE challenge preserved (${origin})`, `${gotChallenge.slice(0, 16)}… (43+ chars)`);
+    record("pass", `PKCE challenge preserved (${origin})`, `${gotChallenge.slice(0, 16)}…`);
   }
   return { challenge: gotChallenge, method: gotMethod };
 }
