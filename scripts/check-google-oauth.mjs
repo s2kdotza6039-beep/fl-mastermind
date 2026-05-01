@@ -200,6 +200,7 @@ async function main() {
       if (res.ok && body?.url && /accounts\.google\.com/i.test(body.url)) {
         const preview = body.url.slice(0, 120) + (body.url.length > 120 ? "…" : "");
         record("pass", label, preview + tail);
+        validateCallback(body.url, origin);
       } else if (res.ok && body?.url) {
         record("warn", label, `Got non-Google URL: ${body.url.slice(0, 120)}` + tail);
       } else {
