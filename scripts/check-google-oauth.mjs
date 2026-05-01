@@ -89,8 +89,23 @@ function noteMismatch(origin, msg) {
   originSummary(origin).mismatches.push(msg);
 }
 
+// When non-null, record() appends here instead of `results` and stays silent.
+// Used by the negative-test pass to grade the validator without polluting CI output.
+let captureBuffer = null;
+function withCapture(fn) {
+  const buf = [];
+  captureBuffer = buf;
+  try { return Promise.resolve(fn()).then((v) => ({ value: v, buf })); }
+  finally { captureBuffer = null; }
+}
+
 function record(state, label, detail, hint, meta) {
-  results.push({ state, label, detail, hint, ...(meta ? { meta } : {}) });
+  const entry = { state, label, detail, hint, ...(meta ? { meta } : {}) };
+  if (captureBuffer) {
+    captureBuffer.push(entry);
+    return;
+  }
+  results.push(entry);
   const icon =
     state === "pass" ? `${GREEN}✓${RESET}` :
     state === "warn" ? `${YELLOW}⚠${RESET}` :
