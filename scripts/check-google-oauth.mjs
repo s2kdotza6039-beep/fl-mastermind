@@ -3598,4 +3598,8 @@ export {
   buildRawErrorPayload,
   snapshotErrorEnvelope,
   recordIntoBucket,
+  parseCliArgs,
+  buildRemediationExport,
+  originSlug,
+  fingerprintSecret,
 };
