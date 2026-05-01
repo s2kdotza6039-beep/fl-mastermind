@@ -1367,7 +1367,7 @@ async function tokenProbe({
   rejectHint,
   extraDetail,
 }) {
-  const url = `${SUPABASE_URL}/auth/v1/token?grant_type=${encodeURIComponent(grant)}`;
+  const url = `${TOKEN_ENDPOINT_URL}?grant_type=${encodeURIComponent(grant)}`;
   try {
     const { res, attempts, elapsedMs } = await fetchWithRetry(
       url,
