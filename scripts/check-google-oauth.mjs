@@ -50,7 +50,10 @@ import { createHash, randomBytes } from "node:crypto";
  *                              "plain" PKCE and assert the validator fails
  *                              with the expected error messages.
  *   TOKEN_EXCHANGE_CHECK       "false" to skip the token-endpoint shape probes
- *                              (default: enabled). Sends 3 synthetic POSTs.
+ *                              (default: enabled). Runs the global PKCE-shape
+ *                              + header-sensitivity battery AND the per-origin
+ *                              malformed-PKCE probe suite (missing /
+ *                              short / long / wrong-charset code_verifier).
  *   TOKEN_ENDPOINT_PATH        Override the GoTrue token endpoint path
  *                              (default: "/auth/v1/token"). Useful for
  *                              self-hosted or proxied GoTrue deployments.
