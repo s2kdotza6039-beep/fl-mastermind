@@ -2231,7 +2231,42 @@ async function tokenProbe({
   extraDetail,
   requestOverrides,
   negativeContract,
+  // Per-probe contracts are MANDATORY for positive probes (no implicit
+  // "anything goes" fallback). Negative-contract probes MUST set this to
+  // true to acknowledge they intentionally don't assert envelope shape.
+  allowMissingContract = false,
 }) {
+  // ── Probe-config sanity check (zero-fallback guard) ─────────────────
+  // Catch misconfigured probes at call time instead of letting them
+  // silently pass with an unconstrained allow-list.
+  const isNegativeContract = !!negativeContract;
+  const contractOptOut = isNegativeContract || allowMissingContract;
+  if (!contractOptOut) {
+    const cfgErrors = [];
+    if (!Array.isArray(expectedErrorCodes) || expectedErrorCodes.length === 0) {
+      cfgErrors.push("expectedErrorCodes must be a non-empty allow-list");
+    }
+    if (!(expectedDescriptionRe instanceof RegExp)) {
+      cfgErrors.push("expectedDescriptionRe must be a RegExp");
+    }
+    if (cfgErrors.length) {
+      record(
+        "fail",
+        label,
+        `probe configuration error: ${cfgErrors.join("; ")}`,
+        "Positive token probes must declare both an explicit error-code allow-list and a description regex (zero fallback). To intentionally skip envelope validation, set allowMissingContract: true or negativeContract: \"…\".",
+        {
+          probeConfig: {
+            expectedErrorCodes,
+            expectedDescriptionRe: expectedDescriptionRe ? String(expectedDescriptionRe) : null,
+            allowMissingContract,
+            negativeContract: negativeContract || null,
+          },
+        }
+      );
+      return;
+    }
+  }
   const url = `${TOKEN_ENDPOINT_URL}?grant_type=${encodeURIComponent(grant)}`;
   const baseHeaders = {
     apikey: ANON_KEY,
