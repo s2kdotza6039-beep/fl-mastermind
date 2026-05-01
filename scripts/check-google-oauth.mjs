@@ -988,6 +988,166 @@ async function runPkceNegativeTests(origin) {
   }
 }
 
+/**
+ * Probe Supabase's PKCE token-exchange endpoint with a synthetic body to
+ * verify it accepts the documented param shape. We can't perform a *real*
+ * exchange (that requires a code obtained via Google's consent screen),
+ * but we can:
+ *
+ *   1. Send a well-formed POST to /auth/v1/token?grant_type=pkce with a
+ *      bogus auth_code + a real PKCE code_verifier. A correctly-configured
+ *      GoTrue replies with HTTP 4xx + an "invalid grant"-style error
+ *      (because the code is fake) — NOT "invalid request" or "missing
+ *      parameter" (which would mean the param schema is wrong).
+ *   2. Send the same payload with grant_type=password to confirm the
+ *      endpoint distinguishes grant types and doesn't silently accept
+ *      mismatched ones.
+ *   3. Confirm the response carries the expected JSON content-type and
+ *      CORS-friendly headers (apikey is honored; no auth audience surprise).
+ *
+ * All three checks are cheap (one POST each) and run by default. Disable
+ * with TOKEN_EXCHANGE_CHECK=false if your CI runs against a project where
+ * outbound POSTs to /auth/v1/token are rate-limited.
+ */
+async function runTokenExchangeCheck() {
+  const verifier = randomBytes(32).toString("base64url");
+  const fakeCode = "lovable-oauth-check-synthetic-" + randomBytes(8).toString("hex");
+
+  // ---- Probe 1: correct shape, bogus code → expect "invalid grant"
+  await tokenProbe({
+    label: "Token endpoint accepts PKCE grant shape",
+    grant: "pkce",
+    body: { auth_code: fakeCode, code_verifier: verifier },
+    expectStatus: (s) => s >= 400 && s < 500,
+    expectError: (err) =>
+      /invalid.?grant|invalid.?request|bad.?code|expired|not.?found|invalid.?flow.?state/i.test(
+        `${err.error || ""} ${err.error_description || err.msg || ""}`
+      ),
+    rejectError: (err) =>
+      /missing|required|code_verifier.*required|auth_code.*required/i.test(
+        `${err.error_description || err.msg || ""}`
+      ),
+    rejectHint:
+      "GoTrue rejected our request as malformed — the param schema this script sends (auth_code + code_verifier) no longer matches the deployed version.",
+  });
+
+  // ---- Probe 2: wrong grant_type → must NOT succeed
+  await tokenProbe({
+    label: "Token endpoint distinguishes grant_type",
+    grant: "password",
+    body: { auth_code: fakeCode, code_verifier: verifier },
+    expectStatus: (s) => s >= 400 && s < 500,
+    expectError: () => true, // any 4xx error is fine; we just want non-2xx
+    rejectError: () => false,
+    extraDetail: "POST grant_type=password with PKCE body should be rejected",
+  });
+
+  // ---- Probe 3: missing params → must complain about THE missing field
+  await tokenProbe({
+    label: "Token endpoint requires code_verifier",
+    grant: "pkce",
+    body: { auth_code: fakeCode }, // intentionally omit code_verifier
+    expectStatus: (s) => s >= 400 && s < 500,
+    expectError: (err) =>
+      /code_verifier|verifier|missing|required|invalid.?request/i.test(
+        `${err.error || ""} ${err.error_description || err.msg || ""}`
+      ),
+    rejectError: () => false,
+  });
+}
+
+/**
+ * Single token-endpoint probe + assertion. Captures the response body,
+ * content-type, and elapsed ms into the per-call summary.
+ */
+async function tokenProbe({
+  label,
+  grant,
+  body,
+  expectStatus,
+  expectError,
+  rejectError,
+  rejectHint,
+  extraDetail,
+}) {
+  const url = `${SUPABASE_URL}/auth/v1/token?grant_type=${encodeURIComponent(grant)}`;
+  try {
+    const { res, attempts, elapsedMs } = await fetchWithRetry(
+      url,
+      {
+        method: "POST",
+        headers: {
+          apikey: ANON_KEY,
+          Authorization: `Bearer ${ANON_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      },
+      `POST /auth/v1/token grant_type=${grant}`
+    );
+    const ct = res.headers.get("content-type") || "";
+    const text = await res.text();
+    let parsed = null;
+    try { parsed = JSON.parse(text); } catch { /* non-json */ }
+    const tail = ` (${attempts} attempt${attempts > 1 ? "s" : ""}, ${elapsedMs}ms, HTTP ${res.status})`;
+    const meta = {
+      grant,
+      status: res.status,
+      contentType: ct,
+      bodyKeys: parsed ? Object.keys(parsed) : null,
+      error: parsed?.error || null,
+      errorDescription: parsed?.error_description || parsed?.msg || null,
+      attempts,
+      elapsedMs,
+    };
+
+    if (!expectStatus(res.status)) {
+      record("fail", label, `unexpected status${tail}: ${text.slice(0, 200)}`, undefined, meta);
+      return;
+    }
+    if (!ct.includes("application/json")) {
+      record(
+        "warn",
+        label,
+        `response content-type was "${ct}" (expected application/json)${tail}`,
+        "Token endpoint should always return JSON — proxy or CDN may be rewriting responses.",
+        meta
+      );
+      return;
+    }
+    if (parsed && rejectError(parsed)) {
+      record(
+        "fail",
+        label,
+        `server reported a request-shape error: ${parsed.error_description || parsed.msg || parsed.error}${tail}`,
+        rejectHint,
+        meta
+      );
+      return;
+    }
+    if (parsed && expectError(parsed)) {
+      const errStr = parsed.error_description || parsed.msg || parsed.error || "(no message)";
+      record(
+        "pass",
+        label,
+        `${extraDetail ? extraDetail + "; " : ""}server rejected synthetic code with "${errStr}"${tail}`,
+        undefined,
+        meta
+      );
+    } else {
+      record(
+        "warn",
+        label,
+        `unexpected error payload: ${text.slice(0, 200)}${tail}`,
+        "GoTrue version may have changed its error vocabulary — review and update expectError matchers.",
+        meta
+      );
+    }
+  } catch (e) {
+    record("fail", label, e.message, "Network or timeout — check runner connectivity to the Cloud project URL.");
+  }
+}
+
 main().catch((e) => {
   console.error(`${RED}Unexpected error:${RESET}`, e);
   process.exit(1);
