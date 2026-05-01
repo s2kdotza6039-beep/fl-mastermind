@@ -3877,34 +3877,103 @@ async function tokenProbe({
       return;
     }
     if (negativeContract === "malformed_json_body") {
-      // We sent a malformed body. We expect the server to reply with a 4xx
-      // and EITHER (a) a non-JSON body OR (b) JSON that JSON.parse rejects.
-      // Either outcome proves the script's body-parse fail branch fires.
+      // We sent a malformed JSON body. To pass, the server's reply must
+      // satisfy BOTH a strict status-class contract AND a strict
+      // content-type contract — no ambiguous combinations.
+      //
+      // Status-class contract:
+      //   - HTTP status MUST be in [400, 499]. 2xx/3xx means the malformed
+      //     payload was silently accepted. 5xx means the parser crashed
+      //     (which is its own bug class, but NOT what this probe asserts).
+      //
+      // Content-type contract — the server's CT header must fall into
+      // exactly one of two named categories:
+      //   (A) "advertised_json_invalid_body":
+      //       CT explicitly declares JSON (application/json[; charset=...])
+      //       AND the body fails JSON.parse(). This is the canonical OAuth2
+      //       error envelope shape — the server promises JSON and delivers
+      //       JSON, even when rejecting our garbage payload.
+      //   (B) "honest_non_json":
+      //       CT is one of an explicit allow-list of plain-text types
+      //       (text/plain, text/html, application/problem+json) AND the
+      //       body fails JSON.parse(). The server didn't lie about the
+      //       shape, which is acceptable for some proxy front-ends.
+      //
+      // Anything else is REJECTED:
+      //   - Missing CT header entirely.
+      //   - Wildcards / generic types like */*, application/octet-stream.
+      //   - CT advertises JSON but JSON.parse SUCCEEDS (means GoTrue
+      //     normalized our garbage into a spec envelope — fine, but the
+      //     malformed-body branch is not actually being exercised).
+      //   - CT is non-JSON BUT JSON.parse succeeds (server returned a
+      //     JSON envelope under a misleading CT — exactly the ambiguous
+      //     reply class this strengthening exists to forbid).
+      const ctNorm = (ct || "").toLowerCase().split(";")[0].trim();
+      const HONEST_NON_JSON_CTS = new Set([
+        "text/plain",
+        "text/html",
+        "application/problem+json",
+      ]);
+      const advertisesJson = /^application\/(?:[a-z0-9.+-]+\+)?json$/.test(ctNorm);
+      const isHonestNonJson = HONEST_NON_JSON_CTS.has(ctNorm);
       const parseFailed = parsed === null;
       const is4xx = res.status >= 400 && res.status < 500;
-      if (parseFailed && is4xx) {
+
+      let category = null;
+      if (advertisesJson && parseFailed) category = "advertised_json_invalid_body";
+      else if (isHonestNonJson && parseFailed) category = "honest_non_json";
+
+      const contractMeta = {
+        ...meta,
+        negativeContractFired: "malformed_json_body",
+        contentTypeNormalized: ctNorm || null,
+        contentTypeCategory: category,
+        contentTypeAdvertisesJson: advertisesJson,
+        contentTypeHonestNonJson: isHonestNonJson,
+        bodyParseFailed: parseFailed,
+        statusIs4xx: is4xx,
+      };
+
+      // Build a single, ordered failure list so the report shows EVERY
+      // assertion that broke (not just the first one). This is what makes
+      // the probe robust against "ambiguous" replies that previously
+      // satisfied the loose `parseFailed && is4xx` check.
+      const failures = [];
+      if (!is4xx) {
+        failures.push(`expected HTTP 4xx, got ${res.status}`);
+      }
+      if (!ctNorm) {
+        failures.push("response is missing a Content-Type header");
+      } else if (!category) {
+        if (!advertisesJson && !isHonestNonJson) {
+          failures.push(
+            `Content-Type "${ctNorm}" is neither application/json nor an allow-listed plain-text type (text/plain, text/html, application/problem+json)`
+          );
+        }
+        if (!parseFailed) {
+          failures.push(
+            advertisesJson
+              ? "Content-Type advertises JSON and JSON.parse SUCCEEDED — server normalized our malformed input into a spec envelope; the body-parse fail branch was not exercised"
+              : "JSON.parse SUCCEEDED under a non-JSON Content-Type — ambiguous reply (server returned a JSON envelope while claiming a different shape)"
+          );
+        }
+      }
+
+      if (failures.length === 0) {
         record(
           "pass",
           label,
-          `confirmed contract handler fires on unparseable body (HTTP ${res.status}, ct="${ct}", body: ${text.slice(0, 80)}…)${tail}`,
+          `confirmed strict contract: HTTP ${res.status} + category="${category}" (CT="${ctNorm}", body unparseable, ${text.length}B${tail})`,
           undefined,
-          { ...meta, negativeContractFired: "malformed_json_body" }
-        );
-      } else if (parseFailed && !is4xx) {
-        record(
-          "fail",
-          label,
-          `body unparseable but status was ${res.status} (expected 4xx)${tail}`,
-          "Token endpoint accepted a malformed JSON body without 4xx — request validation is too permissive.",
-          { ...meta, negativeContractFired: "malformed_json_body" }
+          contractMeta
         );
       } else {
         record(
           "fail",
           label,
-          `expected unparseable response body but JSON.parse succeeded${tail} — negative branch not exercised`,
-          "The server appears to tolerate malformed JSON or returned a generic JSON error envelope. The body-parse `fail` branch in tokenProbe is unreachable through this case — re-tune the malformed payload (e.g. send invalid UTF-8) or accept that the contract can't be exercised against this deployment.",
-          { ...meta, negativeContractFired: null }
+          `${failures.join("; ")} (HTTP ${res.status}, CT="${ctNorm || "(missing)"}", body: ${text.slice(0, 80)})${tail}`,
+          "Tighten the server-side malformed-body handling so EVERY 4xx reply uses a known Content-Type (application/json with an invalid body, or one of text/plain | text/html | application/problem+json). Ambiguous CT/body pairs let real GoTrue regressions slip past this probe.",
+          contractMeta
         );
       }
       return;
