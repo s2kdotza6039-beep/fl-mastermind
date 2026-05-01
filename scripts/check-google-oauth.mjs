@@ -141,17 +141,32 @@ async function main() {
   // 2. Auth settings reachable + provider enabled
   let settings = null;
   try {
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/settings`, {
-      headers: { apikey: ANON_KEY },
-    });
+    const { res, attempts, elapsedMs } = await fetchWithRetry(
+      `${SUPABASE_URL}/auth/v1/settings`,
+      { headers: { apikey: ANON_KEY } },
+      "GET /auth/v1/settings"
+    );
     if (!res.ok) {
-      record("fail", "Reach auth settings endpoint", `HTTP ${res.status}`);
+      record(
+        "fail",
+        "Reach auth settings endpoint",
+        `HTTP ${res.status} after ${attempts} attempt(s) in ${elapsedMs}ms`
+      );
     } else {
       settings = await res.json();
-      record("pass", "Reach auth settings endpoint", "/auth/v1/settings 200");
+      record(
+        "pass",
+        "Reach auth settings endpoint",
+        `/auth/v1/settings 200 (${attempts} attempt${attempts > 1 ? "s" : ""}, ${elapsedMs}ms)`
+      );
     }
   } catch (e) {
-    record("fail", "Reach auth settings endpoint", e.message);
+    record(
+      "fail",
+      "Reach auth settings endpoint",
+      e.message,
+      "Network or timeout — check your runner's connectivity to the Cloud project URL."
+    );
   }
 
   if (settings) {
