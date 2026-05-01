@@ -298,24 +298,110 @@ function validateCallback(googleUrl, origin) {
     record("pass", `Supabase callback matches /auth/v1/callback (${origin})`, actualCallback);
   }
 
-  // `redirect_to` is normally encoded inside `state` (opaque) but GoTrue also
-  // forwards it as a top-level param on some configs. Best-effort check.
+  // `redirect_to` may be top-level, in `state` as JSON, base64url JSON,
+  // a JWT-ish payload, or a query-string. Try each decoder; report the
+  // method we used so failures are debuggable.
   const stateParam = parsed.searchParams.get("state") || "";
-  const echoesOrigin =
-    parsed.searchParams.get("redirect_to") === origin ||
-    stateParam.includes(encodeURIComponent(origin)) ||
-    stateParam.includes(origin);
+  const decoded = extractRedirectTo(parsed.searchParams.get("redirect_to"), stateParam);
 
-  if (echoesOrigin) {
-    record("pass", `Authorize URL preserves redirect_to (${origin})`, "found in state/redirect_to");
+  if (decoded.value && originsMatch(decoded.value, origin)) {
+    record(
+      "pass",
+      `Authorize URL preserves redirect_to (${origin})`,
+      `found via ${decoded.source}: ${decoded.value}`
+    );
+  } else if (decoded.value) {
+    record(
+      "fail",
+      `Authorize URL preserves redirect_to (${origin})`,
+      `decoded "${decoded.value}" via ${decoded.source}, expected origin "${origin}"`,
+      "Origin mismatch — the user will be redirected to the wrong environment after sign-in. Check the redirect_to passed to signInWithOAuth."
+    );
+  } else if (stateParam.includes(encodeURIComponent(origin)) || stateParam.includes(origin)) {
+    record(
+      "pass",
+      `Authorize URL preserves redirect_to (${origin})`,
+      "origin found via substring match (state encoding unknown)"
+    );
   } else {
     record(
       "warn",
       `Authorize URL preserves redirect_to (${origin})`,
-      "could not confirm origin is round-tripped via state (state may be opaque/encrypted)",
-      "If sign-in lands on the wrong environment, double-check Cloud → Auth → URL Configuration."
+      `state is opaque (${stateParam ? `${stateParam.length} chars, no decoder matched` : "missing"})`,
+      "If sign-in lands on the wrong environment, set EXPECTED_CLIENT_ID and re-run, or inspect /auth/v1/callback logs."
     );
   }
+}
+
+/**
+ * Compare two URLs by origin (scheme + host + port), ignoring trailing
+ * slashes and case differences.
+ */
+function originsMatch(a, b) {
+  try {
+    return new URL(a).origin.toLowerCase() === new URL(b).origin.toLowerCase();
+  } catch {
+    return a.replace(/\/$/, "").toLowerCase() === b.replace(/\/$/, "").toLowerCase();
+  }
+}
+
+/**
+ * Try to extract a redirect_to URL from the GoTrue authorize state.
+ * Returns { value, source } where source describes the decoder that worked.
+ * Tries, in order: top-level param, raw JSON, URI-decoded JSON,
+ * base64url-decoded JSON, JWT payload (middle segment), querystring.
+ */
+function extractRedirectTo(topLevel, state) {
+  if (topLevel) return { value: topLevel, source: "redirect_to param" };
+  if (!state) return { value: null, source: null };
+
+  const tryJson = (s, label) => {
+    try {
+      const obj = JSON.parse(s);
+      const v = obj?.redirect_to || obj?.redirectTo || obj?.return_to;
+      if (v) return { value: v, source: label };
+    } catch { /* not JSON */ }
+    return null;
+  };
+
+  // 1. Raw JSON
+  let r = tryJson(state, "state JSON");
+  if (r) return r;
+
+  // 2. URI-decoded JSON
+  try {
+    r = tryJson(decodeURIComponent(state), "state URI-decoded JSON");
+    if (r) return r;
+  } catch { /* not URI-encoded */ }
+
+  // 3. base64url JSON (whole state)
+  const fromB64 = (seg, label) => {
+    try {
+      const buf = Buffer.from(seg.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+      const txt = buf.toString("utf8");
+      return tryJson(txt, label);
+    } catch { return null; }
+  };
+  r = fromB64(state, "state base64url JSON");
+  if (r) return r;
+
+  // 4. JWT-ish payload (header.payload.sig) — decode middle segment
+  const parts = state.split(".");
+  if (parts.length >= 2) {
+    r = fromB64(parts[1], "state JWT payload");
+    if (r) return r;
+  }
+
+  // 5. Query-string style state (key=value&...)
+  if (/=/.test(state)) {
+    try {
+      const sp = new URLSearchParams(state.replace(/^\?/, ""));
+      const v = sp.get("redirect_to") || sp.get("redirectTo") || sp.get("return_to");
+      if (v) return { value: v, source: "state querystring" };
+    } catch { /* ignore */ }
+  }
+
+  return { value: null, source: null };
 }
 
 async function main() {
