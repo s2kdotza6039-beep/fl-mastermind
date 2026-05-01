@@ -1730,7 +1730,14 @@ All other configuration is via env vars — see file header.`);
           }
           seenClientIds.set(clientId, origin);
         }
-        const got = validatePkce(body.url, pkce, origin);
+        const got = validatePkce(body.url, pkce, origin, {
+          method: "GET",
+          url,
+          headerKeys: ["apikey"],
+          status: res.status,
+          attempts,
+          elapsedMs,
+        });
         if (got?.challenge) {
           const prev = seenChallenges.get(got.challenge);
           if (prev) {
