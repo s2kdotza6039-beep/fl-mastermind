@@ -1,15 +1,25 @@
 import { NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, MessageCircle, Wrench, Disc3, Music2,
-  Sliders, Volume2, Layers, ListChecks, UploadCloud, Crown, KeyRound,
+  Sliders, Volume2, Layers, ListChecks, UploadCloud, Crown, KeyRound, Shield, Lock,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar,
 } from "@/components/ui/sidebar";
+import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
 
-const NAV = [
+interface NavItem {
+  title: string;
+  url: string;
+  icon: any;
+  group: "Studio" | "Coach" | "Tools" | "Admin";
+  paid?: boolean;
+  adminOnly?: boolean;
+}
+
+const NAV: NavItem[] = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard, group: "Studio" },
   { title: "Sensei Chat", url: "/chat", icon: MessageCircle, group: "Studio" },
   { title: "Quick Fixes", url: "/quick", icon: Wrench, group: "Coach" },
@@ -19,17 +29,20 @@ const NAV = [
   { title: "Mixing Coach", url: "/mixing", icon: Volume2, group: "Coach" },
   { title: "Mastering Coach", url: "/mastering", icon: Crown, group: "Coach" },
   { title: "Key Detection", url: "/key", icon: KeyRound, group: "Tools" },
-  { title: "Plugin Chain Builder", url: "/chains", icon: Layers, group: "Tools" },
+  { title: "Plugin Chain Builder", url: "/chains", icon: Layers, group: "Tools", paid: true },
   { title: "Session Checklist", url: "/checklist", icon: ListChecks, group: "Tools" },
   { title: "Upload Audio", url: "/upload", icon: UploadCloud, group: "Tools" },
+  { title: "Admin", url: "/admin", icon: Shield, group: "Admin", adminOnly: true },
 ];
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
+  const { isPaid, isAdmin } = useAuth();
 
-  const groups = ["Studio", "Coach", "Tools"] as const;
+  const groups = ["Studio", "Coach", "Tools", "Admin"] as const;
+  const visible = NAV.filter((n) => (n.adminOnly ? isAdmin : true));
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
@@ -48,41 +61,51 @@ export function AppSidebar() {
           </div>
         </div>
 
-        {groups.map((g) => (
-          <SidebarGroup key={g}>
-            {!collapsed && (
-              <SidebarGroupLabel className="text-[10px] tracking-widest uppercase text-muted-foreground/70 font-semibold">
-                {g}
-              </SidebarGroupLabel>
-            )}
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {NAV.filter((n) => n.group === g).map((item) => {
-                  const active = location.pathname === item.url;
-                  return (
-                    <SidebarMenuItem key={item.url}>
-                      <SidebarMenuButton asChild>
-                        <NavLink
-                          to={item.url}
-                          end
-                          className={cn(
-                            "flex items-center gap-3 rounded-lg transition-all duration-200",
-                            active
-                              ? "bg-gradient-gold-soft text-primary border border-primary/20"
-                              : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-primary",
-                          )}
-                        >
-                          <item.icon className={cn("w-4 h-4 flex-shrink-0", active && "text-primary")} />
-                          {!collapsed && <span className="text-sm font-medium">{item.title}</span>}
-                        </NavLink>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+        {groups.map((g) => {
+          const items = visible.filter((n) => n.group === g);
+          if (items.length === 0) return null;
+          return (
+            <SidebarGroup key={g}>
+              {!collapsed && (
+                <SidebarGroupLabel className="text-[10px] tracking-widest uppercase text-muted-foreground/70 font-semibold">
+                  {g}
+                </SidebarGroupLabel>
+              )}
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {items.map((item) => {
+                    const active = location.pathname === item.url;
+                    const locked = item.paid && !isPaid;
+                    return (
+                      <SidebarMenuItem key={item.url}>
+                        <SidebarMenuButton asChild>
+                          <NavLink
+                            to={item.url}
+                            end
+                            className={cn(
+                              "flex items-center gap-3 rounded-lg transition-all duration-200",
+                              active
+                                ? "bg-gradient-gold-soft text-primary border border-primary/20"
+                                : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-primary",
+                            )}
+                          >
+                            <item.icon className={cn("w-4 h-4 flex-shrink-0", active && "text-primary")} />
+                            {!collapsed && (
+                              <span className="text-sm font-medium flex items-center gap-1.5 flex-1">
+                                {item.title}
+                                {locked && <Lock className="w-3 h-3 text-primary/60" />}
+                              </span>
+                            )}
+                          </NavLink>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          );
+        })}
       </SidebarContent>
     </Sidebar>
   );

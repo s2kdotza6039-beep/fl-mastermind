@@ -20,6 +20,7 @@ import {
   RHYTHM_STYLES, type RhythmStyle, type GeneratedRhythm,
 } from "@/lib/rhythm-generator";
 import { useSession } from "@/context/SessionContext";
+import { watermarkExport } from "@/lib/watermark";
 
 const NOTES: Note[] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
@@ -247,7 +248,7 @@ export default function KeyDetectionPage() {
     !!uploadResult && uploadResult.confidence < CONFIDENCE_THRESHOLD && !lowConfidenceAck;
 
   // ---- Export Roman numerals + chord list as TXT
-  const exportChordsTxt = () => {
+  const exportChordsTxt = async () => {
     const ch = diatonicChords(root, scale);
     const progs = suggestedProgressions(root, scale);
     const lines = [
@@ -270,7 +271,8 @@ export default function KeyDetectionPage() {
       ``,
       `Paste into FL Studio: Options → Project info → Project notes`,
     ];
-    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+    const text = await watermarkExport(lines.join("\n"), `Chord Sheet ${root} ${scale}`);
+    const blob = new Blob([text], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -942,9 +944,10 @@ const ChordsStep = ({ root, scale, display, defaultStyle, onExportTxt, onBack, o
     }
   };
 
-  const downloadRhythm = () => {
+  const downloadRhythm = async () => {
     if (!rhythm) return;
-    const blob = new Blob([rhythmToText(rhythm)], { type: "text/plain" });
+    const text = await watermarkExport(rhythmToText(rhythm), `Rhythm ${rhythm.style}`);
+    const blob = new Blob([text], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

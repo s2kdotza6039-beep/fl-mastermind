@@ -136,3 +136,38 @@
   .scrollbar-thin::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
   .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: hsl(var(--primary) / 0.5); }
 }
+
+/* === Anti-scrape protection on AI content === */
+@layer utilities {
+  .sensei-protected {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  /* Allow selection inside form inputs even within protected areas */
+  .sensei-protected input,
+  .sensei-protected textarea,
+  .sensei-protected [contenteditable="true"] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  .sensei-watermark {
+    position: relative;
+  }
+  .sensei-watermark::after {
+    content: "Studio Sensei © — for personal use only";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: hsl(var(--primary) / 0.05);
+    transform: rotate(-30deg);
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+  }
+}

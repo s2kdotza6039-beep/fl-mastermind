@@ -3,6 +3,7 @@ import { Send, Loader2, Bookmark, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/context/SessionContext";
+import { useAuth } from "@/context/AuthContext";
 import { streamSenseiChat, type ChatMsg } from "@/lib/sensei-api";
 import { SenseiMarkdown } from "./SenseiMarkdown";
 import { toast } from "sonner";
@@ -15,6 +16,7 @@ interface SenseiChatProps {
 
 export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
   const { genre, stage, projectName, saveAdvice } = useSession();
+  const { isPaid } = useAuth();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -99,8 +101,20 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
                 "max-w-[85%] rounded-2xl px-4 py-3",
                 m.role === "user"
                   ? "bg-gradient-gold text-primary-foreground rounded-br-sm"
-                  : "studio-card rounded-bl-sm",
+                  : "studio-card rounded-bl-sm sensei-protected",
               )}
+              onContextMenu={(e) => {
+                if (m.role === "assistant") {
+                  e.preventDefault();
+                  toast("Sensei content is protected — © Studio Sensei");
+                }
+              }}
+              onCopy={(e) => {
+                if (m.role === "assistant" && !isPaid) {
+                  e.preventDefault();
+                  toast.info("Copying advice is a paid feature. Save it instead.");
+                }
+              }}
             >
               {m.role === "user" ? (
                 <p className="text-sm leading-relaxed">{m.content}</p>
