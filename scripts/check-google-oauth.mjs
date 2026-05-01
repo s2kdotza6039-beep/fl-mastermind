@@ -24,6 +24,11 @@
  *   EXPECTED_CLIENT_ID         if set, every authorize URL must use this Google client_id
  *   EXPECTED_SCOPES            comma/space-separated scopes that MUST appear (default: "openid email profile")
  *   EXPECTED_RESPONSE_TYPE     required response_type (default: "code")
+ *   EXPECTED_CALLBACK_PATH     callback path appended to each origin (default: "/auth/v1/callback")
+ *   APP_CALLBACKS              per-origin overrides as "<origin>=<full-callback-url>",
+ *                              comma- or newline-separated. When EXPECTED_CALLBACK_PATH
+ *                              or APP_CALLBACKS is set, the expected redirect_uri is
+ *                              derived from the APP_ORIGIN instead of SUPABASE_URL.
  *   E2E_CHECK                  "true" to run an opt-in end-to-end redirect
  *                              simulation (authorize → /callback with a
  *                              synthetic error) and assert GoTrue redirects
