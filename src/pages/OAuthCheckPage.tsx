@@ -231,6 +231,52 @@ export default function OAuthCheckPage() {
           ))}
         </ul>
 
+        <section className="rounded-md border border-border/60 bg-muted/10 p-3 space-y-2">
+          <h2 className="text-sm font-semibold text-gold">Environment & Redirect URI</h2>
+          <dl className="text-xs grid grid-cols-[180px_1fr] gap-x-3 gap-y-1.5">
+            <dt className="text-muted-foreground">Redirect URI sent</dt>
+            <dd className="font-mono break-all">{window.location.origin}</dd>
+
+            <dt className="text-muted-foreground">OAuth callback URL</dt>
+            <dd className="font-mono break-all">{SUPABASE_URL}/auth/v1/callback</dd>
+
+            <dt className="text-muted-foreground">Authorize endpoint</dt>
+            <dd className="font-mono break-all">{SUPABASE_URL}/auth/v1/authorize</dd>
+
+            <dt className="text-muted-foreground">VITE_SUPABASE_URL</dt>
+            <dd className="font-mono break-all">
+              {SUPABASE_URL ? <span className="text-emerald-300">✅ {SUPABASE_URL}</span> : <span className="text-destructive">❌ missing</span>}
+            </dd>
+
+            <dt className="text-muted-foreground">VITE_SUPABASE_PUBLISHABLE_KEY</dt>
+            <dd className="font-mono break-all">
+              {ANON_KEY
+                ? <span className="text-emerald-300">✅ set ({ANON_KEY.slice(0, 12)}…{ANON_KEY.slice(-6)})</span>
+                : <span className="text-destructive">❌ missing</span>}
+            </dd>
+
+            <dt className="text-muted-foreground">VITE_SUPABASE_PROJECT_ID</dt>
+            <dd className="font-mono break-all">
+              {import.meta.env.VITE_SUPABASE_PROJECT_ID
+                ? <span className="text-emerald-300">✅ {import.meta.env.VITE_SUPABASE_PROJECT_ID}</span>
+                : <span className="text-amber-300">⚠️ not set (optional)</span>}
+            </dd>
+
+            <dt className="text-muted-foreground">Mode</dt>
+            <dd className="font-mono">{import.meta.env.MODE} {import.meta.env.DEV ? "(dev)" : "(prod)"}</dd>
+
+            <dt className="text-muted-foreground">User agent</dt>
+            <dd className="font-mono break-all opacity-70">{navigator.userAgent}</dd>
+          </dl>
+          <p className="text-[10px] text-muted-foreground/80 pt-1 leading-relaxed">
+            The <span className="font-mono">Redirect URI sent</span> is what your app passes to{" "}
+            <span className="font-mono">lovable.auth.signInWithOAuth</span>. The{" "}
+            <span className="font-mono">OAuth callback URL</span> is what must be listed in your Google
+            Cloud OAuth client's "Authorized redirect URIs" (only required if you provide your own
+            credentials — managed credentials handle this automatically).
+          </p>
+        </section>
+
         {raw?.external && (
           <details className="text-xs text-muted-foreground">
             <summary className="cursor-pointer hover:text-foreground">Raw provider settings</summary>
