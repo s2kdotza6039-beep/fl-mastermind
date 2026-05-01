@@ -1322,6 +1322,7 @@ async function runTokenAuthHeaderCheck() {
         errorDescription: parsed?.error_description || parsed?.msg || null,
         contentType: res.headers.get("content-type") || "",
         elapsedMs,
+        attempts,
         body: text.slice(0, 200),
         request: {
           grantType,
