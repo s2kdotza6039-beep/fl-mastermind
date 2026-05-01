@@ -1202,7 +1202,7 @@ async function runTokenExchangeCheck() {
 async function runTokenAuthHeaderCheck() {
   const verifier = randomBytes(32).toString("base64url");
   const fakeCode = "lovable-oauth-check-hdr-" + randomBytes(8).toString("hex");
-  const url = `${SUPABASE_URL}/auth/v1/token?grant_type=pkce`;
+  const url = `${TOKEN_ENDPOINT_URL}?grant_type=pkce`;
   const body = JSON.stringify({ auth_code: fakeCode, code_verifier: verifier });
 
   const variants = [
