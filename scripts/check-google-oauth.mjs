@@ -1849,6 +1849,13 @@ async function runMalformedPkceProbes(origin) {
  *
  * If the server returns identical responses for A and B (or A and D), the
  * audience/header validation is broken — anyone could call this endpoint.
+ *
+ * In addition to the cross-variant signature comparison, each variant's
+ * response is validated against an explicit per-header-mode error contract
+ * (status range, JSON envelope, error-code vocabulary, description regex).
+ * This catches drift where ALL variants degrade in the same direction
+ * (e.g. proxy starts returning HTML 502s) which the equality checks alone
+ * would miss.
  */
 async function runTokenAuthHeaderCheck() {
   const verifier = randomBytes(32).toString("base64url");
