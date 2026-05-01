@@ -389,6 +389,99 @@ function validatePkceFormat(value, kind) {
 }
 
 /**
+ * Map a PKCE failure category → an origin-specific remediation hint that
+ * names the *exact* environment variable, config file, or dashboard path
+ * a human should touch to fix it. Returned as both a one-liner string
+ * (for the `results[].hint` field that the CLI prints) and a structured
+ * object (for `report.json`'s per-origin `pkce.remediation` array, so
+ * downstream tooling can group/filter by source).
+ *
+ * `kind` ∈ {
+ *   "verifier_format"    — local script generated a bad verifier
+ *   "missing_params"     — GoTrue didn't forward code_challenge/method
+ *   "method_not_s256"    — server forwarded a non-S256 method
+ *   "challenge_format"   — forwarded challenge isn't valid base64url
+ *   "self_recompute"     — script's S256 derivation drifted
+ *   "server_recompute"   — server-forwarded challenge != SHA256(verifier)
+ *   "challenge_rewritten"— server returned a different challenge than we sent
+ * }
+ */
+function pkceRemediationHint(origin, kind) {
+  // Origin-specific config knobs the operator may have customized for this
+  // origin only. Listing them by name (instead of generic prose) means CI
+  // triage can grep the report for "APP_CALLBACKS=" or "EXPECTED_CLIENT_ID="
+  // and jump straight to the misconfigured row.
+  const originConfigPaths = [
+    `APP_ORIGINS / APP_ORIGIN env (currently includes "${origin}")`,
+    `APP_CALLBACKS env (per-origin override for "${origin}")`,
+    `EXPECTED_CLIENT_ID env (if pinning a Google client per environment)`,
+    `Cloud → Authentication → URL Configuration → "Redirect URLs" — must list "${origin}"`,
+    `Cloud → Authentication → Providers → Google — confirm flow_type=pkce`,
+    `Frontend client: lovable.auth.signInWithOAuth("google", { redirect_uri: "${origin}" })`,
+  ];
+
+  const sources = {
+    verifier_format: [
+      "scripts/check-google-oauth.mjs → generatePkce() (Node randomBytes/base64url path)",
+      "Node.js version on the CI runner — base64url digest requires Node ≥ 16",
+    ],
+    missing_params: [
+      `Cloud → Authentication → Providers → Google — flow_type MUST be "pkce" (not "implicit") for "${origin}"`,
+      `Cloud → Authentication → URL Configuration → Site URL / Redirect URLs — verify "${origin}" is allowlisted (otherwise GoTrue strips PKCE before forwarding)`,
+      `APP_CALLBACKS env override for "${origin}" — wrong callback path causes GoTrue to fall back to a non-PKCE redirect`,
+      `Frontend: lovable.auth.signInWithOAuth("google", { redirect_uri: "${origin}" }) — missing redirect_uri triggers the legacy non-PKCE path`,
+    ],
+    method_not_s256: [
+      `Cloud → Authentication → Providers → Google — flow_type=pkce (NOT "plain"/"implicit") for "${origin}"`,
+      "GoTrue version on the Cloud project — plain-PKCE was removed in GoTrue v2.130; upgrade if the server is forcing 'plain'",
+      "Frontend Lovable Cloud SDK version — older builds may negotiate 'plain'; upgrade @lovable.dev/cloud-auth-js",
+    ],
+    challenge_format: [
+      "GoTrue version on the Cloud project — old builds URL-encode the challenge twice, breaking the base64url charset",
+      `Cloud → Edge proxy / CDN in front of "${origin}" — verify it isn't rewriting query params on /authorize`,
+      `APP_CALLBACKS env for "${origin}" — a wrong callback can route through a non-OAuth proxy that mangles params`,
+    ],
+    self_recompute: [
+      "scripts/check-google-oauth.mjs → generatePkce() / s256Challenge() — base64url encoding or hash input changed",
+      "Node.js version on the CI runner (createHash('sha256').digest('base64url') requires Node ≥ 16)",
+    ],
+    server_recompute: [
+      `Cloud → Authentication → Providers → Google — flow_type MUST be "pkce" for "${origin}" (server is rewriting challenge)`,
+      "GoTrue version on the Cloud project — challenge-rewriting bugs were fixed in v2.140+",
+      `Cloud → Edge proxy / WAF in front of "${origin}" — disable any query-param normalization on /authorize`,
+    ],
+    challenge_rewritten: [
+      "GoTrue version on the Cloud project — challenge-rewriting bugs were fixed in v2.140+",
+      `Cloud → Authentication → Providers → Google — confirm flow_type=pkce for "${origin}"`,
+      `CDN / reverse proxy in front of "${origin}" — disable URL canonicalization on the /authorize path`,
+    ],
+  };
+
+  const specific = sources[kind] || [];
+  const all = [...specific, ...originConfigPaths];
+  return {
+    kind,
+    origin,
+    sources: all,
+    // Compact one-liner for the CLI `hint` slot. Truncate to keep terminal
+    // output readable; full list lives in report.json.
+    summary: `Fix in: ${specific.slice(0, 2).join(" | ") || originConfigPaths[0]} (full list in report.json → origins["${origin}"].pkce.remediation)`,
+  };
+}
+
+/**
+ * Append a remediation hint to the per-origin summary so report.json
+ * exposes them under `origins[origin].pkce.remediation` even when a
+ * caller forwards only the one-liner to record().
+ */
+function attachPkceRemediation(origin, hint) {
+  const summary = originSummary(origin);
+  if (!summary.pkce) summary.pkce = {};
+  if (!Array.isArray(summary.pkce.remediation)) summary.pkce.remediation = [];
+  summary.pkce.remediation.push(hint);
+}
+
+/**
  * Validate that the authorize URL returned by GoTrue forwarded our PKCE
  * parameters to Google unchanged. Some misconfigurations (e.g. flow_type
  * "implicit" or stripped query params) drop these silently and break
