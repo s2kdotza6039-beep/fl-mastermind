@@ -8,8 +8,26 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Crown, Loader2 } from "lucide-react";
+import { Crown, Loader2, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
+
+function PasswordInput(props: React.ComponentProps<typeof Input>) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <Input {...props} type={show ? "text" : "password"} className="pr-10" />
+      <button
+        type="button"
+        onClick={() => setShow((s) => !s)}
+        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
+        aria-label={show ? "Hide password" : "Show password"}
+        tabIndex={-1}
+      >
+        {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+      </button>
+    </div>
+  );
+}
 
 const emailSchema = z.string().trim().email("Invalid email").max(255);
 const passwordSchema = z
@@ -116,7 +134,7 @@ function SignInForm() {
       </div>
       <div>
         <Label htmlFor="si-pass">Password</Label>
-        <Input id="si-pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} maxLength={128} autoComplete="current-password" required />
+        <PasswordInput id="si-pass" value={password} onChange={(e) => setPassword(e.target.value)} maxLength={128} autoComplete="current-password" required />
       </div>
       <Button type="submit" className="w-full bg-gradient-gold text-primary-foreground" disabled={busy}>
         {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Sign in
@@ -169,7 +187,7 @@ function SignUpForm() {
       </div>
       <div>
         <Label htmlFor="su-pass">Password</Label>
-        <Input id="su-pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} maxLength={128} autoComplete="new-password" required />
+        <PasswordInput id="su-pass" value={password} onChange={(e) => setPassword(e.target.value)} maxLength={128} autoComplete="new-password" required />
         <p className="text-[10px] text-muted-foreground mt-1">8+ chars, upper, lower, number. Checked against known breaches.</p>
       </div>
       <Button type="submit" className="w-full bg-gradient-gold text-primary-foreground" disabled={busy}>
