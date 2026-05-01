@@ -59,8 +59,33 @@ const RESET = "\x1b[0m";
 const BOLD = "\x1b[1m";
 
 const results = [];
-function record(state, label, detail, hint) {
-  results.push({ state, label, detail, hint });
+/**
+ * Per-origin normalized snapshot accumulated by the validators.
+ * Shape: {
+ *   [origin]: {
+ *     authorizeUrl, redirectUri, expectedRedirectUri, redirectUriMatches,
+ *     responseType, expectedResponseType, responseTypeMatches,
+ *     scopes: string[], expectedScopes, missingScopes,
+ *     clientId, expectedClientId, clientIdMatches,
+ *     pkce: { sentChallenge, gotChallenge, method, challengeMatches, methodIsS256 },
+ *     state: { raw, length, decoder, decodedRedirectTo, originMatches },
+ *     mismatches: string[]   // human-readable list for triage
+ *   }
+ * }
+ */
+const originSummaries = {};
+function originSummary(origin) {
+  if (!originSummaries[origin]) {
+    originSummaries[origin] = { origin, mismatches: [] };
+  }
+  return originSummaries[origin];
+}
+function noteMismatch(origin, msg) {
+  originSummary(origin).mismatches.push(msg);
+}
+
+function record(state, label, detail, hint, meta) {
+  results.push({ state, label, detail, hint, ...(meta ? { meta } : {}) });
   const icon =
     state === "pass" ? `${GREEN}✓${RESET}` :
     state === "warn" ? `${YELLOW}⚠${RESET}` :
