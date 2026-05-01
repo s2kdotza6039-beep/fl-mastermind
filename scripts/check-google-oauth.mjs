@@ -243,11 +243,19 @@ function validateAuthorizeParams(googleUrl, origin) {
     return null;
   }
 
+  const summary = originSummary(origin);
+  summary.authorizeUrl = googleUrl;
+
   // response_type
   const responseType = parsed.searchParams.get("response_type");
-  if (responseType === EXPECTED_RESPONSE_TYPE) {
+  const rtMatches = responseType === EXPECTED_RESPONSE_TYPE;
+  summary.responseType = responseType;
+  summary.expectedResponseType = EXPECTED_RESPONSE_TYPE;
+  summary.responseTypeMatches = rtMatches;
+  if (rtMatches) {
     record("pass", `response_type=${EXPECTED_RESPONSE_TYPE} (${origin})`, `response_type=${responseType}`);
   } else {
+    noteMismatch(origin, `response_type=${responseType ?? "(missing)"} (expected ${EXPECTED_RESPONSE_TYPE})`);
     record(
       "fail",
       `response_type=${EXPECTED_RESPONSE_TYPE} (${origin})`,
@@ -260,9 +268,13 @@ function validateAuthorizeParams(googleUrl, origin) {
   const scopeParam = parsed.searchParams.get("scope") || "";
   const scopes = scopeParam.split(/[\s+]+/).map((s) => s.trim()).filter(Boolean);
   const missing = EXPECTED_SCOPES.filter((s) => !scopes.includes(s));
+  summary.scopes = scopes;
+  summary.expectedScopes = EXPECTED_SCOPES;
+  summary.missingScopes = missing;
   if (missing.length === 0) {
     record("pass", `Required scopes present (${origin})`, `scope="${scopes.join(" ")}"`);
   } else {
+    noteMismatch(origin, `scope: missing ${missing.join(", ")}`);
     record(
       "fail",
       `Required scopes present (${origin})`,
@@ -273,7 +285,13 @@ function validateAuthorizeParams(googleUrl, origin) {
 
   // client_id
   const clientId = parsed.searchParams.get("client_id");
+  summary.clientId = clientId;
+  summary.expectedClientId = EXPECTED_CLIENT_ID;
+  summary.clientIdMatches = clientId
+    ? !EXPECTED_CLIENT_ID || clientId === EXPECTED_CLIENT_ID
+    : false;
   if (!clientId) {
+    noteMismatch(origin, "client_id missing");
     record(
       "fail",
       `client_id present (${origin})`,
@@ -281,6 +299,7 @@ function validateAuthorizeParams(googleUrl, origin) {
       "Provider is not fully configured — check Cloud → Auth Settings → Google."
     );
   } else if (EXPECTED_CLIENT_ID && clientId !== EXPECTED_CLIENT_ID) {
+    noteMismatch(origin, `client_id=${clientId} (expected ${EXPECTED_CLIENT_ID})`);
     record(
       "fail",
       `client_id matches EXPECTED_CLIENT_ID (${origin})`,
