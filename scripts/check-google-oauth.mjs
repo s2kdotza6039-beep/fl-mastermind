@@ -1845,6 +1845,390 @@ async function runMalformedPkceProbes(origin) {
 }
 
 /**
+ * Per-origin malformed-`code_challenge` probe suite.
+ *
+ * Companion to runMalformedPkceProbes() — that suite mutates `code_verifier`
+ * (the field GoTrue ACTUALLY consumes at /auth/v1/token). This suite mutates
+ * `code_challenge`, which the token endpoint MUST NOT accept as a substitute
+ * for `code_verifier`. The catalog mirrors RFC 7636 §4.2 (S256 challenge
+ * format) so we exercise the same byte-level failure modes:
+ *
+ *   • code_challenge OMITTED (verifier present)   — control: must succeed
+ *     past validation (verifier alone is what GoTrue needs).
+ *   • code_challenge present, verifier MISSING    — must reject for the
+ *     missing verifier; MUST NOT silently accept the challenge as a verifier.
+ *   • code_challenge wrong length, charset, padding, whitespace, non-ASCII,
+ *     non-string, null — sent ALONGSIDE a valid verifier. Server may
+ *     either ignore (preferred — unknown field) or reject (fine — strict
+ *     schema). What it MUST NOT do is accept the malformed challenge in
+ *     ANY way that changes the verdict relative to the well-formed
+ *     baseline (i.e. cause a 5xx, change the error code, or 2xx).
+ *
+ * Each case records (status, error, error_description, signature, checks,
+ * failureReasons) into originSummaries[origin].malformedCodeChallenge.
+ *
+ * Synthetic auth_code is freshly randomized per origin so cached/replayed
+ * responses can't mask bugs. We never consume a real auth code.
+ */
+async function runMalformedCodeChallengeProbes(origin) {
+  const summary = originSummary(origin);
+  const fakeCode = "lovable-oauth-check-mc-" + randomBytes(8).toString("hex");
+  const goodVerifier = randomBytes(32).toString("base64url"); // 43-char base64url
+  const goodChallenge = s256Challenge(goodVerifier);          // 43-char base64url
+  const url = `${TOKEN_ENDPOINT_URL}?grant_type=pkce`;
+
+  // For each case, `body` is the JSON payload sent. `mode` controls the
+  // verdict logic:
+  //   - "baseline":             control — verifier-only, no challenge.
+  //   - "substitution":         challenge present, verifier missing →
+  //                             error MUST point at code_verifier, NOT accept
+  //                             the challenge.
+  //   - "noise_with_verifier":  malformed challenge sent ALONGSIDE a valid
+  //                             verifier. Server may ignore the unknown
+  //                             field or reject it; either is fine as long
+  //                             as the verdict is still a clean 4xx and the
+  //                             status class matches the baseline (a 5xx or
+  //                             2xx flip means the challenge perturbed the
+  //                             pipeline in a dangerous way).
+  const cases = [
+    {
+      id: "baseline_verifier_only",
+      desc: "verifier-only, no code_challenge (control)",
+      body: { auth_code: fakeCode, code_verifier: goodVerifier },
+      mode: "baseline",
+    },
+    {
+      id: "challenge_substitution_no_verifier",
+      desc: "code_challenge present, code_verifier MISSING (substitution attack)",
+      body: { auth_code: fakeCode, code_challenge: goodChallenge, code_challenge_method: "S256" },
+      mode: "substitution",
+      // Failure must reference the missing verifier. If GoTrue ever started
+      // accepting a challenge in lieu of a verifier (treating them as
+      // interchangeable) the auth model collapses — the verifier is the
+      // ONLY proof-of-possession secret.
+      expectErrorRe: /code[_ ]?verifier|verifier|missing|required|invalid_request|invalid_grant/i,
+    },
+    {
+      id: "missing_code_challenge_with_verifier",
+      desc: "code_challenge OMITTED, valid verifier (should look like baseline)",
+      body: { auth_code: fakeCode, code_verifier: goodVerifier },
+      mode: "noise_with_verifier",
+    },
+    {
+      id: "empty_code_challenge",
+      desc: "code_challenge is an empty string (with valid verifier)",
+      body: { auth_code: fakeCode, code_verifier: goodVerifier, code_challenge: "" },
+      mode: "noise_with_verifier",
+    },
+    {
+      id: "too_short_code_challenge",
+      desc: "code_challenge is 42 chars (S256 is exactly 43)",
+      body: { auth_code: fakeCode, code_verifier: goodVerifier, code_challenge: "a".repeat(42) },
+      mode: "noise_with_verifier",
+    },
+    {
+      id: "too_long_code_challenge",
+      desc: "code_challenge is 44 chars (S256 is exactly 43)",
+      body: { auth_code: fakeCode, code_verifier: goodVerifier, code_challenge: "a".repeat(44) },
+      mode: "noise_with_verifier",
+    },
+    {
+      id: "bad_charset_plus_code_challenge",
+      desc: "code_challenge contains '+' (standard base64, not base64url)",
+      body: { auth_code: fakeCode, code_verifier: goodVerifier, code_challenge: "+".repeat(43) },
+      mode: "noise_with_verifier",
+    },
+    {
+      id: "bad_charset_slash_code_challenge",
+      desc: "code_challenge contains '/' (standard base64, not base64url)",
+      body: { auth_code: fakeCode, code_verifier: goodVerifier, code_challenge: "/".repeat(43) },
+      mode: "noise_with_verifier",
+    },
+    {
+      id: "bad_charset_padding_code_challenge",
+      desc: "code_challenge contains '=' padding suffix",
+      body: { auth_code: fakeCode, code_verifier: goodVerifier, code_challenge: "a".repeat(42) + "=" },
+      mode: "noise_with_verifier",
+    },
+    {
+      id: "whitespace_code_challenge",
+      desc: "code_challenge contains spaces and a tab",
+      body: {
+        auth_code: fakeCode,
+        code_verifier: goodVerifier,
+        code_challenge: "a".repeat(20) + " \t" + "b".repeat(21),
+      },
+      mode: "noise_with_verifier",
+    },
+    {
+      id: "non_ascii_code_challenge",
+      desc: "code_challenge contains a non-breaking space (U+00A0)",
+      body: {
+        auth_code: fakeCode,
+        code_verifier: goodVerifier,
+        code_challenge: "a".repeat(21) + "\u00A0" + "b".repeat(21),
+      },
+      mode: "noise_with_verifier",
+    },
+    {
+      id: "non_string_code_challenge",
+      desc: "code_challenge is a number, not a string",
+      body: { auth_code: fakeCode, code_verifier: goodVerifier, code_challenge: 12345 },
+      mode: "noise_with_verifier",
+    },
+    {
+      id: "null_code_challenge",
+      desc: "code_challenge is JSON null",
+      body: { auth_code: fakeCode, code_verifier: goodVerifier, code_challenge: null },
+      mode: "noise_with_verifier",
+    },
+    {
+      id: "wrong_method_plain_with_verifier",
+      desc: "code_challenge_method=plain (S256 is the only allowed value at exchange)",
+      body: {
+        auth_code: fakeCode,
+        code_verifier: goodVerifier,
+        code_challenge: goodVerifier,
+        code_challenge_method: "plain",
+      },
+      mode: "noise_with_verifier",
+    },
+  ];
+
+  /** Capture shape of code_challenge without leaking values. */
+  const challengeShape = (v) => {
+    if (v === undefined) return { present: false };
+    if (v === null) return { present: true, type: "null" };
+    return {
+      present: true,
+      type: typeof v,
+      length: typeof v === "string" ? v.length : null,
+    };
+  };
+
+  /** @type {Record<string, any>} */
+  const results = {};
+  let baselineSig = null;
+  let baselineStatusClass = null;
+  const headerKeys = ["apikey", "Authorization", "Content-Type"];
+
+  for (const c of cases) {
+    const label = `Token endpoint rejects malformed code_challenge — ${c.desc} (${origin})`;
+    const payloadKeys = Object.keys(c.body).sort();
+    let entry = {
+      id: c.id,
+      desc: c.desc,
+      origin,
+      mode: c.mode,
+      request: {
+        method: "POST",
+        url,
+        grantType: "pkce",
+        grantTypeSource: "query",
+        payloadKeys,
+        codeChallenge: challengeShape(c.body.code_challenge),
+        codeChallengeMethod: c.body.code_challenge_method ?? null,
+        verifierPresent: c.body.code_verifier !== undefined,
+        headerKeys,
+      },
+    };
+
+    try {
+      const { res, attempts, elapsedMs } = await fetchWithRetry(
+        url,
+        {
+          method: "POST",
+          headers: {
+            apikey: ANON_KEY,
+            Authorization: `Bearer ${ANON_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(c.body),
+        },
+        `POST ${TOKEN_ENDPOINT_PATH} malformed-code-challenge/${c.id}`,
+        TOKEN_RETRY_OPTS
+      );
+      const text = await res.text();
+      let parsed = null;
+      try { parsed = JSON.parse(text); } catch { /* non-json */ }
+      const errorCode = parsed?.error || parsed?.code || null;
+      const errorDescription = parsed?.error_description || parsed?.msg || null;
+      const sig = `${res.status}|${errorCode || ""}|${errorDescription || ""}`;
+      const statusClass = res.status >= 200 && res.status < 300
+        ? "2xx"
+        : res.status >= 300 && res.status < 400
+          ? "3xx"
+          : res.status >= 400 && res.status < 500
+            ? "4xx"
+            : "5xx";
+
+      entry = {
+        ...entry,
+        status: res.status,
+        statusClass,
+        attempts,
+        elapsedMs,
+        contentType: res.headers.get("content-type") || "",
+        error: errorCode,
+        errorDescription,
+        bodyKeys: parsed ? Object.keys(parsed) : null,
+        bodySnippet: text.slice(0, 200),
+        signature: sig,
+      };
+
+      if (c.mode === "baseline") {
+        baselineSig = sig;
+        baselineStatusClass = statusClass;
+        entry.verdict = "baseline";
+        record(
+          "pass",
+          label,
+          `baseline captured: HTTP ${res.status} error="${errorCode || ""}" desc="${(errorDescription || "").slice(0, 80)}"`,
+          undefined,
+          entry
+        );
+      } else if (c.mode === "substitution") {
+        // Hard contract: error MUST reference the missing verifier and
+        // MUST NOT be a 2xx (which would mean the challenge was accepted
+        // as a verifier substitute).
+        const checks = {
+          is4xx: res.status >= 400 && res.status < 500,
+          notAccepted: res.status < 200 || res.status >= 300,
+          hasError: !!errorCode,
+          hasDescription: !!errorDescription,
+          referencesMissingVerifier: errorDescription
+            ? c.expectErrorRe.test(errorDescription) || (errorCode && c.expectErrorRe.test(errorCode))
+            : false,
+        };
+        entry.checks = checks;
+
+        const failures = [];
+        if (!checks.notAccepted) {
+          failures.push(
+            `CRITICAL: substitution accepted (HTTP ${res.status}) — server treated code_challenge as a verifier substitute`
+          );
+        }
+        if (!checks.is4xx) failures.push(`expected 4xx, got HTTP ${res.status}`);
+        if (!checks.hasError) failures.push("missing `error` field");
+        if (!checks.hasDescription) failures.push("missing `error_description`/`msg`");
+        if (!checks.referencesMissingVerifier && checks.hasDescription) {
+          failures.push(
+            `error/description does not reference the missing code_verifier (expected match for ${c.expectErrorRe})`
+          );
+        }
+
+        if (failures.length === 0) {
+          entry.verdict = "pass";
+          record(
+            "pass",
+            label,
+            `HTTP ${res.status} error="${errorCode}" desc="${(errorDescription || "").slice(0, 80)}"`,
+            undefined,
+            entry
+          );
+        } else {
+          entry.verdict = "fail";
+          entry.failureReasons = failures;
+          record(
+            "fail",
+            label,
+            failures.join("; ") + ` (HTTP ${res.status}, body: ${text.slice(0, 200)})`,
+            "GoTrue must NEVER accept code_challenge as a verifier substitute. The verifier is the only proof-of-possession secret in PKCE — a substitution acceptance breaks the entire flow's security model.",
+            entry
+          );
+          noteMismatch(origin, `malformed-code-challenge/${c.id}: ${failures[0]}`);
+        }
+      } else {
+        // c.mode === "noise_with_verifier": malformed challenge alongside
+        // a valid verifier. Acceptable outcomes:
+        //   (a) server ignores the unknown/malformed challenge entirely →
+        //       response is byte-identical to baseline (preferred).
+        //   (b) server rejects with a 4xx that mentions the bad field →
+        //       fine, schema is strict.
+        // UNACCEPTABLE: 5xx (server crashed parsing the field) or 2xx
+        // (challenge somehow short-circuited validation).
+        const checks = {
+          notServerError: res.status < 500,
+          notUnexpectedSuccess: res.status < 200 || res.status >= 300,
+          statusClassMatchesBaseline: baselineStatusClass
+            ? statusClass === baselineStatusClass
+            : true,
+          hasEnvelope: !!errorCode || !!errorDescription || (res.status >= 200 && res.status < 300),
+          identicalToBaseline: baselineSig ? sig === baselineSig : false,
+        };
+        entry.checks = checks;
+
+        const failures = [];
+        if (!checks.notServerError) {
+          failures.push(`server error HTTP ${res.status} — malformed challenge crashed the request pipeline`);
+        }
+        if (!checks.notUnexpectedSuccess) {
+          failures.push(`unexpected 2xx HTTP ${res.status} — malformed challenge somehow short-circuited validation`);
+        }
+        if (!checks.statusClassMatchesBaseline) {
+          failures.push(
+            `status class ${statusClass} differs from baseline ${baselineStatusClass} — malformed challenge perturbed the verdict`
+          );
+        }
+
+        if (failures.length === 0) {
+          entry.verdict = "pass";
+          entry.notes = checks.identicalToBaseline
+            ? "byte-identical to baseline (server ignored unknown/malformed challenge)"
+            : `differs from baseline but stayed within ${statusClass} (server rejected on schema, fine)`;
+          record(
+            "pass",
+            label,
+            `HTTP ${res.status} (${entry.notes})`,
+            undefined,
+            entry
+          );
+        } else {
+          entry.verdict = "fail";
+          entry.failureReasons = failures;
+          record(
+            "fail",
+            label,
+            failures.join("; ") + ` (HTTP ${res.status}, body: ${text.slice(0, 200)})`,
+            "Malformed code_challenge should be either ignored (unknown field) or rejected with a clean 4xx. A 5xx means the field crashed the parser; a 2xx means it bypassed validation. Both are critical.",
+            entry
+          );
+          noteMismatch(origin, `malformed-code-challenge/${c.id}: ${failures[0]}`);
+        }
+      }
+    } catch (e) {
+      entry.verdict = "error";
+      entry.error = e.message;
+      record(
+        "fail",
+        label,
+        e.message,
+        "Network or timeout while probing token endpoint — re-run, or raise TOKEN_HTTP_* retry limits.",
+        entry
+      );
+      noteMismatch(origin, `malformed-code-challenge/${c.id}: network error`);
+    }
+
+    results[c.id] = entry;
+  }
+
+  // Stash full per-case breakdown so report.json surfaces a single
+  // `origins[origin].malformedCodeChallenge` block per origin.
+  summary.malformedCodeChallenge = {
+    endpoint: TOKEN_ENDPOINT_URL,
+    baselineSignature: baselineSig,
+    baselineStatusClass,
+    cases: results,
+    counts: {
+      total: cases.length,
+      passed: Object.values(results).filter((r) => r.verdict === "pass" || r.verdict === "baseline").length,
+      failed: Object.values(results).filter((r) => r.verdict === "fail").length,
+      errored: Object.values(results).filter((r) => r.verdict === "error").length,
+    },
+  };
+}
+
+/**
  * Verify that /auth/v1/token actually validates its auth-related headers
  * (`apikey`, `Authorization`) instead of silently accepting/ignoring them.
  *
