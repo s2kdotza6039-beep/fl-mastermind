@@ -122,6 +122,65 @@ async function fetchWithRetry(url, init = {}, label = "request") {
 }
 
 /**
+ * Generate a PKCE code_verifier + S256 code_challenge per RFC 7636.
+ * verifier: 43–128 chars URL-safe; challenge: BASE64URL(SHA256(verifier)).
+ */
+async function generatePkce() {
+  const { randomBytes, createHash } = await import("node:crypto");
+  const verifier = randomBytes(32).toString("base64url");
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  return { verifier, challenge, method: "S256" };
+}
+
+/**
+ * Validate that the authorize URL returned by GoTrue forwarded our PKCE
+ * parameters to Google unchanged. Some misconfigurations (e.g. flow_type
+ * "implicit" or stripped query params) drop these silently and break
+ * the browser-side `exchangeCodeForSession` call.
+ */
+function validatePkce(googleUrl, sent, origin) {
+  let parsed;
+  try { parsed = new URL(googleUrl); }
+  catch {
+    record("fail", `PKCE forwarded to Google (${origin})`, "authorize URL not parseable");
+    return null;
+  }
+  const gotChallenge = parsed.searchParams.get("code_challenge");
+  const gotMethod = parsed.searchParams.get("code_challenge_method");
+
+  if (!gotChallenge || !gotMethod) {
+    record(
+      "fail",
+      `PKCE forwarded to Google (${origin})`,
+      `missing ${!gotChallenge ? "code_challenge" : ""}${!gotChallenge && !gotMethod ? " & " : ""}${!gotMethod ? "code_challenge_method" : ""}`,
+      "Set flow_type='pkce' in the client and ensure GoTrue forwards code_challenge — required for the auth code flow."
+    );
+    return { challenge: gotChallenge, method: gotMethod };
+  }
+  if (gotMethod.toUpperCase() !== "S256") {
+    record(
+      "fail",
+      `PKCE method is S256 (${origin})`,
+      `code_challenge_method=${gotMethod}`,
+      "Plain PKCE is insecure — use S256."
+    );
+  } else {
+    record("pass", `PKCE method is S256 (${origin})`, "code_challenge_method=S256");
+  }
+  if (gotChallenge !== sent.challenge) {
+    record(
+      "fail",
+      `PKCE challenge preserved (${origin})`,
+      `sent ${sent.challenge.slice(0, 16)}…, got ${gotChallenge.slice(0, 16)}…`,
+      "GoTrue rewrote the challenge — token exchange will fail. Verify the project isn't running an old GoTrue version."
+    );
+  } else {
+    record("pass", `PKCE challenge preserved (${origin})`, `${gotChallenge.slice(0, 16)}… (43+ chars)`);
+  }
+  return { challenge: gotChallenge, method: gotMethod };
+}
+
+/**
  * Validate the Google authorize URL returned by GoTrue:
  *   - `redirect_uri` (where Google sends the user back) MUST be
  *     `<SUPABASE_URL>/auth/v1/callback` exactly.
@@ -239,11 +298,17 @@ async function main() {
   }
 
   // 3. Authorize endpoint actually returns a Google redirect — per allowed origin
-  console.log(`\n${DIM}Probing ${APP_ORIGINS.length} allowed origin(s)…${RESET}`);
+  console.log(`\n${DIM}Probing ${APP_ORIGINS.length} allowed origin(s) with PKCE…${RESET}`);
+  const seenChallenges = new Map(); // challenge → origin (to detect reuse)
   for (const origin of APP_ORIGINS) {
     const label = `Authorize allows redirect_to=${origin}`;
+    const pkce = await generatePkce();
     try {
-      const url = `${SUPABASE_URL}/auth/v1/authorize?provider=google&skip_http_redirect=true&redirect_to=${encodeURIComponent(origin)}`;
+      const url =
+        `${SUPABASE_URL}/auth/v1/authorize?provider=google&skip_http_redirect=true` +
+        `&redirect_to=${encodeURIComponent(origin)}` +
+        `&code_challenge=${encodeURIComponent(pkce.challenge)}` +
+        `&code_challenge_method=${pkce.method}`;
       const { res, attempts, elapsedMs } = await fetchWithRetry(
         url,
         { headers: { apikey: ANON_KEY } },
@@ -257,17 +322,32 @@ async function main() {
         const preview = body.url.slice(0, 120) + (body.url.length > 120 ? "…" : "");
         record("pass", label, preview + tail);
         validateCallback(body.url, origin);
+        const got = validatePkce(body.url, pkce, origin);
+        if (got?.challenge) {
+          const prev = seenChallenges.get(got.challenge);
+          if (prev) {
+            record(
+              "fail",
+              `PKCE challenge unique per request (${origin})`,
+              `same challenge returned for ${prev} and ${origin}`,
+              "GoTrue is reusing or caching the challenge — every authorize call must echo the per-request value."
+            );
+          } else {
+            seenChallenges.set(got.challenge, origin);
+          }
+        }
       } else if (res.ok && body?.url) {
         record("warn", label, `Got non-Google URL: ${body.url.slice(0, 120)}` + tail);
       } else {
         const msg =
           body?.error_description || body?.msg || body?.error || `HTTP ${res.status}`;
-        // Origin-allowlist rejections from GoTrue look like:
-        //   "redirect_to URL is not allowed" / "Invalid redirect URL"
         const isAllowlist =
           /redirect.*url.*not.*allowed|invalid.*redirect|not.*in.*allow.*list/i.test(msg);
+        const isPkce = /code_challenge|pkce/i.test(msg);
         const hint = isAllowlist
           ? `Add "${origin}" to Cloud → Auth Settings → URL Configuration → Redirect URLs (and to your Google OAuth client's Authorized JavaScript origins).`
+          : isPkce
+          ? "Server rejected the PKCE params — confirm GoTrue is recent enough to support code_challenge on /authorize."
           : /missing oauth secret|client_id|client_secret/i.test(msg)
           ? "Google client ID/secret missing — set them in Cloud auth settings or enable Lovable's managed credentials."
           : /not enabled|unsupported provider/i.test(msg)
