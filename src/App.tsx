@@ -34,7 +34,7 @@ import NotFound from "./pages/NotFound.tsx";
 const queryClient = new QueryClient();
 
 // Pages rendered outside the studio layout (full-screen)
-const BARE_ROUTES = ["/auth", "/reset-password"];
+const BARE_ROUTES = ["/auth", "/reset-password", "/oauth-check"];
 
 function AppShell() {
   const loc = useLocation();
