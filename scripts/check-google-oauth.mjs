@@ -2051,7 +2051,9 @@ async function tokenProbe({
         grantTypeSource: "query",
         // Keys-only — values may contain code_verifier / refresh_token, never log them.
         payloadKeys: requestPayloadKeys,
-        headerKeys: ["apikey", "Authorization", "Content-Type"],
+        headerKeys: Object.keys(headers).sort(),
+        rawBody: requestOverrides?.rawBody !== undefined,
+        negativeContract: negativeContract || null,
       },
       requestPayloadKeys,
       status: res.status,
@@ -2066,6 +2068,67 @@ async function tokenProbe({
       attempts,
       elapsedMs,
     };
+
+    // ── Negative-contract probes ────────────────────────────────────────
+    // These cases EXIST to verify that the script's own JSON contract
+    // enforcement actually fires when the server misbehaves. We invert
+    // the verdict: a "pass" here means the strict-JSON branch we'd hit
+    // in the positive path was triggered, so CI would catch it for real
+    // GoTrue regressions.
+    if (negativeContract === "non_json_content_type") {
+      const isJson = ct.includes("application/json");
+      if (!isJson) {
+        record(
+          "pass",
+          label,
+          `confirmed contract handler fires on non-JSON content-type: "${ct}"${tail}`,
+          undefined,
+          { ...meta, negativeContractFired: "non_json_content_type" }
+        );
+      } else {
+        record(
+          "fail",
+          label,
+          `expected non-JSON response (Accept override) but server returned application/json${tail} — negative branch not exercised`,
+          "The token endpoint ignored Accept negotiation. Either the override no longer works (re-tune the case) or content-negotiation is permanently disabled — the JSON-contract `warn` branch in tokenProbe is now unreachable.",
+          { ...meta, negativeContractFired: null }
+        );
+      }
+      return;
+    }
+    if (negativeContract === "malformed_json_body") {
+      // We sent a malformed body. We expect the server to reply with a 4xx
+      // and EITHER (a) a non-JSON body OR (b) JSON that JSON.parse rejects.
+      // Either outcome proves the script's body-parse fail branch fires.
+      const parseFailed = parsed === null;
+      const is4xx = res.status >= 400 && res.status < 500;
+      if (parseFailed && is4xx) {
+        record(
+          "pass",
+          label,
+          `confirmed contract handler fires on unparseable body (HTTP ${res.status}, ct="${ct}", body: ${text.slice(0, 80)}…)${tail}`,
+          undefined,
+          { ...meta, negativeContractFired: "malformed_json_body" }
+        );
+      } else if (parseFailed && !is4xx) {
+        record(
+          "fail",
+          label,
+          `body unparseable but status was ${res.status} (expected 4xx)${tail}`,
+          "Token endpoint accepted a malformed JSON body without 4xx — request validation is too permissive.",
+          { ...meta, negativeContractFired: "malformed_json_body" }
+        );
+      } else {
+        record(
+          "fail",
+          label,
+          `expected unparseable response body but JSON.parse succeeded${tail} — negative branch not exercised`,
+          "The server appears to tolerate malformed JSON or returned a generic JSON error envelope. The body-parse `fail` branch in tokenProbe is unreachable through this case — re-tune the malformed payload (e.g. send invalid UTF-8) or accept that the contract can't be exercised against this deployment.",
+          { ...meta, negativeContractFired: null }
+        );
+      }
+      return;
+    }
 
     if (!expectStatus(res.status)) {
       record("fail", label, `unexpected status${tail}: ${text.slice(0, 200)}`, undefined, meta);
