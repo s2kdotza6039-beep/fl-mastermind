@@ -395,31 +395,33 @@ function validateCallback(googleUrl, origin) {
     return;
   }
 
-  const expectedCallback = `${SUPABASE_URL.replace(/\/$/, "")}/auth/v1/callback`;
+  const { url: expectedCallback, source: expectedSource } = expectedRedirectUriFor(origin);
   const actualCallback = parsed.searchParams.get("redirect_uri");
   const summary = originSummary(origin);
   summary.redirectUri = actualCallback;
   summary.expectedRedirectUri = expectedCallback;
+  summary.expectedRedirectUriSource = expectedSource;
   summary.redirectUriMatches = actualCallback === expectedCallback;
+  const label = `Callback redirect_uri matches expected (${origin})`;
 
   if (!actualCallback) {
     noteMismatch(origin, "redirect_uri missing");
     record(
       "fail",
-      `Supabase callback present (${origin})`,
+      label,
       "Google authorize URL has no redirect_uri parameter",
-      "GoTrue should always set redirect_uri=<SUPABASE_URL>/auth/v1/callback. Re-check provider configuration."
+      `Expected "${expectedCallback}" (from ${expectedSource}). GoTrue should always set redirect_uri — re-check provider configuration.`
     );
   } else if (actualCallback !== expectedCallback) {
     noteMismatch(origin, `redirect_uri=${actualCallback} (expected ${expectedCallback})`);
     record(
       "fail",
-      `Supabase callback matches /auth/v1/callback (${origin})`,
-      `expected ${expectedCallback}, got ${actualCallback}`,
-      `Add "${expectedCallback}" to your Google OAuth client's Authorized redirect URIs and ensure SUPABASE_URL matches the project that owns the Google credentials.`
+      label,
+      `expected ${expectedCallback} (${expectedSource}), got ${actualCallback}`,
+      `Add "${actualCallback}" to your Google OAuth client's Authorized redirect URIs, OR set APP_CALLBACKS="${origin}=${actualCallback}" if this origin intentionally uses a different callback host.`
     );
   } else {
-    record("pass", `Supabase callback matches /auth/v1/callback (${origin})`, actualCallback);
+    record("pass", label, `${actualCallback} (${expectedSource})`);
   }
 
   // `redirect_to` may be top-level, in `state` as JSON, base64url JSON,
