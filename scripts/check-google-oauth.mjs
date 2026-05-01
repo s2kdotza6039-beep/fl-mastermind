@@ -175,17 +175,28 @@ function validatePkce(googleUrl, sent, origin) {
   }
   const gotChallenge = parsed.searchParams.get("code_challenge");
   const gotMethod = parsed.searchParams.get("code_challenge_method");
+  const summary = originSummary(origin);
+  summary.pkce = {
+    sentChallenge: sent.challenge,
+    gotChallenge,
+    method: gotMethod,
+    challengeMatches: gotChallenge === sent.challenge,
+    methodIsS256: (gotMethod || "").toUpperCase() === "S256",
+  };
 
   if (!gotChallenge || !gotMethod) {
+    const miss = `${!gotChallenge ? "code_challenge" : ""}${!gotChallenge && !gotMethod ? " & " : ""}${!gotMethod ? "code_challenge_method" : ""}`;
+    noteMismatch(origin, `pkce: missing ${miss}`);
     record(
       "fail",
       `PKCE forwarded to Google (${origin})`,
-      `missing ${!gotChallenge ? "code_challenge" : ""}${!gotChallenge && !gotMethod ? " & " : ""}${!gotMethod ? "code_challenge_method" : ""}`,
+      `missing ${miss}`,
       "Set flow_type='pkce' in the client and ensure GoTrue forwards code_challenge — required for the auth code flow."
     );
     return { challenge: gotChallenge, method: gotMethod };
   }
   if (gotMethod.toUpperCase() !== "S256") {
+    noteMismatch(origin, `pkce: method=${gotMethod} (expected S256)`);
     record(
       "fail",
       `PKCE method is S256 (${origin})`,
@@ -196,6 +207,7 @@ function validatePkce(googleUrl, sent, origin) {
     record("pass", `PKCE method is S256 (${origin})`, "code_challenge_method=S256");
   }
   if (gotChallenge !== sent.challenge) {
+    noteMismatch(origin, "pkce: challenge rewritten by server");
     record(
       "fail",
       `PKCE challenge preserved (${origin})`,
