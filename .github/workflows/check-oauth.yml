@@ -12,6 +12,9 @@ on:
 jobs:
   oauth:
     runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.check.outputs.status }}
+      summary: ${{ steps.check.outputs.summary }}
     steps:
       - uses: actions/checkout@v4
 
@@ -20,9 +23,131 @@ jobs:
           node-version: "20"
 
       - name: Run Google OAuth configuration check
+        id: check
         env:
-          # Add these as repository secrets in GitHub → Settings → Secrets → Actions
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
           APP_ORIGIN: ${{ secrets.APP_ORIGIN || 'https://localhost' }}
-        run: node scripts/check-google-oauth.mjs
+        # Capture stdout, strip ANSI colors, expose as outputs.
+        # Exit codes: 0=pass, 1=fail, 2=warn.
+        run: |
+          set +e
+          OUTPUT=$(node scripts/check-google-oauth.mjs 2>&1)
+          CODE=$?
+          set -e
+          CLEAN=$(printf '%s' "$OUTPUT" | sed -r "s/\x1B\[[0-9;]*[mK]//g")
+          echo "$CLEAN"
+          if [ $CODE -eq 0 ]; then STATUS="pass"; fi
+          if [ $CODE -eq 1 ]; then STATUS="fail"; fi
+          if [ $CODE -eq 2 ]; then STATUS="warn"; fi
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          {
+            echo "summary<<__EOF__"
+            echo "$CLEAN"
+            echo "__EOF__"
+          } >> "$GITHUB_OUTPUT"
+          # Also write to the GitHub job summary for visibility in the UI
+          {
+            echo "## Google OAuth Check — $STATUS"
+            echo ""
+            echo '```'
+            echo "$CLEAN"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $CODE
+
+  notify:
+    needs: oauth
+    if: always() && (needs.oauth.result == 'failure' || needs.oauth.outputs.status == 'warn')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build notification payload
+        id: payload
+        env:
+          STATUS: ${{ needs.oauth.outputs.status || 'fail' }}
+          SUMMARY: ${{ needs.oauth.outputs.summary }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          ICON="❌"
+          [ "$STATUS" = "warn" ] && ICON="⚠️"
+          TITLE="$ICON Google OAuth check ${STATUS} on ${GITHUB_REPOSITORY}@${GITHUB_REF_NAME}"
+          echo "title=$TITLE" >> "$GITHUB_OUTPUT"
+          echo "run_url=$RUN_URL" >> "$GITHUB_OUTPUT"
+
+      # ---- Slack (optional) -------------------------------------------------
+      - name: Notify Slack
+        if: env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TITLE: ${{ steps.payload.outputs.title }}
+          SUMMARY: ${{ needs.oauth.outputs.summary }}
+          RUN_URL: ${{ steps.payload.outputs.run_url }}
+        run: |
+          # Truncate summary to keep payload well under Slack's 40k char limit
+          BODY=$(printf '%s' "$SUMMARY" | head -c 3500)
+          jq -n \
+            --arg title "$TITLE" \
+            --arg body "$BODY" \
+            --arg url "$RUN_URL" \
+            '{
+              text: $title,
+              blocks: [
+                { type: "header", text: { type: "plain_text", text: $title } },
+                { type: "section", text: { type: "mrkdwn", text: ("```" + $body + "```") } },
+                { type: "actions", elements: [
+                  { type: "button", text: { type: "plain_text", text: "View workflow run" }, url: $url }
+                ]}
+              ]
+            }' > /tmp/slack.json
+          curl -sS -X POST -H 'Content-Type: application/json' \
+            --data @/tmp/slack.json "$SLACK_WEBHOOK_URL"
+
+      # ---- Email via SMTP (optional) ---------------------------------------
+      - name: Notify by email
+        if: env.SMTP_SERVER != '' && env.NOTIFY_EMAIL_TO != ''
+        uses: dawidd6/action-send-mail@v3
+        env:
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          NOTIFY_EMAIL_TO: ${{ secrets.NOTIFY_EMAIL_TO }}
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT || 587 }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          secure: true
+          subject: ${{ steps.payload.outputs.title }}
+          to: ${{ secrets.NOTIFY_EMAIL_TO }}
+          from: ${{ secrets.SMTP_FROM || secrets.SMTP_USERNAME }}
+          body: |
+            ${{ steps.payload.outputs.title }}
+
+            Workflow run: ${{ steps.payload.outputs.run_url }}
+            Repository:   ${{ github.repository }}
+            Branch/ref:   ${{ github.ref_name }}
+            Commit:       ${{ github.sha }}
+
+            ----- OAuth check summary -----
+            ${{ needs.oauth.outputs.summary }}
+
+      # ---- Generic webhook (optional) --------------------------------------
+      - name: Notify generic webhook
+        if: env.NOTIFY_WEBHOOK_URL != ''
+        env:
+          NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+          TITLE: ${{ steps.payload.outputs.title }}
+          STATUS: ${{ needs.oauth.outputs.status }}
+          SUMMARY: ${{ needs.oauth.outputs.summary }}
+          RUN_URL: ${{ steps.payload.outputs.run_url }}
+        run: |
+          jq -n \
+            --arg title "$TITLE" \
+            --arg status "$STATUS" \
+            --arg summary "$SUMMARY" \
+            --arg run_url "$RUN_URL" \
+            --arg repo "$GITHUB_REPOSITORY" \
+            --arg ref "$GITHUB_REF_NAME" \
+            --arg sha "$GITHUB_SHA" \
+            '{title:$title, status:$status, summary:$summary, run_url:$run_url, repository:$repo, ref:$ref, sha:$sha}' \
+            > /tmp/payload.json
+          curl -sS -X POST -H 'Content-Type: application/json' \
+            --data @/tmp/payload.json "$NOTIFY_WEBHOOK_URL"
