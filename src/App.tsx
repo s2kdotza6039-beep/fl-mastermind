@@ -24,34 +24,40 @@ import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner theme="dark" richColors position="top-right" />
-      <SessionProvider>
-        <BrowserRouter>
-          <StudioLayout>
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/chat" element={<ChatPage />} />
-              <Route path="/quick" element={<QuickFixPage />} />
-              <Route path="/problems" element={<ProblemsPage />} />
-              <Route path="/genre" element={<GenrePage />} />
-              <Route path="/production" element={<ProductionCoachPage />} />
-              <Route path="/mixing" element={<MixingCoachPage />} />
-              <Route path="/mastering" element={<MasteringCoachPage />} />
-              <Route path="/chains" element={<ChainBuilderPage />} />
-              <Route path="/key" element={<KeyDetectionPage />} />
-              <Route path="/checklist" element={<ChecklistPage />} />
-              <Route path="/upload" element={<UploadPage />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </StudioLayout>
-        </BrowserRouter>
-      </SessionProvider>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+const App = () => {
+  useEffect(() => {
+    armSenseiBootTone();
+  }, []);
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner theme="dark" richColors position="top-right" />
+        <SessionProvider>
+          <BrowserRouter>
+            <ScrollToTop />
+            <StudioLayout>
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/chat" element={<ChatPage />} />
+                <Route path="/quick" element={<QuickFixPage />} />
+                <Route path="/problems" element={<ProblemsPage />} />
+                <Route path="/genre" element={<GenrePage />} />
+                <Route path="/production" element={<ProductionCoachPage />} />
+                <Route path="/mixing" element={<MixingCoachPage />} />
+                <Route path="/mastering" element={<MasteringCoachPage />} />
+                <Route path="/chains" element={<ChainBuilderPage />} />
+                <Route path="/key" element={<KeyDetectionPage />} />
+                <Route path="/checklist" element={<ChecklistPage />} />
+                <Route path="/upload" element={<UploadPage />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </StudioLayout>
+          </BrowserRouter>
+        </SessionProvider>
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+};
 
 export default App;
