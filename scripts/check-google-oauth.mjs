@@ -1420,8 +1420,22 @@ async function tokenProbe({
     const errorCode = parsed?.error || parsed?.code || null;
     const errorDescription = parsed?.error_description || parsed?.msg || null;
     const tail = ` (${attempts} attempt${attempts > 1 ? "s" : ""}, ${elapsedMs}ms, HTTP ${res.status})`;
+    const requestPayloadKeys =
+      body && typeof body === "object" ? Object.keys(body).sort() : [];
     const meta = {
       grant,
+      grantType: grant,
+      grantTypeSource: "query",
+      request: {
+        method: "POST",
+        url,
+        grantType: grant,
+        grantTypeSource: "query",
+        // Keys-only — values may contain code_verifier / refresh_token, never log them.
+        payloadKeys: requestPayloadKeys,
+        headerKeys: ["apikey", "Authorization", "Content-Type"],
+      },
+      requestPayloadKeys,
       status: res.status,
       contentType: ct,
       bodyKeys: parsed ? Object.keys(parsed) : null,
