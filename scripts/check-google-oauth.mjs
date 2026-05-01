@@ -471,14 +471,78 @@ function pkceRemediationHint(origin, kind) {
 
 /**
  * Append a remediation hint to the per-origin summary so report.json
- * exposes them under `origins[origin].pkce.remediation` even when a
- * caller forwards only the one-liner to record().
+ * exposes them under `origins[origin].pkce.remediation`.
+ *
+ * Hints are DEDUPLICATED by `kind` (the failure category — e.g.
+ * "verifier_format", "missing_params") and bucketed with a `count`,
+ * `firstSeenAt`, and `lastSeenAt` timestamp. Two checks on the same
+ * origin that hit the same root cause therefore produce a single entry
+ * with `count: 2` instead of two byte-identical rows. A `ranked` array
+ * (most-frequent first, ties broken by insertion order) gives downstream
+ * tooling a deterministic, copy-paste-friendly priority list.
+ *
+ * Shape:
+ *   pkce.remediation = {
+ *     byKind: {
+ *       <kind>: { kind, origin, count, firstSeenAt, lastSeenAt,
+ *                 sources, summary }
+ *     },
+ *     ranked:      [ { kind, count }, ... ],
+ *     totalEvents: <number — sum of counts>,
+ *     uniqueKinds: <number — Object.keys(byKind).length>,
+ *   }
+ *
+ * The structured object dropped by `pkceRemediationHint()` (kind, origin,
+ * sources, summary) is preserved verbatim inside each bucket — only the
+ * volatile timestamps and count are added.
  */
 function attachPkceRemediation(origin, hint) {
   const summary = originSummary(origin);
   if (!summary.pkce) summary.pkce = {};
-  if (!Array.isArray(summary.pkce.remediation)) summary.pkce.remediation = [];
-  summary.pkce.remediation.push(hint);
+  // Migrate any pre-existing array-shaped remediation block (defensive — in
+  // case callers from earlier in the same run pushed before this helper
+  // was loaded). Each legacy entry becomes one event in the new shape.
+  let bucket = summary.pkce.remediation;
+  if (!bucket || Array.isArray(bucket) || typeof bucket !== "object" || !bucket.byKind) {
+    const legacy = Array.isArray(bucket) ? bucket : [];
+    bucket = { byKind: {}, ranked: [], totalEvents: 0, uniqueKinds: 0 };
+    for (const h of legacy) {
+      if (h && typeof h === "object" && h.kind) recordIntoBucket(bucket, h);
+    }
+    summary.pkce.remediation = bucket;
+  }
+  recordIntoBucket(bucket, hint);
+}
+
+/**
+ * Insert/merge a hint into the deduped remediation bucket.
+ * Pure function over `bucket` — no global state.
+ */
+function recordIntoBucket(bucket, hint) {
+  const kind = hint?.kind || "unknown";
+  const now = new Date().toISOString();
+  const existing = bucket.byKind[kind];
+  if (existing) {
+    existing.count += 1;
+    existing.lastSeenAt = now;
+  } else {
+    bucket.byKind[kind] = {
+      kind,
+      origin: hint.origin || null,
+      count: 1,
+      firstSeenAt: now,
+      lastSeenAt: now,
+      sources: Array.isArray(hint.sources) ? hint.sources : [],
+      summary: typeof hint.summary === "string" ? hint.summary : null,
+    };
+  }
+  bucket.totalEvents += 1;
+  bucket.uniqueKinds = Object.keys(bucket.byKind).length;
+  // Recompute deterministic ranking: count desc, then firstSeenAt asc.
+  bucket.ranked = Object.values(bucket.byKind)
+    .map((b) => ({ kind: b.kind, count: b.count, firstSeenAt: b.firstSeenAt }))
+    .sort((a, b) => b.count - a.count || a.firstSeenAt.localeCompare(b.firstSeenAt))
+    .map(({ kind: k, count }) => ({ kind: k, count }));
 }
 
 /**
