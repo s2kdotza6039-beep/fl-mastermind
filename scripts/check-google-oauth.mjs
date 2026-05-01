@@ -59,8 +59,33 @@ const RESET = "\x1b[0m";
 const BOLD = "\x1b[1m";
 
 const results = [];
-function record(state, label, detail, hint) {
-  results.push({ state, label, detail, hint });
+/**
+ * Per-origin normalized snapshot accumulated by the validators.
+ * Shape: {
+ *   [origin]: {
+ *     authorizeUrl, redirectUri, expectedRedirectUri, redirectUriMatches,
+ *     responseType, expectedResponseType, responseTypeMatches,
+ *     scopes: string[], expectedScopes, missingScopes,
+ *     clientId, expectedClientId, clientIdMatches,
+ *     pkce: { sentChallenge, gotChallenge, method, challengeMatches, methodIsS256 },
+ *     state: { raw, length, decoder, decodedRedirectTo, originMatches },
+ *     mismatches: string[]   // human-readable list for triage
+ *   }
+ * }
+ */
+const originSummaries = {};
+function originSummary(origin) {
+  if (!originSummaries[origin]) {
+    originSummaries[origin] = { origin, mismatches: [] };
+  }
+  return originSummaries[origin];
+}
+function noteMismatch(origin, msg) {
+  originSummary(origin).mismatches.push(msg);
+}
+
+function record(state, label, detail, hint, meta) {
+  results.push({ state, label, detail, hint, ...(meta ? { meta } : {}) });
   const icon =
     state === "pass" ? `${GREEN}✓${RESET}` :
     state === "warn" ? `${YELLOW}⚠${RESET}` :
@@ -150,17 +175,28 @@ function validatePkce(googleUrl, sent, origin) {
   }
   const gotChallenge = parsed.searchParams.get("code_challenge");
   const gotMethod = parsed.searchParams.get("code_challenge_method");
+  const summary = originSummary(origin);
+  summary.pkce = {
+    sentChallenge: sent.challenge,
+    gotChallenge,
+    method: gotMethod,
+    challengeMatches: gotChallenge === sent.challenge,
+    methodIsS256: (gotMethod || "").toUpperCase() === "S256",
+  };
 
   if (!gotChallenge || !gotMethod) {
+    const miss = `${!gotChallenge ? "code_challenge" : ""}${!gotChallenge && !gotMethod ? " & " : ""}${!gotMethod ? "code_challenge_method" : ""}`;
+    noteMismatch(origin, `pkce: missing ${miss}`);
     record(
       "fail",
       `PKCE forwarded to Google (${origin})`,
-      `missing ${!gotChallenge ? "code_challenge" : ""}${!gotChallenge && !gotMethod ? " & " : ""}${!gotMethod ? "code_challenge_method" : ""}`,
+      `missing ${miss}`,
       "Set flow_type='pkce' in the client and ensure GoTrue forwards code_challenge — required for the auth code flow."
     );
     return { challenge: gotChallenge, method: gotMethod };
   }
   if (gotMethod.toUpperCase() !== "S256") {
+    noteMismatch(origin, `pkce: method=${gotMethod} (expected S256)`);
     record(
       "fail",
       `PKCE method is S256 (${origin})`,
@@ -171,6 +207,7 @@ function validatePkce(googleUrl, sent, origin) {
     record("pass", `PKCE method is S256 (${origin})`, "code_challenge_method=S256");
   }
   if (gotChallenge !== sent.challenge) {
+    noteMismatch(origin, "pkce: challenge rewritten by server");
     record(
       "fail",
       `PKCE challenge preserved (${origin})`,
@@ -206,11 +243,19 @@ function validateAuthorizeParams(googleUrl, origin) {
     return null;
   }
 
+  const summary = originSummary(origin);
+  summary.authorizeUrl = googleUrl;
+
   // response_type
   const responseType = parsed.searchParams.get("response_type");
-  if (responseType === EXPECTED_RESPONSE_TYPE) {
+  const rtMatches = responseType === EXPECTED_RESPONSE_TYPE;
+  summary.responseType = responseType;
+  summary.expectedResponseType = EXPECTED_RESPONSE_TYPE;
+  summary.responseTypeMatches = rtMatches;
+  if (rtMatches) {
     record("pass", `response_type=${EXPECTED_RESPONSE_TYPE} (${origin})`, `response_type=${responseType}`);
   } else {
+    noteMismatch(origin, `response_type=${responseType ?? "(missing)"} (expected ${EXPECTED_RESPONSE_TYPE})`);
     record(
       "fail",
       `response_type=${EXPECTED_RESPONSE_TYPE} (${origin})`,
@@ -223,9 +268,13 @@ function validateAuthorizeParams(googleUrl, origin) {
   const scopeParam = parsed.searchParams.get("scope") || "";
   const scopes = scopeParam.split(/[\s+]+/).map((s) => s.trim()).filter(Boolean);
   const missing = EXPECTED_SCOPES.filter((s) => !scopes.includes(s));
+  summary.scopes = scopes;
+  summary.expectedScopes = EXPECTED_SCOPES;
+  summary.missingScopes = missing;
   if (missing.length === 0) {
     record("pass", `Required scopes present (${origin})`, `scope="${scopes.join(" ")}"`);
   } else {
+    noteMismatch(origin, `scope: missing ${missing.join(", ")}`);
     record(
       "fail",
       `Required scopes present (${origin})`,
@@ -236,7 +285,13 @@ function validateAuthorizeParams(googleUrl, origin) {
 
   // client_id
   const clientId = parsed.searchParams.get("client_id");
+  summary.clientId = clientId;
+  summary.expectedClientId = EXPECTED_CLIENT_ID;
+  summary.clientIdMatches = clientId
+    ? !EXPECTED_CLIENT_ID || clientId === EXPECTED_CLIENT_ID
+    : false;
   if (!clientId) {
+    noteMismatch(origin, "client_id missing");
     record(
       "fail",
       `client_id present (${origin})`,
@@ -244,6 +299,7 @@ function validateAuthorizeParams(googleUrl, origin) {
       "Provider is not fully configured — check Cloud → Auth Settings → Google."
     );
   } else if (EXPECTED_CLIENT_ID && clientId !== EXPECTED_CLIENT_ID) {
+    noteMismatch(origin, `client_id=${clientId} (expected ${EXPECTED_CLIENT_ID})`);
     record(
       "fail",
       `client_id matches EXPECTED_CLIENT_ID (${origin})`,
@@ -279,8 +335,13 @@ function validateCallback(googleUrl, origin) {
 
   const expectedCallback = `${SUPABASE_URL.replace(/\/$/, "")}/auth/v1/callback`;
   const actualCallback = parsed.searchParams.get("redirect_uri");
+  const summary = originSummary(origin);
+  summary.redirectUri = actualCallback;
+  summary.expectedRedirectUri = expectedCallback;
+  summary.redirectUriMatches = actualCallback === expectedCallback;
 
   if (!actualCallback) {
+    noteMismatch(origin, "redirect_uri missing");
     record(
       "fail",
       `Supabase callback present (${origin})`,
@@ -288,6 +349,7 @@ function validateCallback(googleUrl, origin) {
       "GoTrue should always set redirect_uri=<SUPABASE_URL>/auth/v1/callback. Re-check provider configuration."
     );
   } else if (actualCallback !== expectedCallback) {
+    noteMismatch(origin, `redirect_uri=${actualCallback} (expected ${expectedCallback})`);
     record(
       "fail",
       `Supabase callback matches /auth/v1/callback (${origin})`,
@@ -303,14 +365,24 @@ function validateCallback(googleUrl, origin) {
   // method we used so failures are debuggable.
   const stateParam = parsed.searchParams.get("state") || "";
   const decoded = extractRedirectTo(parsed.searchParams.get("redirect_to"), stateParam);
+  const stateMatches =
+    !!decoded.value && originsMatch(decoded.value, origin);
+  summary.state = {
+    raw: stateParam ? `${stateParam.slice(0, 32)}…` : null,
+    length: stateParam.length,
+    decoder: decoded.source,
+    decodedRedirectTo: decoded.value,
+    originMatches: stateMatches,
+  };
 
-  if (decoded.value && originsMatch(decoded.value, origin)) {
+  if (decoded.value && stateMatches) {
     record(
       "pass",
       `Authorize URL preserves redirect_to (${origin})`,
       `found via ${decoded.source}: ${decoded.value}`
     );
   } else if (decoded.value) {
+    noteMismatch(origin, `redirect_to=${decoded.value} (expected origin ${origin})`);
     record(
       "fail",
       `Authorize URL preserves redirect_to (${origin})`,
@@ -318,6 +390,8 @@ function validateCallback(googleUrl, origin) {
       "Origin mismatch — the user will be redirected to the wrong environment after sign-in. Check the redirect_to passed to signInWithOAuth."
     );
   } else if (stateParam.includes(encodeURIComponent(origin)) || stateParam.includes(origin)) {
+    summary.state.decoder = "substring";
+    summary.state.originMatches = true;
     record(
       "pass",
       `Authorize URL preserves redirect_to (${origin})`,
@@ -591,6 +665,7 @@ async function finish() {
         sha: process.env.GITHUB_SHA || null,
         runId: process.env.GITHUB_RUN_ID || null,
       },
+      origins: originSummaries,
       results,
     };
     try {
