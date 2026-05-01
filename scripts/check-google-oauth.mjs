@@ -963,7 +963,10 @@ async function finish() {
         sha: process.env.GITHUB_SHA || null,
         runId: process.env.GITHUB_RUN_ID || null,
       },
-      origins: originSummaries,
+      origins: Object.fromEntries(
+        Object.entries(originSummaries).filter(([k]) => !k.startsWith("__"))
+      ),
+      tokenAuthHeaders: originSummaries.__token_auth_headers__ || null,
       results,
     };
     try {
