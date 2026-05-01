@@ -3374,4 +3374,5 @@ export {
   pkceRemediationHint,
   buildRawErrorPayload,
   snapshotErrorEnvelope,
+  recordIntoBucket,
 };
