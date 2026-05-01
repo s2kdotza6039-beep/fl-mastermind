@@ -201,7 +201,6 @@ function fingerprintPkce(challenge, method) {
   if (!challenge) {
     return { present: false, method: method || null };
   }
-  const { createHash } = require("node:crypto");
   const sha256 = createHash("sha256").update(challenge).digest("hex");
   return {
     present: true,
