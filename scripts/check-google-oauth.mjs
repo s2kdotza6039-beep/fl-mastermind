@@ -204,11 +204,14 @@ function validatePkce(googleUrl, sent, origin) {
   const gotChallenge = parsed.searchParams.get("code_challenge");
   const gotMethod = parsed.searchParams.get("code_challenge_method");
   const summary = originSummary(origin);
+  // Sanitize challenges before serializing to the artifact: keep a short
+  // prefix for visual diffing + a SHA-256 fingerprint for cryptographic
+  // comparison without leaking the full verifier-derived value.
   summary.pkce = {
-    sentChallenge: sent.challenge,
-    gotChallenge,
-    method: gotMethod,
-    challengeMatches: gotChallenge === sent.challenge,
+    sent: fingerprintPkce(sent.challenge, sent.method),
+    received: fingerprintPkce(gotChallenge, gotMethod),
+    challengeMatches: !!gotChallenge && gotChallenge === sent.challenge,
+    methodMatches: (gotMethod || "").toUpperCase() === (sent.method || "").toUpperCase(),
     methodIsS256: (gotMethod || "").toUpperCase() === "S256",
   };
 
