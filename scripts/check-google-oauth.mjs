@@ -3165,8 +3165,13 @@ async function runMalformedCodeChallengeProbes(origin) {
             entry
           );
           noteMismatch(origin, `malformed-code-challenge/${c.id}: ${failures[0]}`);
-        }
-      } else {
+          attachPkceFailureRequest(origin, `malformed_code_challenge_${c.id}`, snapshotPkceHttpRequest({
+            method: "POST",
+            url,
+            params: c.body,
+            headerKeys,
+            extra: { stage: "token_malformed_code_challenge", origin, caseId: c.id, mode: c.mode, status: res.status, failureReasons: failures },
+          }));
         // c.mode === "noise_with_verifier": malformed challenge alongside
         // a valid verifier. Acceptable outcomes:
         //   (a) server ignores the unknown/malformed challenge entirely →
