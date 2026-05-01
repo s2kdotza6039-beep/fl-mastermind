@@ -965,6 +965,11 @@ async function finish() {
       exitCode,
       counts: { passed, warned, failed, total: results.length },
       target: SUPABASE_URL || null,
+      tokenEndpoint: {
+        path: TOKEN_ENDPOINT_PATH,
+        url: TOKEN_ENDPOINT_URL || null,
+        overridden: !!process.env.TOKEN_ENDPOINT_PATH,
+      },
       appOrigins: APP_ORIGINS,
       ranAt: new Date().toISOString(),
       env: {
@@ -972,6 +977,7 @@ async function finish() {
         SUPABASE_PUBLISHABLE_KEY: !!ANON_KEY,
         APP_ORIGIN: !!process.env.APP_ORIGIN,
         APP_ORIGINS: !!process.env.APP_ORIGINS,
+        TOKEN_ENDPOINT_PATH: !!process.env.TOKEN_ENDPOINT_PATH,
       },
       ci: {
         repository: process.env.GITHUB_REPOSITORY || null,
