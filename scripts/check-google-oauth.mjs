@@ -1915,6 +1915,88 @@ function buildRawErrorPayload({ status, contentType, text, parsed }) {
       : null,
   };
 }
+
+/**
+ * Project a rawErrorPayload (or any GoTrue error envelope) into a stable,
+ * value-free shape suitable for snapshot regression testing.
+ *
+ * The contract regexes in tokenProbe / runTokenAuthHeaderCheck are
+ * intentionally lenient (allow-lists tolerate version drift). This helper
+ * powers a TIGHTER second line of defence: snapshot tests that compare a
+ * normalized projection of the envelope across runs and surface ANY
+ * structural change — a renamed field, a new top-level key, a content-type
+ * family flip, a status-class change — before the lenient contract has a
+ * chance to silently swallow it.
+ *
+ * Captured (stable across runs):
+ *   - statusClass:           "2xx"|"3xx"|"4xx"|"5xx"|"0xx"|"1xx"|"non-numeric"
+ *   - contentTypeFamily:     media type without parameters, lowercased
+ *   - canonicalFieldsPresent: which of {error, error_description, error_uri}
+ *   - legacyFieldsPresent:   which of {msg, code, error_code, error_id}
+ *   - parsedKeys:            sorted top-level keys
+ *   - errorCode:             canonical `error` (low-cardinality vocabulary)
+ *   - codeFamily:            legacy numeric `code` bucketed
+ *   - jsonParseable / bodyTruncated: structural booleans
+ *
+ * Deliberately NOT captured (volatile / per-request):
+ *   - error_description / msg text  (handled by descriptionRe contracts)
+ *   - error_id / request IDs        (UUID per request)
+ *   - rawBody                       (timestamps, paths, …)
+ *   - bodyByteLength                (varies with description text)
+ */
+function snapshotErrorEnvelope(payload) {
+  if (!payload || typeof payload !== "object") {
+    return { kind: "empty", payload: payload === undefined ? "undefined" : String(payload) };
+  }
+  const status = payload.status;
+  let statusClass;
+  if (typeof status !== "number") statusClass = "non-numeric";
+  else if (status === 0) statusClass = "0xx";
+  else if (status < 200) statusClass = "1xx";
+  else if (status < 300) statusClass = "2xx";
+  else if (status < 400) statusClass = "3xx";
+  else if (status < 500) statusClass = "4xx";
+  else statusClass = "5xx";
+
+  const ctRaw = payload.contentType || "";
+  const contentTypeFamily = String(ctRaw).split(";")[0].trim().toLowerCase() || null;
+
+  const canonical = payload.canonical || {};
+  const legacy = payload.legacy || {};
+  const present = (obj) =>
+    Object.entries(obj)
+      .filter(([, v]) => v !== null && v !== undefined && v !== "")
+      .map(([k]) => k)
+      .sort();
+
+  // Bucket the legacy numeric `code` field — values themselves drift
+  // (400 vs 422 for the same logical case across versions) but family is stable.
+  let codeFamily = null;
+  const lc = legacy.code;
+  if (typeof lc === "number") {
+    if (lc === 0) codeFamily = "0xx";
+    else if (lc < 200) codeFamily = "1xx";
+    else if (lc < 300) codeFamily = "2xx";
+    else if (lc < 400) codeFamily = "3xx";
+    else if (lc < 500) codeFamily = "4xx";
+    else codeFamily = "5xx";
+  } else if (typeof lc === "string" && lc.length > 0) {
+    codeFamily = "string";
+  }
+
+  return {
+    kind: "envelope",
+    statusClass,
+    contentTypeFamily,
+    jsonParseable: !!payload.jsonParseable,
+    bodyTruncated: !!payload.bodyTruncated,
+    parsedKeys: Array.isArray(payload.parsedKeys) ? [...payload.parsedKeys].sort() : null,
+    canonicalFieldsPresent: present(canonical),
+    legacyFieldsPresent: present(legacy),
+    errorCode: typeof canonical.error === "string" ? canonical.error.toLowerCase() : null,
+    codeFamily,
+  };
+}
 async function runTokenAuthHeaderCheck() {
   const verifier = randomBytes(32).toString("base64url");
   const fakeCode = "lovable-oauth-check-hdr-" + randomBytes(8).toString("hex");
@@ -2670,4 +2752,5 @@ export {
   s256Challenge,
   pkceRemediationHint,
   buildRawErrorPayload,
+  snapshotErrorEnvelope,
 };
