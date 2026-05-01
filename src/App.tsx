@@ -23,6 +23,7 @@ import KeyDetectionPage from "./pages/KeyDetectionPage";
 import ChecklistPage from "./pages/ChecklistPage";
 import UploadPage from "./pages/UploadPage";
 import AuthPage from "./pages/AuthPage";
+import OAuthCheckPage from "./pages/OAuthCheckPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import AdminPage from "./pages/AdminPage";
 import TermsPage from "./pages/TermsPage";
@@ -33,7 +34,7 @@ import NotFound from "./pages/NotFound.tsx";
 const queryClient = new QueryClient();
 
 // Pages rendered outside the studio layout (full-screen)
-const BARE_ROUTES = ["/auth", "/reset-password"];
+const BARE_ROUTES = ["/auth", "/reset-password", "/oauth-check"];
 
 function AppShell() {
   const loc = useLocation();
@@ -44,6 +45,7 @@ function AppShell() {
       {/* Public */}
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/oauth-check" element={<OAuthCheckPage />} />
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/privacy" element={<PrivacyPage />} />
 
