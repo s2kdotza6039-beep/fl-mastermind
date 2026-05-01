@@ -1953,14 +1953,19 @@ async function runTokenAuthHeaderCheck() {
       const text = await res.text();
       let parsed = null;
       try { parsed = JSON.parse(text); } catch { /* non-json */ }
+      const ct = res.headers.get("content-type") || "";
       responses[v.key] = {
         status: res.status,
         error: parsed?.error || null,
         errorDescription: parsed?.error_description || parsed?.msg || null,
-        contentType: res.headers.get("content-type") || "",
+        contentType: ct,
         elapsedMs,
         attempts,
         body: text.slice(0, 200),
+        // Verbatim error envelope (canonical OAuth2 + legacy GoTrue fields)
+        // so report.json diffs surface exactly what GoTrue returned when a
+        // contract assertion breaks — not just the script's normalized view.
+        rawErrorPayload: buildRawErrorPayload({ status: res.status, contentType: ct, text, parsed }),
         request: {
           grantType,
           grantTypeSource: "query",
