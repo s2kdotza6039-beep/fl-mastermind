@@ -1068,6 +1068,29 @@ function extractRedirectTo(topLevel, state) {
 }
 
 async function main() {
+  if (CLI.help) {
+    console.log(`Google OAuth diagnostic
+Usage: node scripts/check-google-oauth.mjs [flags]
+
+Flags:
+  --export-remediation=<origin>     Write a standalone JSON file with that
+                                    origin's deduped PKCE remediation hints
+                                    plus relevant env/config (secrets are
+                                    fingerprinted, never echoed verbatim).
+  --export-remediation=all          Same, but for every origin in APP_ORIGINS,
+                                    one file per origin.
+  --export-remediation-out=<path>   Output destination (file for one origin,
+                                    directory for "all"). Defaults to
+                                    ./oauth-remediation-<origin-slug>.json
+                                    or ./oauth-remediation/.
+  --help, -h                        This help.
+
+All other configuration is via env vars — see file header.`);
+    process.exit(0);
+  }
+  if (CLI.unknown.length) {
+    console.error(`${YELLOW}Ignoring unknown CLI flags: ${CLI.unknown.join(", ")}${RESET}`);
+  }
   console.log(`${BOLD}Google OAuth configuration check${RESET}`);
   console.log(`${DIM}Target: ${SUPABASE_URL || "(none)"}${RESET}\n`);
 
