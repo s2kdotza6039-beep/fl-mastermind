@@ -1289,6 +1289,15 @@ All other configuration is via env vars — see file header.`);
   const seenChallenges = new Map(); // challenge → origin (to detect reuse)
   const seenClientIds = new Map(); // client_id → origin (cross-env consistency)
   for (const origin of APP_ORIGINS) {
+    // Gate: validate the expected redirect_uri against the origin allowlist
+    // BEFORE we burn an authorize call. A failure here means the per-origin
+    // config is internally inconsistent and any PKCE result would be noise.
+    const gate = validateRedirectUriAgainstAllowlist(origin);
+    if (!gate.ok) {
+      console.log(`  ${DIM}skipping PKCE checks for ${origin} — redirect_uri gate failed${RESET}`);
+      continue;
+    }
+
     const label = `Authorize allows redirect_to=${origin}`;
     const pkce = await generatePkce();
     try {
