@@ -64,6 +64,9 @@ export default {
           ring: "hsl(var(--sidebar-ring))",
         },
       },
+      gridTemplateColumns: {
+        "16": "repeat(16, minmax(0, 1fr))",
+      },
       backgroundImage: {
         'gradient-gold': 'var(--gradient-gold)',
         'gradient-gold-soft': 'var(--gradient-gold-soft)',
