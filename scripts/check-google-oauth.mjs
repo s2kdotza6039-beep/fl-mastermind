@@ -277,9 +277,16 @@ async function fetchWithRetry(url, init = {}, label = "request", opts = {}) {
  * Generate a PKCE code_verifier + S256 code_challenge per RFC 7636.
  * verifier: 43–128 chars URL-safe; challenge: BASE64URL(SHA256(verifier)).
  */
+function s256Challenge(verifier) {
+  // RFC 7636 §4.2: code_challenge = BASE64URL-ENCODE(SHA256(ASCII(verifier)))
+  // Node's "base64url" digest is unpadded and uses the URL-safe alphabet,
+  // matching the spec exactly — do NOT swap to plain "base64" + manual fixup.
+  return createHash("sha256").update(verifier, "ascii").digest("base64url");
+}
+
 function generatePkce() {
   const verifier = randomBytes(32).toString("base64url");
-  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  const challenge = s256Challenge(verifier);
   return { verifier, challenge, method: "S256" };
 }
 
