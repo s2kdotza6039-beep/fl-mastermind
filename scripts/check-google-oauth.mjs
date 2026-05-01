@@ -381,6 +381,7 @@ async function main() {
   // 3. Authorize endpoint actually returns a Google redirect — per allowed origin
   console.log(`\n${DIM}Probing ${APP_ORIGINS.length} allowed origin(s) with PKCE…${RESET}`);
   const seenChallenges = new Map(); // challenge → origin (to detect reuse)
+  const seenClientIds = new Map(); // client_id → origin (cross-env consistency)
   for (const origin of APP_ORIGINS) {
     const label = `Authorize allows redirect_to=${origin}`;
     const pkce = await generatePkce();
