@@ -1491,6 +1491,11 @@ All other configuration is via env vars — see file header.`);
       continue;
     }
 
+    // Probe GoTrue build info so any PKCE failures recorded below can be
+    // tied to a precise upgrade target in remediation hints. Memoized per
+    // Supabase host — first origin pays the network cost, the rest reuse it.
+    await probeGotrueBuildInfo(origin);
+
     const label = `Authorize allows redirect_to=${origin}`;
     const pkce = await generatePkce();
     try {
