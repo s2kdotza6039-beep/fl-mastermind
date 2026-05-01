@@ -1383,6 +1383,281 @@ async function runTokenExchangeCheck() {
 }
 
 /**
+ * Per-origin malformed-PKCE probe suite.
+ *
+ * Issues a battery of synthetic POSTs to the token endpoint that each
+ * violate exactly one PKCE contract from RFC 7636. The token server is
+ * expected to reject every one of them with a 4xx + a topical error
+ * code/description. The exact (status, error, error_description) tuple
+ * is recorded per-origin so CI artifacts show, for each origin, that:
+ *
+ *   • code_verifier is REQUIRED (omitted)
+ *   • code_verifier rejects too-short values         (<43 chars)
+ *   • code_verifier rejects too-long values          (>128 chars)
+ *   • code_verifier rejects standard-base64 chars    ('+' '/' '=')
+ *   • code_verifier rejects whitespace               (' ', '\t')
+ *   • code_verifier rejects non-ASCII                (NBSP)
+ *   • code_verifier rejects non-string types         (number, null)
+ *
+ * A probe PASSES when:
+ *   - HTTP status is 4xx (we sent a malformed payload), AND
+ *   - response carries a non-empty `error` field, AND
+ *   - response carries a non-empty `error_description`/`msg`.
+ *
+ * A probe FAILS when:
+ *   - HTTP is 2xx/3xx/5xx, OR
+ *   - error envelope is missing or empty, OR
+ *   - the response is byte-identical to the BASELINE probe (which uses a
+ *     well-formed-but-bogus payload). Identical responses prove the server
+ *     isn't actually inspecting the malformed field — it's failing later
+ *     at code lookup, which would let a malformed verifier slip through if
+ *     the code happened to be valid.
+ *
+ * The synthetic auth_code is freshly randomized per origin so cached/replayed
+ * responses can't mask bugs. We never consume a real auth code.
+ */
+async function runMalformedPkceProbes(origin) {
+  const summary = originSummary(origin);
+  const fakeCode = "lovable-oauth-check-malformed-" + randomBytes(8).toString("hex");
+  const goodVerifier = randomBytes(32).toString("base64url"); // 43-char base64url
+  const url = `${TOKEN_ENDPOINT_URL}?grant_type=pkce`;
+
+  // Cases. `body` is the JSON payload sent. `expectErrorRe` is matched against
+  // either `error` or `error_description` to confirm the rejection is *about*
+  // the broken field — not a generic "invalid_grant" that could be hiding a
+  // missing validation.
+  const cases = [
+    {
+      id: "baseline_well_formed",
+      desc: "well-formed PKCE shape with bogus code (control)",
+      body: { auth_code: fakeCode, code_verifier: goodVerifier },
+      // Baseline is allowed to return any 4xx grant error — we don't assert
+      // a topical regex, we just capture it for sameness comparison below.
+      expectErrorRe: /./,
+      mustDifferFromBaseline: false,
+    },
+    {
+      id: "missing_code_verifier",
+      desc: "code_verifier omitted entirely",
+      body: { auth_code: fakeCode },
+      expectErrorRe: /code[_ ]?verifier|verifier|missing|required|invalid_request/i,
+    },
+    {
+      id: "empty_code_verifier",
+      desc: "code_verifier is an empty string",
+      body: { auth_code: fakeCode, code_verifier: "" },
+      expectErrorRe: /code[_ ]?verifier|verifier|empty|missing|required|invalid/i,
+    },
+    {
+      id: "too_short_code_verifier",
+      desc: "code_verifier is 42 chars (RFC min is 43)",
+      body: { auth_code: fakeCode, code_verifier: "a".repeat(42) },
+      expectErrorRe: /verifier|length|short|invalid|bad_code_verifier|invalid_grant/i,
+    },
+    {
+      id: "too_long_code_verifier",
+      desc: "code_verifier is 129 chars (RFC max is 128)",
+      body: { auth_code: fakeCode, code_verifier: "a".repeat(129) },
+      expectErrorRe: /verifier|length|long|invalid|bad_code_verifier|invalid_grant/i,
+    },
+    {
+      id: "bad_charset_plus",
+      desc: "code_verifier contains '+' (standard base64, not base64url)",
+      body: { auth_code: fakeCode, code_verifier: "+".repeat(43) },
+      expectErrorRe: /verifier|invalid|bad_code_verifier|invalid_grant/i,
+    },
+    {
+      id: "bad_charset_padding",
+      desc: "code_verifier contains '=' padding",
+      body: { auth_code: fakeCode, code_verifier: "a".repeat(42) + "=" },
+      expectErrorRe: /verifier|invalid|bad_code_verifier|invalid_grant/i,
+    },
+    {
+      id: "whitespace_code_verifier",
+      desc: "code_verifier contains spaces and a tab",
+      body: { auth_code: fakeCode, code_verifier: "a".repeat(20) + " \t" + "b".repeat(21) },
+      expectErrorRe: /verifier|invalid|bad_code_verifier|invalid_grant/i,
+    },
+    {
+      id: "non_ascii_code_verifier",
+      desc: "code_verifier contains a non-breaking space (U+00A0)",
+      body: { auth_code: fakeCode, code_verifier: "a".repeat(21) + "\u00A0" + "b".repeat(21) },
+      expectErrorRe: /verifier|invalid|bad_code_verifier|invalid_grant/i,
+    },
+    {
+      id: "non_string_code_verifier",
+      desc: "code_verifier is a number, not a string",
+      body: { auth_code: fakeCode, code_verifier: 12345 },
+      expectErrorRe: /verifier|invalid|type|string|validation|invalid_request/i,
+    },
+    {
+      id: "null_code_verifier",
+      desc: "code_verifier is JSON null",
+      body: { auth_code: fakeCode, code_verifier: null },
+      expectErrorRe: /verifier|missing|required|null|invalid|invalid_request/i,
+    },
+  ];
+
+  /** @type {Record<string, any>} */
+  const results = {};
+  let baselineSig = null;
+  const headerKeys = ["apikey", "Authorization", "Content-Type"];
+
+  for (const c of cases) {
+    const label = `Token endpoint rejects malformed PKCE — ${c.desc} (${origin})`;
+    const payloadKeys = Object.keys(c.body).sort();
+    let entry = {
+      id: c.id,
+      desc: c.desc,
+      origin,
+      request: {
+        method: "POST",
+        url,
+        grantType: "pkce",
+        grantTypeSource: "query",
+        payloadKeys,
+        // Capture the SHAPE of code_verifier (type/length) without leaking
+        // the value itself (irrelevant here, but consistent with the rest
+        // of the report's secrets-handling discipline).
+        codeVerifier: c.body.code_verifier === undefined
+          ? { present: false }
+          : c.body.code_verifier === null
+            ? { present: true, type: "null" }
+            : {
+                present: true,
+                type: typeof c.body.code_verifier,
+                length: typeof c.body.code_verifier === "string" ? c.body.code_verifier.length : null,
+              },
+        headerKeys,
+      },
+    };
+
+    try {
+      const { res, attempts, elapsedMs } = await fetchWithRetry(
+        url,
+        {
+          method: "POST",
+          headers: {
+            apikey: ANON_KEY,
+            Authorization: `Bearer ${ANON_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(c.body),
+        },
+        `POST ${TOKEN_ENDPOINT_PATH} malformed-pkce/${c.id}`,
+        TOKEN_RETRY_OPTS
+      );
+      const text = await res.text();
+      let parsed = null;
+      try { parsed = JSON.parse(text); } catch { /* non-json */ }
+      const errorCode = parsed?.error || parsed?.code || null;
+      const errorDescription = parsed?.error_description || parsed?.msg || null;
+      const sig = `${res.status}|${errorCode || ""}|${errorDescription || ""}`;
+
+      entry = {
+        ...entry,
+        status: res.status,
+        attempts,
+        elapsedMs,
+        contentType: res.headers.get("content-type") || "",
+        error: errorCode,
+        errorDescription,
+        bodyKeys: parsed ? Object.keys(parsed) : null,
+        bodySnippet: text.slice(0, 200),
+        signature: sig,
+      };
+
+      if (c.id === "baseline_well_formed") {
+        baselineSig = sig;
+        entry.verdict = "baseline";
+        record(
+          "pass",
+          label,
+          `baseline captured: HTTP ${res.status} error="${errorCode || ""}" desc="${(errorDescription || "").slice(0, 80)}"`,
+          undefined,
+          entry
+        );
+      } else {
+        const checks = {
+          is4xx: res.status >= 400 && res.status < 500,
+          hasError: !!errorCode,
+          hasDescription: !!errorDescription,
+          descriptionMatches: errorDescription
+            ? c.expectErrorRe.test(errorDescription) || (errorCode && c.expectErrorRe.test(errorCode))
+            : false,
+          differsFromBaseline: baselineSig ? sig !== baselineSig : true,
+        };
+        entry.checks = checks;
+
+        const failures = [];
+        if (!checks.is4xx) failures.push(`expected 4xx, got HTTP ${res.status}`);
+        if (!checks.hasError) failures.push("missing `error` field");
+        if (!checks.hasDescription) failures.push("missing `error_description`/`msg`");
+        if (!checks.descriptionMatches && checks.hasDescription) {
+          failures.push(
+            `error/description does not reference the malformed field (expected match for ${c.expectErrorRe})`
+          );
+        }
+        if (!checks.differsFromBaseline) {
+          failures.push(
+            "response is byte-identical to the well-formed baseline — server isn't actually validating this case"
+          );
+        }
+
+        if (failures.length === 0) {
+          entry.verdict = "pass";
+          record(
+            "pass",
+            label,
+            `HTTP ${res.status} error="${errorCode}" desc="${(errorDescription || "").slice(0, 80)}"`,
+            undefined,
+            entry
+          );
+        } else {
+          entry.verdict = "fail";
+          entry.failureReasons = failures;
+          record(
+            "fail",
+            label,
+            failures.join("; ") + ` (HTTP ${res.status}, body: ${text.slice(0, 200)})`,
+            "GoTrue should reject malformed PKCE input with a topical 4xx error envelope. If this passes the gate, real users with corrupt verifiers will get cryptic downstream errors instead of an actionable message.",
+            entry
+          );
+          noteMismatch(origin, `malformed-pkce/${c.id}: ${failures[0]}`);
+        }
+      }
+    } catch (e) {
+      entry.verdict = "error";
+      entry.error = e.message;
+      record(
+        "fail",
+        label,
+        e.message,
+        "Network or timeout while probing token endpoint — re-run, or raise TOKEN_HTTP_* retry limits.",
+        entry
+      );
+      noteMismatch(origin, `malformed-pkce/${c.id}: network error`);
+    }
+
+    results[c.id] = entry;
+  }
+
+  // Stash the full per-case breakdown on the origin summary so report.json
+  // surfaces a single `origins[origin].malformedPkce` block per origin.
+  summary.malformedPkce = {
+    endpoint: TOKEN_ENDPOINT_URL,
+    baselineSignature: baselineSig,
+    cases: results,
+    counts: {
+      total: cases.length,
+      passed: Object.values(results).filter((r) => r.verdict === "pass" || r.verdict === "baseline").length,
+      failed: Object.values(results).filter((r) => r.verdict === "fail").length,
+      errored: Object.values(results).filter((r) => r.verdict === "error").length,
+    },
+  };
+}
+
+/**
  * Verify that /auth/v1/token actually validates its auth-related headers
  * (`apikey`, `Authorization`) instead of silently accepting/ignoring them.
  *
