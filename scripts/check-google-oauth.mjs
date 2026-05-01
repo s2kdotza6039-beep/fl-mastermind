@@ -1936,6 +1936,112 @@ async function runTokenAuthHeaderCheck() {
   const A = responses.A, B = responses.B, C = responses.C, D = responses.D;
   const sig = (r) => r ? `${r.status}|${r.error || ""}|${r.errorDescription || ""}` : "(error)";
 
+  // ── Per-header-mode error contract ──────────────────────────────────
+  // Each variant has a specific contract the token endpoint MUST satisfy
+  // based on which auth headers were sent. The previous assertions only
+  // compared variants to each other (sig(A) === sig(B), etc.) which can
+  // miss a regression where ALL responses drift in the same direction
+  // (e.g. proxy starts returning HTML 502s for every variant). The
+  // per-mode contract pins the EXACT shape required for each header mode
+  // and fails loudly on any drift.
+  //
+  // Contract fields:
+  //   statusOk:   predicate on HTTP status
+  //   errorRe:    regex the canonical `error` code MUST match (if present)
+  //   descRe:     regex the `error_description`/`msg` MUST match
+  //   requireJson: response must be JSON-parseable + application/json
+  //   requireEnvelope: response body MUST contain { error, error_description|msg }
+  //   bearerGate: special-case for D — either auth-rejected (401/403) OR
+  //               grant-shape but with a DIFFERENT signature than A.
+  const contracts = {
+    A: {
+      mode: "apikey + Bearer anon",
+      statusOk: (s) => s >= 400 && s < 500,
+      errorRe: /^(invalid_grant|invalid_request|flow_state_not_found|bad_code_verifier|validation_failed)$/i,
+      descRe: /invalid|expired|not.?found|bad|flow.?state|code|grant/i,
+      requireJson: true,
+      requireEnvelope: true,
+    },
+    B: {
+      mode: "no apikey, no Authorization",
+      statusOk: (s) => s === 401 || s === 403,
+      errorRe: /^(unauthorized|invalid_api_key|no_api_key|missing_authorization|forbidden)?$/i,
+      descRe: /api.?key|authoriz|unauthor|forbidden|missing|no.*key/i,
+      requireJson: true,
+      requireEnvelope: true,
+    },
+    C: {
+      mode: "apikey only (no Authorization)",
+      statusOk: (s) => s >= 400 && s < 500,
+      errorRe: /^(invalid_grant|invalid_request|flow_state_not_found|bad_code_verifier|validation_failed)$/i,
+      descRe: /invalid|expired|not.?found|bad|flow.?state|code|grant/i,
+      requireJson: true,
+      requireEnvelope: true,
+    },
+    D: {
+      mode: "apikey + bogus Bearer",
+      // D may be auth-rejected OR pass through to the grant layer;
+      // bearerGate enforces the cross-cut: it must NOT match A exactly.
+      statusOk: (s) => (s === 401 || s === 403) || (s >= 400 && s < 500),
+      errorRe: /^(unauthorized|invalid_jwt|bad_jwt|invalid_token|invalid_grant|invalid_request|flow_state_not_found|bad_code_verifier|validation_failed)$/i,
+      descRe: /jwt|token|bearer|unauthor|invalid|expired|not.?found|bad|flow.?state|grant|code/i,
+      requireJson: true,
+      requireEnvelope: true,
+      bearerGate: true,
+    },
+  };
+
+  const contractResults = {};
+  for (const [key, c] of Object.entries(contracts)) {
+    const r = responses[key];
+    const failures = [];
+    if (!r || r.status === 0) {
+      failures.push(`network/transport error: ${r?.error || "no response"}`);
+    } else {
+      if (!c.statusOk(r.status)) failures.push(`status ${r.status} not allowed for mode "${c.mode}"`);
+      if (c.requireJson && !r.contentType?.includes("application/json")) {
+        failures.push(`content-type "${r.contentType}" is not application/json`);
+      }
+      if (c.requireEnvelope) {
+        if (!r.error && !r.errorDescription) {
+          failures.push(`response missing OAuth error envelope { error, error_description|msg } — body: ${String(r.body).slice(0, 120)}`);
+        }
+      }
+      if (r.error && c.errorRe && !c.errorRe.test(r.error)) {
+        failures.push(`error="${r.error}" not in expected vocabulary ${c.errorRe} for mode "${c.mode}"`);
+      }
+      if (r.errorDescription && c.descRe && !c.descRe.test(r.errorDescription)) {
+        failures.push(`error_description="${r.errorDescription}" does not match ${c.descRe} for mode "${c.mode}"`);
+      }
+      if (c.bearerGate && responses.A && sig(r) === sig(responses.A)) {
+        failures.push(`response is byte-identical to A (${sig(responses.A)}) — bogus Bearer was silently accepted, bearer audience/signature gate is broken`);
+      }
+    }
+    contractResults[key] = {
+      mode: c.mode,
+      passed: failures.length === 0,
+      failures,
+      observed: r ? { status: r.status, error: r.error, errorDescription: r.errorDescription, contentType: r.contentType } : null,
+    };
+
+    const label = `Token endpoint error contract for header mode ${key} (${c.mode})`;
+    if (failures.length === 0) {
+      record("pass", label, `${sig(r)} — matches contract`, undefined, { contract: contractResults[key], response: r });
+    } else {
+      record(
+        "fail",
+        label,
+        failures.join(" | "),
+        `Header-mode ${key} violated its expected error contract. The token endpoint must return a deterministic shape per header combination so client SDKs can branch on it. Update Cloud → Authentication → API gateway / GoTrue config, or — if the contract genuinely changed — update the contract regex in runTokenAuthHeaderCheck() to match.`,
+        { contract: contractResults[key], response: r }
+      );
+    }
+  }
+
+  // Persist the per-mode contract verdicts alongside raw variant data so
+  // CI artifacts let downstream tooling group failures by header mode.
+  originSummaries.__token_auth_headers__.contracts = contractResults;
+
   // Assertion 1: B (no auth headers) must be rejected by the auth gate
   // BEFORE the grant logic runs — typically 401/403 with a "missing/invalid
   // auth" style error, not the bogus-code error A returns.
