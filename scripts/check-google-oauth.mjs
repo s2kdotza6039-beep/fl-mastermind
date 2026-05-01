@@ -298,11 +298,17 @@ async function main() {
   }
 
   // 3. Authorize endpoint actually returns a Google redirect — per allowed origin
-  console.log(`\n${DIM}Probing ${APP_ORIGINS.length} allowed origin(s)…${RESET}`);
+  console.log(`\n${DIM}Probing ${APP_ORIGINS.length} allowed origin(s) with PKCE…${RESET}`);
+  const seenChallenges = new Map(); // challenge → origin (to detect reuse)
   for (const origin of APP_ORIGINS) {
     const label = `Authorize allows redirect_to=${origin}`;
+    const pkce = await generatePkce();
     try {
-      const url = `${SUPABASE_URL}/auth/v1/authorize?provider=google&skip_http_redirect=true&redirect_to=${encodeURIComponent(origin)}`;
+      const url =
+        `${SUPABASE_URL}/auth/v1/authorize?provider=google&skip_http_redirect=true` +
+        `&redirect_to=${encodeURIComponent(origin)}` +
+        `&code_challenge=${encodeURIComponent(pkce.challenge)}` +
+        `&code_challenge_method=${pkce.method}`;
       const { res, attempts, elapsedMs } = await fetchWithRetry(
         url,
         { headers: { apikey: ANON_KEY } },
@@ -316,17 +322,32 @@ async function main() {
         const preview = body.url.slice(0, 120) + (body.url.length > 120 ? "…" : "");
         record("pass", label, preview + tail);
         validateCallback(body.url, origin);
+        const got = validatePkce(body.url, pkce, origin);
+        if (got?.challenge) {
+          const prev = seenChallenges.get(got.challenge);
+          if (prev) {
+            record(
+              "fail",
+              `PKCE challenge unique per request (${origin})`,
+              `same challenge returned for ${prev} and ${origin}`,
+              "GoTrue is reusing or caching the challenge — every authorize call must echo the per-request value."
+            );
+          } else {
+            seenChallenges.set(got.challenge, origin);
+          }
+        }
       } else if (res.ok && body?.url) {
         record("warn", label, `Got non-Google URL: ${body.url.slice(0, 120)}` + tail);
       } else {
         const msg =
           body?.error_description || body?.msg || body?.error || `HTTP ${res.status}`;
-        // Origin-allowlist rejections from GoTrue look like:
-        //   "redirect_to URL is not allowed" / "Invalid redirect URL"
         const isAllowlist =
           /redirect.*url.*not.*allowed|invalid.*redirect|not.*in.*allow.*list/i.test(msg);
+        const isPkce = /code_challenge|pkce/i.test(msg);
         const hint = isAllowlist
           ? `Add "${origin}" to Cloud → Auth Settings → URL Configuration → Redirect URLs (and to your Google OAuth client's Authorized JavaScript origins).`
+          : isPkce
+          ? "Server rejected the PKCE params — confirm GoTrue is recent enough to support code_challenge on /authorize."
           : /missing oauth secret|client_id|client_secret/i.test(msg)
           ? "Google client ID/secret missing — set them in Cloud auth settings or enable Lovable's managed credentials."
           : /not enabled|unsupported provider/i.test(msg)
