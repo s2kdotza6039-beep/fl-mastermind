@@ -3229,6 +3229,13 @@ async function runMalformedCodeChallengeProbes(origin) {
             entry
           );
           noteMismatch(origin, `malformed-code-challenge/${c.id}: ${failures[0]}`);
+          attachPkceFailureRequest(origin, `malformed_code_challenge_${c.id}`, snapshotPkceHttpRequest({
+            method: "POST",
+            url,
+            params: c.body,
+            headerKeys,
+            extra: { stage: "token_malformed_code_challenge", origin, caseId: c.id, mode: c.mode, status: res.status, failureReasons: failures },
+          }));
         }
       }
     } catch (e) {
@@ -3242,6 +3249,13 @@ async function runMalformedCodeChallengeProbes(origin) {
         entry
       );
       noteMismatch(origin, `malformed-code-challenge/${c.id}: network error`);
+      attachPkceFailureRequest(origin, `malformed_code_challenge_${c.id}`, snapshotPkceHttpRequest({
+        method: "POST",
+        url,
+        params: c.body,
+        headerKeys,
+        extra: { stage: "token_malformed_code_challenge", origin, caseId: c.id, mode: c.mode, networkError: e.message },
+      }));
     }
 
     results[c.id] = entry;
