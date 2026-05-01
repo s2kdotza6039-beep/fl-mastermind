@@ -2,3 +2,6 @@ project_id = "vfifwtmyktjvseonzkno"
 
 [functions.sensei-chat]
 verify_jwt = false
+
+[functions.detect-key]
+verify_jwt = false
