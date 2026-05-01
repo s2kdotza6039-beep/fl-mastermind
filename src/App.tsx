@@ -45,6 +45,7 @@ function AppShell() {
       {/* Public */}
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/oauth-check" element={<OAuthCheckPage />} />
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/privacy" element={<PrivacyPage />} />
 
