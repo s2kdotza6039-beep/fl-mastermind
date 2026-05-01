@@ -665,6 +665,7 @@ async function finish() {
         sha: process.env.GITHUB_SHA || null,
         runId: process.env.GITHUB_RUN_ID || null,
       },
+      origins: originSummaries,
       results,
     };
     try {
