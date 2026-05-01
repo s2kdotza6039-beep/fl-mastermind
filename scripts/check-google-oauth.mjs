@@ -40,6 +40,10 @@ import { createHash, randomBytes } from "node:crypto";
  *                              with the expected error messages.
  *   TOKEN_EXCHANGE_CHECK       "false" to skip the /auth/v1/token shape probes
  *                              (default: enabled). Sends 3 synthetic POSTs.
+ *   E2E_LOGIN_FLOW             "true" to run an explicit login-flow trace:
+ *                              captures the real `state` GoTrue mints, replays
+ *                              the callback, and asserts redirect_to round-trips
+ *                              to each APP_ORIGIN with the same state echoed back.
  *
  * Usage:
  *   node scripts/check-google-oauth.mjs
