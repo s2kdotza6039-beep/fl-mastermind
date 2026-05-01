@@ -1042,6 +1042,17 @@ async function finish() {
         path: TOKEN_ENDPOINT_PATH,
         url: TOKEN_ENDPOINT_URL || null,
         overridden: !!process.env.TOKEN_ENDPOINT_PATH,
+        retry: {
+          ...TOKEN_RETRY_OPTS,
+          overrides: {
+            timeoutMs: !!process.env.TOKEN_HTTP_TIMEOUT_MS,
+            maxRetries: !!process.env.TOKEN_HTTP_MAX_RETRIES,
+            backoffMs: !!process.env.TOKEN_HTTP_BACKOFF_MS,
+            backoffFactor: !!process.env.TOKEN_HTTP_BACKOFF_FACTOR,
+            backoffMaxMs: !!process.env.TOKEN_HTTP_BACKOFF_MAX_MS,
+            jitterMs: !!process.env.TOKEN_HTTP_JITTER_MS,
+          },
+        },
       },
       appOrigins: APP_ORIGINS,
       ranAt: new Date().toISOString(),
