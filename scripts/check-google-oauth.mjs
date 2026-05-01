@@ -1208,8 +1208,12 @@ async function runTokenExchangeCheck() {
 async function runTokenAuthHeaderCheck() {
   const verifier = randomBytes(32).toString("base64url");
   const fakeCode = "lovable-oauth-check-hdr-" + randomBytes(8).toString("hex");
-  const url = `${TOKEN_ENDPOINT_URL}?grant_type=pkce`;
-  const body = JSON.stringify({ auth_code: fakeCode, code_verifier: verifier });
+  const grantType = "pkce";
+  const url = `${TOKEN_ENDPOINT_URL}?grant_type=${grantType}`;
+  const payload = { auth_code: fakeCode, code_verifier: verifier };
+  const body = JSON.stringify(payload);
+  // Keys-only snapshot for CI artifacts (no secret values).
+  const requestPayloadKeys = Object.keys(payload).sort();
 
   const variants = [
     {
@@ -1256,9 +1260,24 @@ async function runTokenAuthHeaderCheck() {
         contentType: res.headers.get("content-type") || "",
         elapsedMs,
         body: text.slice(0, 200),
+        request: {
+          grantType,
+          grantTypeSource: "query",
+          payloadKeys: requestPayloadKeys,
+          headerKeys: Object.keys(v.headers).sort(),
+        },
       };
     } catch (e) {
-      responses[v.key] = { error: e.message, status: 0 };
+      responses[v.key] = {
+        error: e.message,
+        status: 0,
+        request: {
+          grantType,
+          grantTypeSource: "query",
+          payloadKeys: requestPayloadKeys,
+          headerKeys: Object.keys(v.headers).sort(),
+        },
+      };
     }
   }
 
@@ -1401,8 +1420,22 @@ async function tokenProbe({
     const errorCode = parsed?.error || parsed?.code || null;
     const errorDescription = parsed?.error_description || parsed?.msg || null;
     const tail = ` (${attempts} attempt${attempts > 1 ? "s" : ""}, ${elapsedMs}ms, HTTP ${res.status})`;
+    const requestPayloadKeys =
+      body && typeof body === "object" ? Object.keys(body).sort() : [];
     const meta = {
       grant,
+      grantType: grant,
+      grantTypeSource: "query",
+      request: {
+        method: "POST",
+        url,
+        grantType: grant,
+        grantTypeSource: "query",
+        // Keys-only — values may contain code_verifier / refresh_token, never log them.
+        payloadKeys: requestPayloadKeys,
+        headerKeys: ["apikey", "Authorization", "Content-Type"],
+      },
+      requestPayloadKeys,
       status: res.status,
       contentType: ct,
       bodyKeys: parsed ? Object.keys(parsed) : null,
@@ -1496,7 +1529,28 @@ async function tokenProbe({
       meta
     );
   } catch (e) {
-    record("fail", label, e.message, "Network or timeout — check runner connectivity to the Cloud project URL.");
+    const requestPayloadKeys =
+      body && typeof body === "object" ? Object.keys(body).sort() : [];
+    record(
+      "fail",
+      label,
+      e.message,
+      "Network or timeout — check runner connectivity to the Cloud project URL.",
+      {
+        grant,
+        grantType: grant,
+        grantTypeSource: "query",
+        request: {
+          method: "POST",
+          url,
+          grantType: grant,
+          grantTypeSource: "query",
+          payloadKeys: requestPayloadKeys,
+          headerKeys: ["apikey", "Authorization", "Content-Type"],
+        },
+        requestPayloadKeys,
+      }
+    );
   }
 }
 
