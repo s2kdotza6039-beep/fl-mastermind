@@ -169,8 +169,8 @@ function finish() {
       results,
     };
     try {
-      const fs = require("node:fs");
-      const path = require("node:path");
+      const fs = await import("node:fs");
+      const path = await import("node:path");
       fs.mkdirSync(path.dirname(outPath), { recursive: true });
       fs.writeFileSync(outPath, JSON.stringify(report, null, 2));
       console.log(`\n${DIM}JSON report written to ${outPath}${RESET}`);
