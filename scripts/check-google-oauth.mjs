@@ -784,6 +784,7 @@ function validatePkce(googleUrl, sent, origin, ctx = null) {
   catch {
     const hint = pkceRemediationHint(origin, "missing_params");
     attachPkceRemediation(origin, hint);
+    noteFailure("missing_params");
     record(
       "fail",
       `PKCE forwarded to Google (${origin})`,
@@ -822,6 +823,7 @@ function validatePkce(googleUrl, sent, origin, ctx = null) {
       noteMismatch(origin, `pkce: verifier ${verifierFmt.reason}`);
       const hint = pkceRemediationHint(origin, "verifier_format");
       attachPkceRemediation(origin, hint);
+      noteFailure("verifier_format");
       record(
         "fail",
         `PKCE verifier format valid (${origin})`,
@@ -837,6 +839,7 @@ function validatePkce(googleUrl, sent, origin, ctx = null) {
     noteMismatch(origin, `pkce: missing ${miss}`);
     const hint = pkceRemediationHint(origin, "missing_params");
     attachPkceRemediation(origin, hint);
+    noteFailure("missing_params");
     record(
       "fail",
       `PKCE forwarded to Google (${origin})`,
@@ -856,6 +859,7 @@ function validatePkce(googleUrl, sent, origin, ctx = null) {
     noteMismatch(origin, `pkce: method=${gotMethod} (expected S256)`);
     const hint = pkceRemediationHint(origin, "method_not_s256");
     attachPkceRemediation(origin, hint);
+    noteFailure("method_not_s256");
     record(
       "fail",
       `PKCE method is S256 (${origin})`,
@@ -874,6 +878,7 @@ function validatePkce(googleUrl, sent, origin, ctx = null) {
     noteMismatch(origin, `pkce: challenge ${challengeFmt.reason}`);
     const hint = pkceRemediationHint(origin, "challenge_format");
     attachPkceRemediation(origin, hint);
+    noteFailure("challenge_format");
     record(
       "fail",
       `PKCE challenge format valid (${origin})`,
@@ -901,6 +906,7 @@ function validatePkce(googleUrl, sent, origin, ctx = null) {
       noteMismatch(origin, "pkce: recomputed challenge != sent challenge");
       const hint = pkceRemediationHint(origin, "self_recompute");
       attachPkceRemediation(origin, hint);
+      noteFailure("self_recompute");
       record(
         "fail",
         `PKCE recompute matches sent challenge (${origin})`,
@@ -923,6 +929,7 @@ function validatePkce(googleUrl, sent, origin, ctx = null) {
       noteMismatch(origin, "pkce: recomputed challenge != received challenge");
       const hint = pkceRemediationHint(origin, "server_recompute");
       attachPkceRemediation(origin, hint);
+      noteFailure("server_recompute");
       record(
         "fail",
         `PKCE recompute matches received challenge (${origin})`,
@@ -938,6 +945,7 @@ function validatePkce(googleUrl, sent, origin, ctx = null) {
     noteMismatch(origin, "pkce: challenge rewritten by server");
     const hint = pkceRemediationHint(origin, "challenge_rewritten");
     attachPkceRemediation(origin, hint);
+    noteFailure("challenge_rewritten");
     record(
       "fail",
       `PKCE challenge preserved (${origin})`,
