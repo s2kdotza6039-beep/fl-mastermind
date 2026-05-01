@@ -134,7 +134,7 @@ function SignInForm() {
       </div>
       <div>
         <Label htmlFor="si-pass">Password</Label>
-        <Input id="si-pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} maxLength={128} autoComplete="current-password" required />
+        <PasswordInput id="si-pass" value={password} onChange={(e) => setPassword(e.target.value)} maxLength={128} autoComplete="current-password" required />
       </div>
       <Button type="submit" className="w-full bg-gradient-gold text-primary-foreground" disabled={busy}>
         {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Sign in
@@ -187,7 +187,7 @@ function SignUpForm() {
       </div>
       <div>
         <Label htmlFor="su-pass">Password</Label>
-        <Input id="su-pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} maxLength={128} autoComplete="new-password" required />
+        <PasswordInput id="su-pass" value={password} onChange={(e) => setPassword(e.target.value)} maxLength={128} autoComplete="new-password" required />
         <p className="text-[10px] text-muted-foreground mt-1">8+ chars, upper, lower, number. Checked against known breaches.</p>
       </div>
       <Button type="submit" className="w-full bg-gradient-gold text-primary-foreground" disabled={busy}>
