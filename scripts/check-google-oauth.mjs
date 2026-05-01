@@ -151,6 +151,43 @@ function parseOrigins() {
 }
 const APP_ORIGINS = parseOrigins();
 
+/**
+ * Lightweight CLI argv parser. Supports:
+ *
+ *   --export-remediation=<origin>        Export one origin's remediation hints
+ *                                        + relevant env/config to a JSON file.
+ *                                        Use "all" to export every origin
+ *                                        in APP_ORIGINS into a directory.
+ *   --export-remediation-out=<path>      Output destination.
+ *                                        - For a single origin: a file path
+ *                                          (default: ./oauth-remediation-<origin-slug>.json)
+ *                                        - For "all": a directory path
+ *                                          (default: ./oauth-remediation/)
+ *   --help, -h                           Print CLI help and exit 0.
+ *
+ * Unrecognized flags are reported and ignored (we don't fail-hard on argv
+ * to keep the diagnostic suite usable when run from CI wrappers that may
+ * forward extra args).
+ */
+function parseCliArgs(argv) {
+  const out = { exportRemediation: null, exportOut: null, help: false, unknown: [] };
+  for (const arg of argv) {
+    if (arg === "--help" || arg === "-h") { out.help = true; continue; }
+    const eq = arg.indexOf("=");
+    if (arg.startsWith("--export-remediation=")) {
+      out.exportRemediation = arg.slice(eq + 1).trim() || null;
+    } else if (arg === "--export-remediation-all") {
+      out.exportRemediation = "all";
+    } else if (arg.startsWith("--export-remediation-out=")) {
+      out.exportOut = arg.slice(eq + 1).trim() || null;
+    } else if (arg.startsWith("--")) {
+      out.unknown.push(arg);
+    }
+  }
+  return Object.freeze(out);
+}
+const CLI = parseCliArgs(process.argv.slice(2));
+
 const RED = "\x1b[31m";
 const GREEN = "\x1b[32m";
 const YELLOW = "\x1b[33m";
