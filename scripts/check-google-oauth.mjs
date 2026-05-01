@@ -14,11 +14,14 @@
  *   SUPABASE_PUBLISHABLE_KEY  (or VITE_SUPABASE_PUBLISHABLE_KEY)
  *
  * Optional:
- *   APP_ORIGIN                origin to use as redirect_to (default: https://localhost)
+ *   APP_ORIGIN                 single origin to use as redirect_to (default: https://localhost)
+ *   APP_ORIGINS                comma- or newline-separated list of allowed origins.
+ *                              Each is probed against /authorize?redirect_to=<origin>;
+ *                              any rejected origin produces a hard failure.
  *
  * Usage:
  *   node scripts/check-google-oauth.mjs
- *   npm run check:oauth
+ *   APP_ORIGINS="https://app.example.com,https://staging.example.com" npm run check:oauth
  */
 
 const SUPABASE_URL =
@@ -27,7 +30,16 @@ const ANON_KEY =
   process.env.SUPABASE_PUBLISHABLE_KEY ||
   process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
   process.env.SUPABASE_ANON_KEY;
-const APP_ORIGIN = process.env.APP_ORIGIN || "https://localhost";
+
+function parseOrigins() {
+  const list = (process.env.APP_ORIGINS || process.env.APP_ORIGIN || "https://localhost")
+    .split(/[,\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  // Dedupe while preserving order
+  return Array.from(new Set(list));
+}
+const APP_ORIGINS = parseOrigins();
 
 const RED = "\x1b[31m";
 const GREEN = "\x1b[32m";
