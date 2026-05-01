@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createHash, randomBytes } from "node:crypto";
 /**
  * CI script: verify Google OAuth is correctly configured on the deployed
  * Lovable Cloud (Supabase) project. Mirrors the checks shown on /oauth-check.
