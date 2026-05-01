@@ -1104,16 +1104,24 @@ async function runTokenExchangeCheck() {
   const verifier = randomBytes(32).toString("base64url");
   const fakeCode = "lovable-oauth-check-synthetic-" + randomBytes(8).toString("hex");
 
-  // ---- Probe 1: correct shape, bogus code → expect "invalid grant"
+  // GoTrue documents the OAuth-style error envelope as `{ error, error_description }`
+  // and falls back to `{ msg, code }` on some legacy paths. We require the
+  // canonical fields to be present AND match an explicit allow-list per probe,
+  // so a future GoTrue change that swaps codes around fails CI loudly.
+
+  // ---- Probe 1: correct shape, bogus code → "invalid_grant" / "invalid_request" / "flow_state_not_found"
   await tokenProbe({
     label: "Token endpoint accepts PKCE grant shape",
     grant: "pkce",
     body: { auth_code: fakeCode, code_verifier: verifier },
     expectStatus: (s) => s >= 400 && s < 500,
-    expectError: (err) =>
-      /invalid.?grant|invalid.?request|bad.?code|expired|not.?found|invalid.?flow.?state/i.test(
-        `${err.error || ""} ${err.error_description || err.msg || ""}`
-      ),
+    expectedErrorCodes: [
+      "invalid_grant",
+      "invalid_request",
+      "flow_state_not_found",
+      "bad_code_verifier",
+    ],
+    expectedDescriptionRe: /invalid|expired|not.?found|bad|flow.?state|code/i,
     rejectError: (err) =>
       /missing|required|code_verifier.*required|auth_code.*required/i.test(
         `${err.error_description || err.msg || ""}`
@@ -1122,27 +1130,35 @@ async function runTokenExchangeCheck() {
       "GoTrue rejected our request as malformed — the param schema this script sends (auth_code + code_verifier) no longer matches the deployed version.",
   });
 
-  // ---- Probe 2: wrong grant_type → must NOT succeed
+  // ---- Probe 2: wrong grant_type → "unsupported_grant_type" or "invalid_grant"
   await tokenProbe({
     label: "Token endpoint distinguishes grant_type",
     grant: "password",
     body: { auth_code: fakeCode, code_verifier: verifier },
     expectStatus: (s) => s >= 400 && s < 500,
-    expectError: () => true, // any 4xx error is fine; we just want non-2xx
+    expectedErrorCodes: [
+      "unsupported_grant_type",
+      "invalid_grant",
+      "invalid_request",
+      "validation_failed",
+    ],
+    expectedDescriptionRe: /grant|password|email|missing|invalid/i,
     rejectError: () => false,
     extraDetail: "POST grant_type=password with PKCE body should be rejected",
   });
 
-  // ---- Probe 3: missing params → must complain about THE missing field
+  // ---- Probe 3: missing code_verifier → must point at THE missing field
   await tokenProbe({
     label: "Token endpoint requires code_verifier",
     grant: "pkce",
     body: { auth_code: fakeCode }, // intentionally omit code_verifier
     expectStatus: (s) => s >= 400 && s < 500,
-    expectError: (err) =>
-      /code_verifier|verifier|missing|required|invalid.?request/i.test(
-        `${err.error || ""} ${err.error_description || err.msg || ""}`
-      ),
+    expectedErrorCodes: [
+      "invalid_request",
+      "invalid_grant",
+      "validation_failed",
+    ],
+    expectedDescriptionRe: /code_verifier|verifier|missing|required/i,
     rejectError: () => false,
   });
 
@@ -1329,7 +1345,8 @@ async function tokenProbe({
   grant,
   body,
   expectStatus,
-  expectError,
+  expectedErrorCodes,
+  expectedDescriptionRe,
   rejectError,
   rejectHint,
   extraDetail,
@@ -1353,6 +1370,14 @@ async function tokenProbe({
     const text = await res.text();
     let parsed = null;
     try { parsed = JSON.parse(text); } catch { /* non-json */ }
+
+    // Normalize the GoTrue error envelope. The endpoint may return either
+    // `{ error, error_description }` (OAuth 2 standard) or `{ msg, code }`
+    // (legacy /auth/v1/token paths). We treat them as equivalent for the
+    // "presence" check, but require the canonical fields for the strict
+    // assertion since OAuth clients only read those.
+    const errorCode = parsed?.error || parsed?.code || null;
+    const errorDescription = parsed?.error_description || parsed?.msg || null;
     const tail = ` (${attempts} attempt${attempts > 1 ? "s" : ""}, ${elapsedMs}ms, HTTP ${res.status})`;
     const meta = {
       grant,
@@ -1360,7 +1385,11 @@ async function tokenProbe({
       contentType: ct,
       bodyKeys: parsed ? Object.keys(parsed) : null,
       error: parsed?.error || null,
-      errorDescription: parsed?.error_description || parsed?.msg || null,
+      errorCanonical: errorCode,
+      errorDescription,
+      hasErrorField: !!parsed?.error,
+      hasDescriptionField: !!parsed?.error_description,
+      expectedErrorCodes: expectedErrorCodes || null,
       attempts,
       elapsedMs,
     };
@@ -1379,34 +1408,71 @@ async function tokenProbe({
       );
       return;
     }
-    if (parsed && rejectError(parsed)) {
+    if (!parsed) {
+      record("fail", label, `response was not JSON${tail}: ${text.slice(0, 200)}`, undefined, meta);
+      return;
+    }
+    if (rejectError(parsed)) {
       record(
         "fail",
         label,
-        `server reported a request-shape error: ${parsed.error_description || parsed.msg || parsed.error}${tail}`,
+        `server reported a request-shape error: ${errorDescription || errorCode}${tail}`,
         rejectHint,
         meta
       );
       return;
     }
-    if (parsed && expectError(parsed)) {
-      const errStr = parsed.error_description || parsed.msg || parsed.error || "(no message)";
+
+    // STRICT CONTRACT — both fields must be present.
+    const missing = [];
+    if (!errorCode) missing.push("error");
+    if (!errorDescription) missing.push("error_description/msg");
+    if (missing.length) {
       record(
-        "pass",
+        "fail",
         label,
-        `${extraDetail ? extraDetail + "; " : ""}server rejected synthetic code with "${errStr}"${tail}`,
-        undefined,
+        `response missing required field(s): ${missing.join(", ")}${tail} — payload: ${text.slice(0, 200)}`,
+        "GoTrue must always return an OAuth-style error envelope { error, error_description }. A 4xx without these breaks RFC 6749 §5.2 and breaks client error handling.",
         meta
       );
-    } else {
+      return;
+    }
+
+    // STRICT CONTRACT — `error` code must be in the allow-list.
+    const codeOk = expectedErrorCodes
+      ? expectedErrorCodes.some((c) => errorCode.toLowerCase() === c.toLowerCase())
+      : true;
+    if (!codeOk) {
+      record(
+        "fail",
+        label,
+        `error="${errorCode}" not in expected set [${expectedErrorCodes.join(", ")}]${tail}`,
+        "GoTrue returned an unexpected error code. Either the deployed version changed its vocabulary (update expectedErrorCodes) or the endpoint is misbehaving.",
+        meta
+      );
+      return;
+    }
+
+    // STRICT CONTRACT — `error_description` must match the topical regex.
+    const descOk = expectedDescriptionRe ? expectedDescriptionRe.test(errorDescription) : true;
+    if (!descOk) {
       record(
         "warn",
         label,
-        `unexpected error payload: ${text.slice(0, 200)}${tail}`,
-        "GoTrue version may have changed its error vocabulary — review and update expectError matchers.",
+        `error_description="${errorDescription}" does not match ${expectedDescriptionRe}${tail}`,
+        "Description text drifted from expectation — confirm the message is still meaningful to end users.",
         meta
       );
+      return;
     }
+
+    record(
+      "pass",
+      label,
+      `${extraDetail ? extraDetail + "; " : ""}error="${errorCode}", error_description="${errorDescription}"${tail}`,
+      undefined,
+      meta
+    );
   } catch (e) {
     record("fail", label, e.message, "Network or timeout — check runner connectivity to the Cloud project URL.");
   }
