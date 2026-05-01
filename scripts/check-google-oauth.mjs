@@ -60,7 +60,7 @@ async function main() {
       `SUPABASE_URL=${SUPABASE_URL ? "set" : "MISSING"}, SUPABASE_PUBLISHABLE_KEY=${ANON_KEY ? "set" : "MISSING"}`,
       "Set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY (or VITE_ equivalents) before running."
     );
-    return finish();
+    return await finish();
   }
   record("pass", "Env vars present", `${SUPABASE_URL}`);
 
@@ -126,10 +126,10 @@ async function main() {
     record("fail", "Authorize endpoint returns Google redirect", e.message);
   }
 
-  finish();
+  await finish();
 }
 
-function finish() {
+async function finish() {
   const failed = results.filter((r) => r.state === "fail").length;
   const warned = results.filter((r) => r.state === "warn").length;
   const passed = results.filter((r) => r.state === "pass").length;
@@ -138,16 +138,48 @@ function finish() {
     `\n${BOLD}Summary:${RESET} ${GREEN}${passed} passed${RESET}, ${YELLOW}${warned} warnings${RESET}, ${RED}${failed} failed${RESET}`
   );
 
-  if (failed > 0) {
-    console.log(`${RED}${BOLD}✗ Google OAuth is NOT correctly configured.${RESET}`);
-    process.exit(1);
+  const exitCode = failed > 0 ? 1 : warned > 0 ? 2 : 0;
+  const overall = exitCode === 0 ? "pass" : exitCode === 1 ? "fail" : "warn";
+
+  if (exitCode === 1) console.log(`${RED}${BOLD}✗ Google OAuth is NOT correctly configured.${RESET}`);
+  else if (exitCode === 2) console.log(`${YELLOW}${BOLD}⚠ Google OAuth works but has warnings.${RESET}`);
+  else console.log(`${GREEN}${BOLD}✓ Google OAuth is correctly configured.${RESET}`);
+
+  // Optional JSON report — written when OUTPUT_JSON is set (CI artifact).
+  const outPath = process.env.OUTPUT_JSON;
+  if (outPath) {
+    const report = {
+      overall,
+      exitCode,
+      counts: { passed, warned, failed, total: results.length },
+      target: SUPABASE_URL || null,
+      appOrigin: APP_ORIGIN,
+      ranAt: new Date().toISOString(),
+      env: {
+        SUPABASE_URL: !!SUPABASE_URL,
+        SUPABASE_PUBLISHABLE_KEY: !!ANON_KEY,
+        APP_ORIGIN: !!process.env.APP_ORIGIN,
+      },
+      ci: {
+        repository: process.env.GITHUB_REPOSITORY || null,
+        ref: process.env.GITHUB_REF_NAME || null,
+        sha: process.env.GITHUB_SHA || null,
+        runId: process.env.GITHUB_RUN_ID || null,
+      },
+      results,
+    };
+    try {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      fs.mkdirSync(path.dirname(outPath), { recursive: true });
+      fs.writeFileSync(outPath, JSON.stringify(report, null, 2));
+      console.log(`\n${DIM}JSON report written to ${outPath}${RESET}`);
+    } catch (e) {
+      console.error(`${RED}Failed to write JSON report:${RESET}`, e.message);
+    }
   }
-  if (warned > 0) {
-    console.log(`${YELLOW}${BOLD}⚠ Google OAuth works but has warnings.${RESET}`);
-    process.exit(2);
-  }
-  console.log(`${GREEN}${BOLD}✓ Google OAuth is correctly configured.${RESET}`);
-  process.exit(0);
+
+  process.exit(exitCode);
 }
 
 main().catch((e) => {
