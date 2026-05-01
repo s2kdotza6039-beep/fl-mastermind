@@ -1380,7 +1380,7 @@ async function tokenProbe({
         },
         body: JSON.stringify(body),
       },
-      `POST /auth/v1/token grant_type=${grant}`
+      `POST ${TOKEN_ENDPOINT_PATH} grant_type=${grant}`
     );
     const ct = res.headers.get("content-type") || "";
     const text = await res.text();
