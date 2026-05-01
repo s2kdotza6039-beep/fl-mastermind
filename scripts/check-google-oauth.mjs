@@ -189,6 +189,31 @@ async function generatePkce() {
 }
 
 /**
+ * Build a CI-safe PKCE descriptor for inclusion in report.json.
+ * Returns: { method, length, prefix, suffix, sha256, present }
+ *   - prefix/suffix:  first/last 8 chars for visual diffing
+ *   - sha256:         hex digest of the raw value (compare-able across runs
+ *                     without leaking the original)
+ *   - length/present: cheap sanity hooks for downstream tooling
+ * The raw `code_verifier` is NEVER serialized — only the derived challenge.
+ */
+function fingerprintPkce(challenge, method) {
+  if (!challenge) {
+    return { present: false, method: method || null };
+  }
+  const { createHash } = require("node:crypto");
+  const sha256 = createHash("sha256").update(challenge).digest("hex");
+  return {
+    present: true,
+    method: method || null,
+    length: challenge.length,
+    prefix: challenge.slice(0, 8),
+    suffix: challenge.length > 16 ? challenge.slice(-8) : null,
+    sha256,
+  };
+}
+
+/**
  * Validate that the authorize URL returned by GoTrue forwarded our PKCE
  * parameters to Google unchanged. Some misconfigurations (e.g. flow_type
  * "implicit" or stripped query params) drop these silently and break
