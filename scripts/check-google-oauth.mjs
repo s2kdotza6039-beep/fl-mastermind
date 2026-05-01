@@ -3944,5 +3944,9 @@ export {
   originSlug,
   fingerprintSecret,
   validateRedirectUriAgainstAllowlist,
+  probeGotrueBuildInfo,
+  classifyGotrueVersion,
+  compareSemver,
+  GOTRUE_BAD_RANGES,
   expectedRedirectUriFor,
 };
