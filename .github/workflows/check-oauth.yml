@@ -27,7 +27,11 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          # Single origin (legacy). Prefer APP_ORIGINS for multi-environment checks.
           APP_ORIGIN: ${{ secrets.APP_ORIGIN || 'https://localhost' }}
+          # Comma- or newline-separated list of every origin that must be allowed
+          # (e.g. "https://app.example.com,https://staging.example.com").
+          APP_ORIGINS: ${{ secrets.APP_ORIGINS }}
           OUTPUT_JSON: ${{ github.workspace }}/oauth-check-results/report.json
         # Capture stdout, strip ANSI colors, expose as outputs.
         # Exit codes: 0=pass, 1=fail, 2=warn.
