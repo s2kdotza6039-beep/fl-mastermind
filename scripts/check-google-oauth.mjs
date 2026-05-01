@@ -24,6 +24,11 @@
  *   EXPECTED_CLIENT_ID         if set, every authorize URL must use this Google client_id
  *   EXPECTED_SCOPES            comma/space-separated scopes that MUST appear (default: "openid email profile")
  *   EXPECTED_RESPONSE_TYPE     required response_type (default: "code")
+ *   E2E_CHECK                  "true" to run an opt-in end-to-end redirect
+ *                              simulation (authorize → /callback with a
+ *                              synthetic error) and assert GoTrue redirects
+ *                              the user back to each APP_ORIGIN.
+ *   E2E_MAX_REDIRECTS          max redirects to follow per origin (default: 5)
  *
  * Usage:
  *   node scripts/check-google-oauth.mjs
