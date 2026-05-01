@@ -126,7 +126,7 @@ async function main() {
     record("fail", "Authorize endpoint returns Google redirect", e.message);
   }
 
-  finish();
+  await finish();
 }
 
 async function finish() {
