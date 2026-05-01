@@ -1208,8 +1208,12 @@ async function runTokenExchangeCheck() {
 async function runTokenAuthHeaderCheck() {
   const verifier = randomBytes(32).toString("base64url");
   const fakeCode = "lovable-oauth-check-hdr-" + randomBytes(8).toString("hex");
-  const url = `${TOKEN_ENDPOINT_URL}?grant_type=pkce`;
-  const body = JSON.stringify({ auth_code: fakeCode, code_verifier: verifier });
+  const grantType = "pkce";
+  const url = `${TOKEN_ENDPOINT_URL}?grant_type=${grantType}`;
+  const payload = { auth_code: fakeCode, code_verifier: verifier };
+  const body = JSON.stringify(payload);
+  // Keys-only snapshot for CI artifacts (no secret values).
+  const requestPayloadKeys = Object.keys(payload).sort();
 
   const variants = [
     {
@@ -1256,9 +1260,24 @@ async function runTokenAuthHeaderCheck() {
         contentType: res.headers.get("content-type") || "",
         elapsedMs,
         body: text.slice(0, 200),
+        request: {
+          grantType,
+          grantTypeSource: "query",
+          payloadKeys: requestPayloadKeys,
+          headerKeys: Object.keys(v.headers).sort(),
+        },
       };
     } catch (e) {
-      responses[v.key] = { error: e.message, status: 0 };
+      responses[v.key] = {
+        error: e.message,
+        status: 0,
+        request: {
+          grantType,
+          grantTypeSource: "query",
+          payloadKeys: requestPayloadKeys,
+          headerKeys: Object.keys(v.headers).sort(),
+        },
+      };
     }
   }
 
