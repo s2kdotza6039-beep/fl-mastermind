@@ -18,6 +18,9 @@
  *   APP_ORIGINS                comma- or newline-separated list of allowed origins.
  *                              Each is probed against /authorize?redirect_to=<origin>;
  *                              any rejected origin produces a hard failure.
+ *   HTTP_TIMEOUT_MS            per-request timeout in ms (default: 10000)
+ *   HTTP_MAX_RETRIES           max retry attempts on transient failures (default: 3)
+ *   HTTP_BACKOFF_MS            initial backoff in ms, doubles each retry (default: 500)
  *
  * Usage:
  *   node scripts/check-google-oauth.mjs
@@ -30,6 +33,10 @@ const ANON_KEY =
   process.env.SUPABASE_PUBLISHABLE_KEY ||
   process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
   process.env.SUPABASE_ANON_KEY;
+
+const HTTP_TIMEOUT_MS = Number(process.env.HTTP_TIMEOUT_MS) || 10_000;
+const HTTP_MAX_RETRIES = Number(process.env.HTTP_MAX_RETRIES) || 3;
+const HTTP_BACKOFF_MS = Number(process.env.HTTP_BACKOFF_MS) || 500;
 
 function parseOrigins() {
   const list = (process.env.APP_ORIGINS || process.env.APP_ORIGIN || "https://localhost")
