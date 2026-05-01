@@ -334,17 +334,20 @@ function detectBase64UrlEdgeCase(value) {
   if (/=/.test(value)) return "contains '=' padding (base64url MUST be unpadded)";
   if (/\+/.test(value)) return "contains '+' (use '-' for base64url)";
   if (/\//.test(value)) return "contains '/' (use '_' for base64url)";
+  // Non-ASCII covers smart quotes, NBSP (U+00A0), zero-width chars, emoji,
+  // etc. Check this BEFORE the whitespace branch because JS `\s` matches
+  // many unicode space chars (NBSP included), and a paste-artifact NBSP
+  // is more diagnostically useful labeled as "non-ASCII" than "whitespace".
+  // eslint-disable-next-line no-control-regex
+  if (/[^\x00-\x7F]/.test(value)) {
+    return "contains non-ASCII / unicode chars (likely paste artifact: NBSP, smart quotes, ZWSP)";
+  }
   if (/\s/.test(value)) {
     const kinds = [];
     if (/ /.test(value)) kinds.push("space");
     if (/\t/.test(value)) kinds.push("tab");
     if (/\r|\n/.test(value)) kinds.push("newline");
     return `contains whitespace (${kinds.join(", ") || "unknown"}) — strip before sending`;
-  }
-  // Non-ASCII covers smart quotes, NBSP, zero-width chars, emoji, etc.
-  // eslint-disable-next-line no-control-regex
-  if (/[^\x00-\x7F]/.test(value)) {
-    return "contains non-ASCII / unicode chars (likely paste artifact: NBSP, smart quotes, ZWSP)";
   }
   // eslint-disable-next-line no-control-regex
   if (/[\x00-\x1F\x7F]/.test(value)) return "contains ASCII control chars";
