@@ -182,6 +182,31 @@ function SignInForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [oauthError, setOauthError] = useState<string | null>(null);
+  const [providerStatus, setProviderStatus] = useState<ProviderStatus | null>(null);
+  const [probing, setProbing] = useState(false);
+
+  // Pick up OAuth errors that came back in the URL (hash or query) after a failed redirect
+  useEffect(() => {
+    const sources = [window.location.hash.replace(/^#/, ""), window.location.search.replace(/^\?/, "")];
+    for (const src of sources) {
+      if (!src) continue;
+      const params = new URLSearchParams(src);
+      const err = params.get("error_description") || params.get("error");
+      if (err) {
+        setOauthError(decodeURIComponent(err));
+        runProbe();
+        break;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function runProbe() {
+    setProbing(true);
+    setProviderStatus(await probeGoogleProvider());
+    setProbing(false);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
