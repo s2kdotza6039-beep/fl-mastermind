@@ -2752,4 +2752,5 @@ export {
   s256Challenge,
   pkceRemediationHint,
   buildRawErrorPayload,
+  snapshotErrorEnvelope,
 };
