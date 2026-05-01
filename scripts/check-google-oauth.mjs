@@ -18,6 +18,9 @@
  *   APP_ORIGINS                comma- or newline-separated list of allowed origins.
  *                              Each is probed against /authorize?redirect_to=<origin>;
  *                              any rejected origin produces a hard failure.
+ *   HTTP_TIMEOUT_MS            per-request timeout in ms (default: 10000)
+ *   HTTP_MAX_RETRIES           max retry attempts on transient failures (default: 3)
+ *   HTTP_BACKOFF_MS            initial backoff in ms, doubles each retry (default: 500)
  *
  * Usage:
  *   node scripts/check-google-oauth.mjs
@@ -30,6 +33,10 @@ const ANON_KEY =
   process.env.SUPABASE_PUBLISHABLE_KEY ||
   process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
   process.env.SUPABASE_ANON_KEY;
+
+const HTTP_TIMEOUT_MS = Number(process.env.HTTP_TIMEOUT_MS) || 10_000;
+const HTTP_MAX_RETRIES = Number(process.env.HTTP_MAX_RETRIES) || 3;
+const HTTP_BACKOFF_MS = Number(process.env.HTTP_BACKOFF_MS) || 500;
 
 function parseOrigins() {
   const list = (process.env.APP_ORIGINS || process.env.APP_ORIGIN || "https://localhost")
@@ -60,6 +67,61 @@ function record(state, label, detail, hint) {
   if (hint) console.log(`  ${YELLOW}→ ${hint}${RESET}`);
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Fetch with per-attempt timeout and exponential backoff.
+ * Retries on: AbortError (timeout), network errors, HTTP 408/425/429/5xx.
+ * Honors `Retry-After` (seconds or HTTP-date) when present.
+ * Non-retryable 4xx responses are returned immediately so the caller can
+ * surface the precise error to the user.
+ */
+async function fetchWithRetry(url, init = {}, label = "request") {
+  const attempts = HTTP_MAX_RETRIES + 1;
+  let lastErr;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), HTTP_TIMEOUT_MS);
+    const start = Date.now();
+    try {
+      const res = await fetch(url, { ...init, signal: ctrl.signal });
+      clearTimeout(timer);
+      const elapsed = Date.now() - start;
+      const retryable = [408, 425, 429].includes(res.status) || res.status >= 500;
+      if (!retryable) return { res, attempts: attempt, elapsedMs: elapsed };
+
+      let waitMs = HTTP_BACKOFF_MS * Math.pow(2, attempt - 1);
+      const retryAfter = res.headers.get("retry-after");
+      if (retryAfter) {
+        const asInt = Number(retryAfter);
+        if (Number.isFinite(asInt)) waitMs = Math.max(waitMs, asInt * 1000);
+        else {
+          const dateMs = Date.parse(retryAfter);
+          if (!Number.isNaN(dateMs)) waitMs = Math.max(waitMs, dateMs - Date.now());
+        }
+      }
+      lastErr = new Error(`HTTP ${res.status} on ${label} (attempt ${attempt}/${attempts}, ${elapsed}ms)`);
+      if (attempt === attempts) return { res, attempts: attempt, elapsedMs: elapsed };
+      console.log(`${DIM}  ↻ ${label}: HTTP ${res.status}, retrying in ${Math.round(waitMs)}ms${RESET}`);
+      await sleep(waitMs);
+    } catch (e) {
+      clearTimeout(timer);
+      const elapsed = Date.now() - start;
+      const isTimeout = e?.name === "AbortError";
+      const reason = isTimeout
+        ? `timed out after ${HTTP_TIMEOUT_MS}ms`
+        : `network error: ${e?.message || e}`;
+      lastErr = new Error(`${label} ${reason} (attempt ${attempt}/${attempts}, ${elapsed}ms)`);
+      if (attempt === attempts) throw lastErr;
+      const waitMs = HTTP_BACKOFF_MS * Math.pow(2, attempt - 1);
+      console.log(`${DIM}  ↻ ${label}: ${reason}, retrying in ${waitMs}ms${RESET}`);
+      await sleep(waitMs);
+    }
+  }
+  throw lastErr || new Error(`${label} failed`);
+}
+
+
 async function main() {
   console.log(`${BOLD}Google OAuth configuration check${RESET}`);
   console.log(`${DIM}Target: ${SUPABASE_URL || "(none)"}${RESET}\n`);
@@ -79,17 +141,32 @@ async function main() {
   // 2. Auth settings reachable + provider enabled
   let settings = null;
   try {
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/settings`, {
-      headers: { apikey: ANON_KEY },
-    });
+    const { res, attempts, elapsedMs } = await fetchWithRetry(
+      `${SUPABASE_URL}/auth/v1/settings`,
+      { headers: { apikey: ANON_KEY } },
+      "GET /auth/v1/settings"
+    );
     if (!res.ok) {
-      record("fail", "Reach auth settings endpoint", `HTTP ${res.status}`);
+      record(
+        "fail",
+        "Reach auth settings endpoint",
+        `HTTP ${res.status} after ${attempts} attempt(s) in ${elapsedMs}ms`
+      );
     } else {
       settings = await res.json();
-      record("pass", "Reach auth settings endpoint", "/auth/v1/settings 200");
+      record(
+        "pass",
+        "Reach auth settings endpoint",
+        `/auth/v1/settings 200 (${attempts} attempt${attempts > 1 ? "s" : ""}, ${elapsedMs}ms)`
+      );
     }
   } catch (e) {
-    record("fail", "Reach auth settings endpoint", e.message);
+    record(
+      "fail",
+      "Reach auth settings endpoint",
+      e.message,
+      "Network or timeout — check your runner's connectivity to the Cloud project URL."
+    );
   }
 
   if (settings) {
@@ -111,17 +188,20 @@ async function main() {
     const label = `Authorize allows redirect_to=${origin}`;
     try {
       const url = `${SUPABASE_URL}/auth/v1/authorize?provider=google&skip_http_redirect=true&redirect_to=${encodeURIComponent(origin)}`;
-      const res = await fetch(url, { headers: { apikey: ANON_KEY } });
+      const { res, attempts, elapsedMs } = await fetchWithRetry(
+        url,
+        { headers: { apikey: ANON_KEY } },
+        `GET /authorize (${origin})`
+      );
       let body = null;
       try { body = await res.json(); } catch { /* non-json */ }
+      const tail = ` (${attempts} attempt${attempts > 1 ? "s" : ""}, ${elapsedMs}ms)`;
 
       if (res.ok && body?.url && /accounts\.google\.com/i.test(body.url)) {
-        // Confirm Supabase forwarded our redirect_to (Google's `redirect_uri` param
-        // points at Supabase callback, but `state` carries our origin; if the URL
-        // mentions our host anywhere it's a strong positive signal).
-        record("pass", label, body.url.slice(0, 120) + (body.url.length > 120 ? "…" : ""));
+        const preview = body.url.slice(0, 120) + (body.url.length > 120 ? "…" : "");
+        record("pass", label, preview + tail);
       } else if (res.ok && body?.url) {
-        record("warn", label, `Got non-Google URL: ${body.url.slice(0, 120)}`);
+        record("warn", label, `Got non-Google URL: ${body.url.slice(0, 120)}` + tail);
       } else {
         const msg =
           body?.error_description || body?.msg || body?.error || `HTTP ${res.status}`;
@@ -135,11 +215,18 @@ async function main() {
           ? "Google client ID/secret missing — set them in Cloud auth settings or enable Lovable's managed credentials."
           : /not enabled|unsupported provider/i.test(msg)
           ? "Provider not enabled — re-run social auth setup in Cloud."
+          : res.status >= 500
+          ? "Auth server error after retries — likely a transient outage; re-run later."
           : undefined;
-        record("fail", label, msg, hint);
+        record("fail", label, msg + tail, hint);
       }
     } catch (e) {
-      record("fail", label, e.message);
+      record(
+        "fail",
+        label,
+        e.message,
+        "Network or timeout — check runner connectivity to the Cloud project URL."
+      );
     }
   }
 
