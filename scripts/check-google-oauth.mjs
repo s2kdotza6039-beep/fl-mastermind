@@ -811,6 +811,15 @@ async function main() {
     }
   }
 
+  // 5b. Opt-in explicit login flow: capture real GoTrue state and assert
+  //     the redirect_to round-trips end-to-end through the callback chain.
+  if (/^(1|true|yes)$/i.test(process.env.E2E_LOGIN_FLOW || "")) {
+    console.log(`\n${DIM}E2E_LOGIN_FLOW enabled — capturing real state and verifying round-trip…${RESET}`);
+    for (const origin of APP_ORIGINS) {
+      await runE2ELoginFlow(origin);
+    }
+  }
+
   // 6. Always-on token-exchange shape check (cheap; no real code consumed).
   if (/^(0|false|no)$/i.test(process.env.TOKEN_EXCHANGE_CHECK || "") === false) {
     console.log(`\n${DIM}Probing /auth/v1/token shape (PKCE grant)…${RESET}`);
