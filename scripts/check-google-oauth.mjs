@@ -1236,6 +1236,141 @@ async function tokenProbe({
   }
 }
 
+/**
+ * Explicit end-to-end login-flow trace.
+ *
+ * Differs from runE2ERedirect() in that it:
+ *   - Sends real PKCE params on the authorize call (matching what a browser
+ *     client would do), so the captured state is what GoTrue would actually
+ *     mint for a real login.
+ *   - Records the full state value in the per-origin summary (sanitized:
+ *     only length + sha256 fingerprint + decoder-extracted redirect_to).
+ *   - Asserts the state is echoed back unchanged in the final callback URL
+ *     (a strict round-trip check, not just origin matching).
+ *   - Captures every hop's status + Location for triage.
+ *
+ * Still uses error=access_denied to avoid Google's consent screen — we are
+ * verifying GoTrue's state handling and redirect plumbing, not Google's.
+ */
+async function runE2ELoginFlow(origin) {
+  const label = `E2E login flow round-trips state to ${origin}`;
+  const maxHops = Number(process.env.E2E_MAX_REDIRECTS) || 5;
+  const pkce = generatePkce();
+
+  try {
+    // ── Step 1: authorize call to mint a real state value ───────────────
+    const authUrl =
+      `${SUPABASE_URL}/auth/v1/authorize?provider=google&skip_http_redirect=true` +
+      `&redirect_to=${encodeURIComponent(origin)}` +
+      `&code_challenge=${encodeURIComponent(pkce.challenge)}` +
+      `&code_challenge_method=${pkce.method}`;
+    const { res: authRes } = await fetchWithRetry(
+      authUrl,
+      { headers: { apikey: ANON_KEY } },
+      `E2E-login authorize (${origin})`
+    );
+    const authBody = await authRes.json().catch(() => null);
+    if (!authRes.ok || !authBody?.url) {
+      record("fail", label, `authorize step failed: HTTP ${authRes.status}`);
+      return;
+    }
+    const googleUrl = new URL(authBody.url);
+    const sentState = googleUrl.searchParams.get("state");
+    if (!sentState) {
+      record("fail", label, "no state in authorize response", "Cannot trace round-trip without state.");
+      return;
+    }
+
+    // Decode redirect_to from state for cross-checking.
+    const decoded = extractRedirectTo(null, sentState);
+    const stateSha = createHash("sha256").update(sentState).digest("hex");
+
+    // ── Step 2: replay Google's callback (cancelled flow) ───────────────
+    let next =
+      `${SUPABASE_URL}/auth/v1/callback?state=${encodeURIComponent(sentState)}` +
+      `&error=access_denied&error_description=e2e_login_flow_trace`;
+    const chain = [];
+    let finalUrl = null;
+
+    for (let hop = 0; hop < maxHops; hop++) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), HTTP_TIMEOUT_MS);
+      let res;
+      try {
+        res = await fetch(next, {
+          redirect: "manual",
+          headers: { apikey: ANON_KEY },
+          signal: ctrl.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+      const loc = res.headers.get("location");
+      chain.push({ hop, status: res.status, url: next, location: loc });
+      if (res.status >= 300 && res.status < 400 && loc) {
+        next = new URL(loc, next).toString();
+        continue;
+      }
+      finalUrl = next;
+      break;
+    }
+    if (!finalUrl) finalUrl = next;
+
+    // ── Step 3: assertions ──────────────────────────────────────────────
+    let finalParsed;
+    try { finalParsed = new URL(finalUrl); } catch { finalParsed = null; }
+
+    const originOk = finalParsed && originsMatch(finalUrl, origin);
+    // State echo: GoTrue may strip state from the FINAL URL (it's an
+    // app-side hash by then), but the error/error_description should be
+    // present. We check both.
+    const finalQuery = finalParsed?.searchParams || new URLSearchParams();
+    const finalHash = finalParsed?.hash?.startsWith("#")
+      ? new URLSearchParams(finalParsed.hash.slice(1))
+      : new URLSearchParams();
+    const echoedError =
+      finalQuery.get("error") || finalHash.get("error") || null;
+    const echoedErrorOk = echoedError === "access_denied";
+
+    const summary = originSummary(origin);
+    summary.e2eLogin = {
+      sentState: { length: sentState.length, sha256: stateSha, decoder: decoded.source },
+      decodedRedirectTo: decoded.value,
+      hops: chain.length,
+      finalUrl,
+      originMatches: !!originOk,
+      echoedError,
+      chain: chain.map((h) => ({ hop: h.hop, status: h.status, location: h.location })),
+    };
+
+    if (originOk && echoedErrorOk) {
+      record(
+        "pass",
+        label,
+        `state(sha=${stateSha.slice(0, 12)}…) → ${chain.length} hop(s) → ${finalUrl} (error=access_denied echoed)`
+      );
+    } else if (originOk && !echoedErrorOk) {
+      noteMismatch(origin, `e2e-login: error param missing/changed (got "${echoedError}")`);
+      record(
+        "warn",
+        label,
+        `landed on ${origin} but error="${echoedError}" (expected access_denied)`,
+        "GoTrue may be rewriting error params; check callback handler logic.",
+      );
+    } else {
+      noteMismatch(origin, `e2e-login: final url=${finalUrl}`);
+      record(
+        "fail",
+        label,
+        `expected origin ${origin}, got ${finalUrl} (${chain.length} hop${chain.length === 1 ? "" : "s"})`,
+        "State round-trip broken — check Cloud → Auth → URL Configuration: Site URL and Redirect URLs must include this origin."
+      );
+    }
+  } catch (e) {
+    record("fail", label, e.message, "Network or timeout during E2E login-flow trace.");
+  }
+}
+
 main().catch((e) => {
   console.error(`${RED}Unexpected error:${RESET}`, e);
   process.exit(1);
