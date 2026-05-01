@@ -2616,4 +2616,5 @@ export {
   generatePkce,
   s256Challenge,
   pkceRemediationHint,
+  buildRawErrorPayload,
 };
