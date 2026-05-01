@@ -129,7 +129,7 @@ async function main() {
   finish();
 }
 
-function finish() {
+async function finish() {
   const failed = results.filter((r) => r.state === "fail").length;
   const warned = results.filter((r) => r.state === "warn").length;
   const passed = results.filter((r) => r.state === "pass").length;
