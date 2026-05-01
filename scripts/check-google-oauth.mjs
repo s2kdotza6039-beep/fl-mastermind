@@ -57,6 +57,19 @@ const ANON_KEY =
   process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
   process.env.SUPABASE_ANON_KEY;
 
+/**
+ * Path of the GoTrue token-exchange endpoint, relative to SUPABASE_URL.
+ * Override via TOKEN_ENDPOINT_PATH for non-default GoTrue mounts
+ * (e.g. self-hosted "/gotrue/v1/token" or proxied "/api/auth/v1/token").
+ * Leading slash is enforced; trailing slashes are stripped.
+ */
+const TOKEN_ENDPOINT_PATH = (() => {
+  const raw = (process.env.TOKEN_ENDPOINT_PATH || "/auth/v1/token").trim();
+  const withLead = raw.startsWith("/") ? raw : `/${raw}`;
+  return withLead.replace(/\/+$/, "");
+})();
+const TOKEN_ENDPOINT_URL = `${(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").replace(/\/+$/, "")}${TOKEN_ENDPOINT_PATH}`;
+
 const HTTP_TIMEOUT_MS = Number(process.env.HTTP_TIMEOUT_MS) || 10_000;
 const HTTP_MAX_RETRIES = Number(process.env.HTTP_MAX_RETRIES) || 3;
 const HTTP_BACKOFF_MS = Number(process.env.HTTP_BACKOFF_MS) || 500;
