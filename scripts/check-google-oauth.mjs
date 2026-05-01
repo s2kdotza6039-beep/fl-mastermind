@@ -1280,7 +1280,7 @@ async function runTokenAuthHeaderCheck() {
       "fail",
       "Token endpoint rejects requests without apikey/Authorization",
       `B returned the SAME response as A (${sig(A)}) — auth headers are not being validated`,
-      "/auth/v1/token must require an apikey. Check the project's Auth proxy / API gateway configuration.",
+      `${TOKEN_ENDPOINT_PATH} must require an apikey. Check the project's Auth proxy / API gateway configuration.`,
       responses
     );
   } else {
