@@ -1303,14 +1303,15 @@ async function runTokenAuthHeaderCheck() {
   const responses = {};
   for (const v of variants) {
     try {
-      const { res, elapsedMs } = await fetchWithRetry(
+      const { res, elapsedMs, attempts } = await fetchWithRetry(
         url,
         {
           method: "POST",
           headers: { "Content-Type": "application/json", ...v.headers },
           body,
         },
-        `token hdr-probe ${v.key} (${v.desc})`
+        `token hdr-probe ${v.key} (${v.desc})`,
+        TOKEN_RETRY_OPTS
       );
       const text = await res.text();
       let parsed = null;
