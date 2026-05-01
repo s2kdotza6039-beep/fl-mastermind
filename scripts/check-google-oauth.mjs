@@ -170,12 +170,13 @@ async function finish() {
       exitCode,
       counts: { passed, warned, failed, total: results.length },
       target: SUPABASE_URL || null,
-      appOrigin: APP_ORIGIN,
+      appOrigins: APP_ORIGINS,
       ranAt: new Date().toISOString(),
       env: {
         SUPABASE_URL: !!SUPABASE_URL,
         SUPABASE_PUBLISHABLE_KEY: !!ANON_KEY,
         APP_ORIGIN: !!process.env.APP_ORIGIN,
+        APP_ORIGINS: !!process.env.APP_ORIGINS,
       },
       ci: {
         repository: process.env.GITHUB_REPOSITORY || null,
