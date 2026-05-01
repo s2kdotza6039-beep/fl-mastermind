@@ -491,7 +491,15 @@ function validatePkce(googleUrl, sent, origin) {
   let parsed;
   try { parsed = new URL(googleUrl); }
   catch {
-    record("fail", `PKCE forwarded to Google (${origin})`, "authorize URL not parseable");
+    const hint = pkceRemediationHint(origin, "missing_params");
+    attachPkceRemediation(origin, hint);
+    record(
+      "fail",
+      `PKCE forwarded to Google (${origin})`,
+      "authorize URL not parseable",
+      hint.summary,
+      { remediation: hint }
+    );
     return null;
   }
   const gotChallenge = parsed.searchParams.get("code_challenge");
