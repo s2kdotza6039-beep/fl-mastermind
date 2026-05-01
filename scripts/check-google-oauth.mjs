@@ -121,6 +121,62 @@ async function fetchWithRetry(url, init = {}, label = "request") {
   throw lastErr || new Error(`${label} failed`);
 }
 
+/**
+ * Validate the Google authorize URL returned by GoTrue:
+ *   - `redirect_uri` (where Google sends the user back) MUST be
+ *     `<SUPABASE_URL>/auth/v1/callback` exactly.
+ *   - `redirect_to` (in `state` or as a query param) SHOULD echo the
+ *     requested app origin so users land back on the right environment.
+ */
+function validateCallback(googleUrl, origin) {
+  let parsed;
+  try {
+    parsed = new URL(googleUrl);
+  } catch {
+    record("fail", `Callback URL parseable (${origin})`, `Could not parse: ${googleUrl.slice(0, 120)}`);
+    return;
+  }
+
+  const expectedCallback = `${SUPABASE_URL.replace(/\/$/, "")}/auth/v1/callback`;
+  const actualCallback = parsed.searchParams.get("redirect_uri");
+
+  if (!actualCallback) {
+    record(
+      "fail",
+      `Supabase callback present (${origin})`,
+      "Google authorize URL has no redirect_uri parameter",
+      "GoTrue should always set redirect_uri=<SUPABASE_URL>/auth/v1/callback. Re-check provider configuration."
+    );
+  } else if (actualCallback !== expectedCallback) {
+    record(
+      "fail",
+      `Supabase callback matches /auth/v1/callback (${origin})`,
+      `expected ${expectedCallback}, got ${actualCallback}`,
+      `Add "${expectedCallback}" to your Google OAuth client's Authorized redirect URIs and ensure SUPABASE_URL matches the project that owns the Google credentials.`
+    );
+  } else {
+    record("pass", `Supabase callback matches /auth/v1/callback (${origin})`, actualCallback);
+  }
+
+  // `redirect_to` is normally encoded inside `state` (opaque) but GoTrue also
+  // forwards it as a top-level param on some configs. Best-effort check.
+  const stateParam = parsed.searchParams.get("state") || "";
+  const echoesOrigin =
+    parsed.searchParams.get("redirect_to") === origin ||
+    stateParam.includes(encodeURIComponent(origin)) ||
+    stateParam.includes(origin);
+
+  if (echoesOrigin) {
+    record("pass", `Authorize URL preserves redirect_to (${origin})`, "found in state/redirect_to");
+  } else {
+    record(
+      "warn",
+      `Authorize URL preserves redirect_to (${origin})`,
+      "could not confirm origin is round-tripped via state (state may be opaque/encrypted)",
+      "If sign-in lands on the wrong environment, double-check Cloud → Auth → URL Configuration."
+    );
+  }
+}
 
 async function main() {
   console.log(`${BOLD}Google OAuth configuration check${RESET}`);
@@ -200,6 +256,7 @@ async function main() {
       if (res.ok && body?.url && /accounts\.google\.com/i.test(body.url)) {
         const preview = body.url.slice(0, 120) + (body.url.length > 120 ? "…" : "");
         record("pass", label, preview + tail);
+        validateCallback(body.url, origin);
       } else if (res.ok && body?.url) {
         record("warn", label, `Got non-Google URL: ${body.url.slice(0, 120)}` + tail);
       } else {
