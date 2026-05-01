@@ -38,8 +38,11 @@ import { createHash, randomBytes } from "node:crypto";
  *   PKCE_NEGATIVE_TESTS        "true" to additionally probe with omitted /
  *                              "plain" PKCE and assert the validator fails
  *                              with the expected error messages.
- *   TOKEN_EXCHANGE_CHECK       "false" to skip the /auth/v1/token shape probes
+ *   TOKEN_EXCHANGE_CHECK       "false" to skip the token-endpoint shape probes
  *                              (default: enabled). Sends 3 synthetic POSTs.
+ *   TOKEN_ENDPOINT_PATH        Override the GoTrue token endpoint path
+ *                              (default: "/auth/v1/token"). Useful for
+ *                              self-hosted or proxied GoTrue deployments.
  *   E2E_LOGIN_FLOW             "true" to run an explicit login-flow trace:
  *                              captures the real `state` GoTrue mints, replays
  *                              the callback, and asserts redirect_to round-trips
