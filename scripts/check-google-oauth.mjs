@@ -250,6 +250,45 @@ const EXPECTED_SCOPES = (process.env.EXPECTED_SCOPES || "openid email profile")
   .map((s) => s.trim())
   .filter(Boolean);
 
+// Per-origin redirect_uri expectations.
+//   EXPECTED_CALLBACK_PATH — default path appended to each origin (default "/auth/v1/callback")
+//   APP_CALLBACKS          — comma/newline-separated overrides as "<origin>=<full-callback-url>"
+//                            e.g. "https://app.example.com=https://api.example.com/oauth/cb"
+const EXPECTED_CALLBACK_PATH = process.env.EXPECTED_CALLBACK_PATH || "/auth/v1/callback";
+const APP_CALLBACKS = (() => {
+  const map = new Map();
+  for (const entry of (process.env.APP_CALLBACKS || "").split(/[,\n]/)) {
+    const [k, v] = entry.split("=").map((s) => s?.trim());
+    if (k && v) map.set(k, v);
+  }
+  return map;
+})();
+
+/**
+ * Resolve the redirect_uri we expect Google to receive for a given origin.
+ * Order of precedence:
+ *   1. APP_CALLBACKS["<origin>"]            — explicit per-origin override
+ *   2. <origin> + EXPECTED_CALLBACK_PATH    — derived from the app origin
+ *      (only when EXPECTED_CALLBACK_PATH is non-default OR APP_CALLBACKS is set)
+ *   3. <SUPABASE_URL> + EXPECTED_CALLBACK_PATH (default — GoTrue handles callback)
+ */
+function expectedRedirectUriFor(origin) {
+  if (APP_CALLBACKS.has(origin)) {
+    return { url: APP_CALLBACKS.get(origin), source: "APP_CALLBACKS override" };
+  }
+  // If the user customized either knob, derive from the app origin so each
+  // environment can have its own callback host (e.g. proxied custom domains).
+  if (process.env.APP_CALLBACKS || process.env.EXPECTED_CALLBACK_PATH) {
+    const url = origin.replace(/\/$/, "") + EXPECTED_CALLBACK_PATH;
+    return { url, source: `APP_ORIGIN + ${EXPECTED_CALLBACK_PATH}` };
+  }
+  // Default: managed Supabase callback.
+  return {
+    url: `${SUPABASE_URL.replace(/\/$/, "")}${EXPECTED_CALLBACK_PATH}`,
+    source: `SUPABASE_URL + ${EXPECTED_CALLBACK_PATH}`,
+  };
+}
+
 /**
  * Validate the standard OAuth params on the Google authorize URL:
  *   - response_type must equal EXPECTED_RESPONSE_TYPE (default "code")
