@@ -21,6 +21,9 @@
  *   HTTP_TIMEOUT_MS            per-request timeout in ms (default: 10000)
  *   HTTP_MAX_RETRIES           max retry attempts on transient failures (default: 3)
  *   HTTP_BACKOFF_MS            initial backoff in ms, doubles each retry (default: 500)
+ *   EXPECTED_CLIENT_ID         if set, every authorize URL must use this Google client_id
+ *   EXPECTED_SCOPES            comma/space-separated scopes that MUST appear (default: "openid email profile")
+ *   EXPECTED_RESPONSE_TYPE     required response_type (default: "code")
  *
  * Usage:
  *   node scripts/check-google-oauth.mjs
@@ -180,6 +183,84 @@ function validatePkce(googleUrl, sent, origin) {
   return { challenge: gotChallenge, method: gotMethod };
 }
 
+const EXPECTED_CLIENT_ID = process.env.EXPECTED_CLIENT_ID || null;
+const EXPECTED_RESPONSE_TYPE = process.env.EXPECTED_RESPONSE_TYPE || "code";
+const EXPECTED_SCOPES = (process.env.EXPECTED_SCOPES || "openid email profile")
+  .split(/[\s,]+/)
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+/**
+ * Validate the standard OAuth params on the Google authorize URL:
+ *   - response_type must equal EXPECTED_RESPONSE_TYPE (default "code")
+ *   - scope must include every entry in EXPECTED_SCOPES
+ *   - client_id must be present (and equal EXPECTED_CLIENT_ID if set)
+ * Returns the observed client_id so the caller can enforce cross-origin
+ * consistency.
+ */
+function validateAuthorizeParams(googleUrl, origin) {
+  let parsed;
+  try { parsed = new URL(googleUrl); }
+  catch {
+    record("fail", `Authorize params parseable (${origin})`, "URL not parseable");
+    return null;
+  }
+
+  // response_type
+  const responseType = parsed.searchParams.get("response_type");
+  if (responseType === EXPECTED_RESPONSE_TYPE) {
+    record("pass", `response_type=${EXPECTED_RESPONSE_TYPE} (${origin})`, `response_type=${responseType}`);
+  } else {
+    record(
+      "fail",
+      `response_type=${EXPECTED_RESPONSE_TYPE} (${origin})`,
+      `expected "${EXPECTED_RESPONSE_TYPE}", got "${responseType ?? "(missing)"}"`,
+      'Auth code flow requires response_type=code. If you see "token", the client is using the implicit flow — set flow_type="pkce".'
+    );
+  }
+
+  // scope
+  const scopeParam = parsed.searchParams.get("scope") || "";
+  const scopes = scopeParam.split(/[\s+]+/).map((s) => s.trim()).filter(Boolean);
+  const missing = EXPECTED_SCOPES.filter((s) => !scopes.includes(s));
+  if (missing.length === 0) {
+    record("pass", `Required scopes present (${origin})`, `scope="${scopes.join(" ")}"`);
+  } else {
+    record(
+      "fail",
+      `Required scopes present (${origin})`,
+      `missing: ${missing.join(", ")} (got "${scopeParam}")`,
+      "Configure the requested scopes in your signInWithOAuth call (or set EXPECTED_SCOPES if your app intentionally uses a different set)."
+    );
+  }
+
+  // client_id
+  const clientId = parsed.searchParams.get("client_id");
+  if (!clientId) {
+    record(
+      "fail",
+      `client_id present (${origin})`,
+      "Google authorize URL has no client_id",
+      "Provider is not fully configured — check Cloud → Auth Settings → Google."
+    );
+  } else if (EXPECTED_CLIENT_ID && clientId !== EXPECTED_CLIENT_ID) {
+    record(
+      "fail",
+      `client_id matches EXPECTED_CLIENT_ID (${origin})`,
+      `expected ${EXPECTED_CLIENT_ID}, got ${clientId}`,
+      "Wrong Google OAuth client — confirm the client_id configured in Cloud matches the one provisioned in Google Cloud Console."
+    );
+  } else {
+    record(
+      "pass",
+      `client_id present (${origin})`,
+      EXPECTED_CLIENT_ID ? `matches EXPECTED_CLIENT_ID (${clientId})` : clientId
+    );
+  }
+
+  return clientId;
+}
+
 /**
  * Validate the Google authorize URL returned by GoTrue:
  *   - `redirect_uri` (where Google sends the user back) MUST be
@@ -300,6 +381,7 @@ async function main() {
   // 3. Authorize endpoint actually returns a Google redirect — per allowed origin
   console.log(`\n${DIM}Probing ${APP_ORIGINS.length} allowed origin(s) with PKCE…${RESET}`);
   const seenChallenges = new Map(); // challenge → origin (to detect reuse)
+  const seenClientIds = new Map(); // client_id → origin (cross-env consistency)
   for (const origin of APP_ORIGINS) {
     const label = `Authorize allows redirect_to=${origin}`;
     const pkce = await generatePkce();
@@ -322,6 +404,21 @@ async function main() {
         const preview = body.url.slice(0, 120) + (body.url.length > 120 ? "…" : "");
         record("pass", label, preview + tail);
         validateCallback(body.url, origin);
+        const clientId = validateAuthorizeParams(body.url, origin);
+        if (clientId) {
+          if (seenClientIds.size && !seenClientIds.has(clientId)) {
+            const others = [...seenClientIds.entries()]
+              .map(([cid, o]) => `${o}=${cid}`)
+              .join("; ");
+            record(
+              "fail",
+              `client_id consistent across origins (${origin})`,
+              `${origin} uses ${clientId}, but other origins used ${others}`,
+              "All APP_ORIGINS should resolve to the same Google OAuth client. Mixed client_ids usually mean SUPABASE_URL points at a different project than expected."
+            );
+          }
+          seenClientIds.set(clientId, origin);
+        }
         const got = validatePkce(body.url, pkce, origin);
         if (got?.challenge) {
           const prev = seenChallenges.get(got.challenge);
