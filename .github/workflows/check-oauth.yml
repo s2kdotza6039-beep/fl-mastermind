@@ -1,0 +1,28 @@
+name: Google OAuth Config Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Daily smoke test at 06:00 UTC — catches drift in Cloud auth settings
+    - cron: "0 6 * * *"
+
+jobs:
+  oauth:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run Google OAuth configuration check
+        env:
+          # Add these as repository secrets in GitHub → Settings → Secrets → Actions
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          APP_ORIGIN: ${{ secrets.APP_ORIGIN || 'https://localhost' }}
+        run: node scripts/check-google-oauth.mjs
