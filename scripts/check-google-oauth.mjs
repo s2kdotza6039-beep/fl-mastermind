@@ -22,6 +22,17 @@ import { createHash, randomBytes } from "node:crypto";
  *   HTTP_TIMEOUT_MS            per-request timeout in ms (default: 10000)
  *   HTTP_MAX_RETRIES           max retry attempts on transient failures (default: 3)
  *   HTTP_BACKOFF_MS            initial backoff in ms, doubles each retry (default: 500)
+ *   TOKEN_HTTP_TIMEOUT_MS      per-request timeout for token-endpoint probes
+ *                              (default: HTTP_TIMEOUT_MS)
+ *   TOKEN_HTTP_MAX_RETRIES     max retries for token-endpoint probes only
+ *                              (default: max(HTTP_MAX_RETRIES, 4))
+ *   TOKEN_HTTP_BACKOFF_MS      initial backoff for token-endpoint probes
+ *                              (default: max(HTTP_BACKOFF_MS, 750))
+ *   TOKEN_HTTP_BACKOFF_FACTOR  exponential factor for token retries (default: 2)
+ *   TOKEN_HTTP_BACKOFF_MAX_MS  cap on any single backoff wait (default: 15000)
+ *   TOKEN_HTTP_JITTER_MS       +/- random jitter ms per wait (default: 250) —
+ *                              spreads retries across CI shards to avoid
+ *                              synchronized rate-limit hits
  *   EXPECTED_CLIENT_ID         if set, every authorize URL must use this Google client_id
  *   EXPECTED_SCOPES            comma/space-separated scopes that MUST appear (default: "openid email profile")
  *   EXPECTED_RESPONSE_TYPE     required response_type (default: "code")
@@ -76,6 +87,56 @@ const TOKEN_ENDPOINT_URL = `${(process.env.SUPABASE_URL || process.env.VITE_SUPA
 const HTTP_TIMEOUT_MS = Number(process.env.HTTP_TIMEOUT_MS) || 10_000;
 const HTTP_MAX_RETRIES = Number(process.env.HTTP_MAX_RETRIES) || 3;
 const HTTP_BACKOFF_MS = Number(process.env.HTTP_BACKOFF_MS) || 500;
+
+/**
+ * Token-endpoint-specific retry/backoff overrides.
+ *
+ * The /auth/v1/token probes are the most flake-prone in CI: they hit a
+ * rate-limited GoTrue endpoint, often through a shared egress IP, and
+ * transient 5xx / 429 / connection-reset errors should not fail the
+ * pipeline. These envs let operators tune the probe budget without
+ * affecting the rest of the script's HTTP behaviour.
+ *
+ *   TOKEN_HTTP_TIMEOUT_MS       per-request timeout (default: HTTP_TIMEOUT_MS)
+ *   TOKEN_HTTP_MAX_RETRIES      max retry attempts  (default: max(HTTP_MAX_RETRIES, 4))
+ *   TOKEN_HTTP_BACKOFF_MS       initial backoff ms  (default: max(HTTP_BACKOFF_MS, 750))
+ *   TOKEN_HTTP_BACKOFF_FACTOR   exponential factor  (default: 2)
+ *   TOKEN_HTTP_BACKOFF_MAX_MS   cap for any single backoff wait (default: 15000)
+ *   TOKEN_HTTP_JITTER_MS        +/- random jitter ms applied to each wait (default: 250)
+ */
+const TOKEN_HTTP_TIMEOUT_MS =
+  Number(process.env.TOKEN_HTTP_TIMEOUT_MS) || HTTP_TIMEOUT_MS;
+const TOKEN_HTTP_MAX_RETRIES = (() => {
+  const raw = Number(process.env.TOKEN_HTTP_MAX_RETRIES);
+  if (Number.isFinite(raw) && raw >= 0) return raw;
+  return Math.max(HTTP_MAX_RETRIES, 4);
+})();
+const TOKEN_HTTP_BACKOFF_MS = (() => {
+  const raw = Number(process.env.TOKEN_HTTP_BACKOFF_MS);
+  if (Number.isFinite(raw) && raw >= 0) return raw;
+  return Math.max(HTTP_BACKOFF_MS, 750);
+})();
+const TOKEN_HTTP_BACKOFF_FACTOR =
+  Number(process.env.TOKEN_HTTP_BACKOFF_FACTOR) || 2;
+const TOKEN_HTTP_BACKOFF_MAX_MS =
+  Number(process.env.TOKEN_HTTP_BACKOFF_MAX_MS) || 15_000;
+const TOKEN_HTTP_JITTER_MS = (() => {
+  const raw = Number(process.env.TOKEN_HTTP_JITTER_MS);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 250;
+})();
+
+/**
+ * Bundle of overrides passed to fetchWithRetry for any /auth/v1/token call.
+ * Kept as a single object so future probe sites stay in sync automatically.
+ */
+const TOKEN_RETRY_OPTS = Object.freeze({
+  timeoutMs: TOKEN_HTTP_TIMEOUT_MS,
+  maxRetries: TOKEN_HTTP_MAX_RETRIES,
+  backoffMs: TOKEN_HTTP_BACKOFF_MS,
+  backoffFactor: TOKEN_HTTP_BACKOFF_FACTOR,
+  backoffMaxMs: TOKEN_HTTP_BACKOFF_MAX_MS,
+  jitterMs: TOKEN_HTTP_JITTER_MS,
+});
 
 function parseOrigins() {
   const list = (process.env.APP_ORIGINS || process.env.APP_ORIGIN || "https://localhost")
@@ -155,12 +216,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * Non-retryable 4xx responses are returned immediately so the caller can
  * surface the precise error to the user.
  */
-async function fetchWithRetry(url, init = {}, label = "request") {
-  const attempts = HTTP_MAX_RETRIES + 1;
+async function fetchWithRetry(url, init = {}, label = "request", opts = {}) {
+  const timeoutMs = Number.isFinite(opts.timeoutMs) ? opts.timeoutMs : HTTP_TIMEOUT_MS;
+  const maxRetries = Number.isFinite(opts.maxRetries) ? opts.maxRetries : HTTP_MAX_RETRIES;
+  const backoffMs = Number.isFinite(opts.backoffMs) ? opts.backoffMs : HTTP_BACKOFF_MS;
+  const backoffFactor = Number.isFinite(opts.backoffFactor) ? opts.backoffFactor : 2;
+  const backoffMaxMs = Number.isFinite(opts.backoffMaxMs) ? opts.backoffMaxMs : Infinity;
+  const jitterMs = Number.isFinite(opts.jitterMs) ? opts.jitterMs : 0;
+  const computeWait = (attempt) => {
+    const base = backoffMs * Math.pow(backoffFactor, attempt - 1);
+    const jitter = jitterMs ? (Math.random() * 2 - 1) * jitterMs : 0;
+    return Math.min(backoffMaxMs, Math.max(0, base + jitter));
+  };
+
+  const attempts = maxRetries + 1;
   let lastErr;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), HTTP_TIMEOUT_MS);
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     const start = Date.now();
     try {
       const res = await fetch(url, { ...init, signal: ctrl.signal });
@@ -169,7 +242,7 @@ async function fetchWithRetry(url, init = {}, label = "request") {
       const retryable = [408, 425, 429].includes(res.status) || res.status >= 500;
       if (!retryable) return { res, attempts: attempt, elapsedMs: elapsed };
 
-      let waitMs = HTTP_BACKOFF_MS * Math.pow(2, attempt - 1);
+      let waitMs = computeWait(attempt);
       const retryAfter = res.headers.get("retry-after");
       if (retryAfter) {
         const asInt = Number(retryAfter);
@@ -188,12 +261,12 @@ async function fetchWithRetry(url, init = {}, label = "request") {
       const elapsed = Date.now() - start;
       const isTimeout = e?.name === "AbortError";
       const reason = isTimeout
-        ? `timed out after ${HTTP_TIMEOUT_MS}ms`
+        ? `timed out after ${timeoutMs}ms`
         : `network error: ${e?.message || e}`;
       lastErr = new Error(`${label} ${reason} (attempt ${attempt}/${attempts}, ${elapsed}ms)`);
       if (attempt === attempts) throw lastErr;
-      const waitMs = HTTP_BACKOFF_MS * Math.pow(2, attempt - 1);
-      console.log(`${DIM}  ↻ ${label}: ${reason}, retrying in ${waitMs}ms${RESET}`);
+      const waitMs = computeWait(attempt);
+      console.log(`${DIM}  ↻ ${label}: ${reason}, retrying in ${Math.round(waitMs)}ms${RESET}`);
       await sleep(waitMs);
     }
   }
@@ -969,6 +1042,17 @@ async function finish() {
         path: TOKEN_ENDPOINT_PATH,
         url: TOKEN_ENDPOINT_URL || null,
         overridden: !!process.env.TOKEN_ENDPOINT_PATH,
+        retry: {
+          ...TOKEN_RETRY_OPTS,
+          overrides: {
+            timeoutMs: !!process.env.TOKEN_HTTP_TIMEOUT_MS,
+            maxRetries: !!process.env.TOKEN_HTTP_MAX_RETRIES,
+            backoffMs: !!process.env.TOKEN_HTTP_BACKOFF_MS,
+            backoffFactor: !!process.env.TOKEN_HTTP_BACKOFF_FACTOR,
+            backoffMaxMs: !!process.env.TOKEN_HTTP_BACKOFF_MAX_MS,
+            jitterMs: !!process.env.TOKEN_HTTP_JITTER_MS,
+          },
+        },
       },
       appOrigins: APP_ORIGINS,
       ranAt: new Date().toISOString(),
@@ -1241,14 +1325,15 @@ async function runTokenAuthHeaderCheck() {
   const responses = {};
   for (const v of variants) {
     try {
-      const { res, elapsedMs } = await fetchWithRetry(
+      const { res, elapsedMs, attempts } = await fetchWithRetry(
         url,
         {
           method: "POST",
           headers: { "Content-Type": "application/json", ...v.headers },
           body,
         },
-        `token hdr-probe ${v.key} (${v.desc})`
+        `token hdr-probe ${v.key} (${v.desc})`,
+        TOKEN_RETRY_OPTS
       );
       const text = await res.text();
       let parsed = null;
@@ -1259,6 +1344,7 @@ async function runTokenAuthHeaderCheck() {
         errorDescription: parsed?.error_description || parsed?.msg || null,
         contentType: res.headers.get("content-type") || "",
         elapsedMs,
+        attempts,
         body: text.slice(0, 200),
         request: {
           grantType,
@@ -1405,7 +1491,8 @@ async function tokenProbe({
         },
         body: JSON.stringify(body),
       },
-      `POST ${TOKEN_ENDPOINT_PATH} grant_type=${grant}`
+      `POST ${TOKEN_ENDPOINT_PATH} grant_type=${grant}`,
+      TOKEN_RETRY_OPTS
     );
     const ct = res.headers.get("content-type") || "";
     const text = await res.text();
