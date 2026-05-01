@@ -60,7 +60,7 @@ async function main() {
       `SUPABASE_URL=${SUPABASE_URL ? "set" : "MISSING"}, SUPABASE_PUBLISHABLE_KEY=${ANON_KEY ? "set" : "MISSING"}`,
       "Set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY (or VITE_ equivalents) before running."
     );
-    return finish();
+    return await finish();
   }
   record("pass", "Env vars present", `${SUPABASE_URL}`);
 
