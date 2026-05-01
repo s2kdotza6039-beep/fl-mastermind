@@ -24,6 +24,11 @@
  *   EXPECTED_CLIENT_ID         if set, every authorize URL must use this Google client_id
  *   EXPECTED_SCOPES            comma/space-separated scopes that MUST appear (default: "openid email profile")
  *   EXPECTED_RESPONSE_TYPE     required response_type (default: "code")
+ *   EXPECTED_CALLBACK_PATH     callback path appended to each origin (default: "/auth/v1/callback")
+ *   APP_CALLBACKS              per-origin overrides as "<origin>=<full-callback-url>",
+ *                              comma- or newline-separated. When EXPECTED_CALLBACK_PATH
+ *                              or APP_CALLBACKS is set, the expected redirect_uri is
+ *                              derived from the APP_ORIGIN instead of SUPABASE_URL.
  *   E2E_CHECK                  "true" to run an opt-in end-to-end redirect
  *                              simulation (authorize → /callback with a
  *                              synthetic error) and assert GoTrue redirects
@@ -250,6 +255,45 @@ const EXPECTED_SCOPES = (process.env.EXPECTED_SCOPES || "openid email profile")
   .map((s) => s.trim())
   .filter(Boolean);
 
+// Per-origin redirect_uri expectations.
+//   EXPECTED_CALLBACK_PATH — default path appended to each origin (default "/auth/v1/callback")
+//   APP_CALLBACKS          — comma/newline-separated overrides as "<origin>=<full-callback-url>"
+//                            e.g. "https://app.example.com=https://api.example.com/oauth/cb"
+const EXPECTED_CALLBACK_PATH = process.env.EXPECTED_CALLBACK_PATH || "/auth/v1/callback";
+const APP_CALLBACKS = (() => {
+  const map = new Map();
+  for (const entry of (process.env.APP_CALLBACKS || "").split(/[,\n]/)) {
+    const [k, v] = entry.split("=").map((s) => s?.trim());
+    if (k && v) map.set(k, v);
+  }
+  return map;
+})();
+
+/**
+ * Resolve the redirect_uri we expect Google to receive for a given origin.
+ * Order of precedence:
+ *   1. APP_CALLBACKS["<origin>"]            — explicit per-origin override
+ *   2. <origin> + EXPECTED_CALLBACK_PATH    — derived from the app origin
+ *      (only when EXPECTED_CALLBACK_PATH is non-default OR APP_CALLBACKS is set)
+ *   3. <SUPABASE_URL> + EXPECTED_CALLBACK_PATH (default — GoTrue handles callback)
+ */
+function expectedRedirectUriFor(origin) {
+  if (APP_CALLBACKS.has(origin)) {
+    return { url: APP_CALLBACKS.get(origin), source: "APP_CALLBACKS override" };
+  }
+  // If the user customized either knob, derive from the app origin so each
+  // environment can have its own callback host (e.g. proxied custom domains).
+  if (process.env.APP_CALLBACKS || process.env.EXPECTED_CALLBACK_PATH) {
+    const url = origin.replace(/\/$/, "") + EXPECTED_CALLBACK_PATH;
+    return { url, source: `APP_ORIGIN + ${EXPECTED_CALLBACK_PATH}` };
+  }
+  // Default: managed Supabase callback.
+  return {
+    url: `${SUPABASE_URL.replace(/\/$/, "")}${EXPECTED_CALLBACK_PATH}`,
+    source: `SUPABASE_URL + ${EXPECTED_CALLBACK_PATH}`,
+  };
+}
+
 /**
  * Validate the standard OAuth params on the Google authorize URL:
  *   - response_type must equal EXPECTED_RESPONSE_TYPE (default "code")
@@ -356,31 +400,33 @@ function validateCallback(googleUrl, origin) {
     return;
   }
 
-  const expectedCallback = `${SUPABASE_URL.replace(/\/$/, "")}/auth/v1/callback`;
+  const { url: expectedCallback, source: expectedSource } = expectedRedirectUriFor(origin);
   const actualCallback = parsed.searchParams.get("redirect_uri");
   const summary = originSummary(origin);
   summary.redirectUri = actualCallback;
   summary.expectedRedirectUri = expectedCallback;
+  summary.expectedRedirectUriSource = expectedSource;
   summary.redirectUriMatches = actualCallback === expectedCallback;
+  const label = `Callback redirect_uri matches expected (${origin})`;
 
   if (!actualCallback) {
     noteMismatch(origin, "redirect_uri missing");
     record(
       "fail",
-      `Supabase callback present (${origin})`,
+      label,
       "Google authorize URL has no redirect_uri parameter",
-      "GoTrue should always set redirect_uri=<SUPABASE_URL>/auth/v1/callback. Re-check provider configuration."
+      `Expected "${expectedCallback}" (from ${expectedSource}). GoTrue should always set redirect_uri — re-check provider configuration.`
     );
   } else if (actualCallback !== expectedCallback) {
     noteMismatch(origin, `redirect_uri=${actualCallback} (expected ${expectedCallback})`);
     record(
       "fail",
-      `Supabase callback matches /auth/v1/callback (${origin})`,
-      `expected ${expectedCallback}, got ${actualCallback}`,
-      `Add "${expectedCallback}" to your Google OAuth client's Authorized redirect URIs and ensure SUPABASE_URL matches the project that owns the Google credentials.`
+      label,
+      `expected ${expectedCallback} (${expectedSource}), got ${actualCallback}`,
+      `Add "${actualCallback}" to your Google OAuth client's Authorized redirect URIs, OR set APP_CALLBACKS="${origin}=${actualCallback}" if this origin intentionally uses a different callback host.`
     );
   } else {
-    record("pass", `Supabase callback matches /auth/v1/callback (${origin})`, actualCallback);
+    record("pass", label, `${actualCallback} (${expectedSource})`);
   }
 
   // `redirect_to` may be top-level, in `state` as JSON, base64url JSON,
