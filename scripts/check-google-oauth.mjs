@@ -810,6 +810,102 @@ async function finish() {
   process.exit(exitCode);
 }
 
+/**
+ * Negative-test pass for PKCE handling. Two probes per origin:
+ *
+ *   1. OMIT  — call /authorize without code_challenge / method.
+ *      Expectation: validatePkce() records a "fail" containing
+ *                   "missing code_challenge" (or method).
+ *   2. PLAIN — call /authorize with code_challenge_method=plain.
+ *      Expectation: validatePkce() records a "fail" on the
+ *                   "PKCE method is S256" check.
+ *
+ * For each probe we run the validator inside withCapture() so its
+ * output never reaches the live `results` array, then assert the
+ * captured entries contain the expected failure pattern. The
+ * meta-assertion itself is what gets recorded into `results`, so
+ * the suite stays green when the validator behaves correctly.
+ */
+async function runPkceNegativeTests(origin) {
+  const probes = [
+    {
+      name: "omit code_challenge",
+      label: `Negative: validator rejects missing PKCE (${origin})`,
+      query: "",
+      expect: (entries) =>
+        entries.some(
+          (e) =>
+            e.state === "fail" &&
+            e.label.startsWith("PKCE forwarded to Google") &&
+            /missing code_challenge/i.test(e.detail || "")
+        ),
+      expectDescription: "fail on 'PKCE forwarded to Google' with 'missing code_challenge'",
+    },
+    {
+      name: "code_challenge_method=plain",
+      label: `Negative: validator rejects plain PKCE (${origin})`,
+      query: `&code_challenge=${"a".repeat(43)}&code_challenge_method=plain`,
+      expect: (entries) =>
+        entries.some(
+          (e) =>
+            e.state === "fail" &&
+            e.label.startsWith("PKCE method is S256") &&
+            /code_challenge_method=plain/i.test(e.detail || "")
+        ),
+      expectDescription: "fail on 'PKCE method is S256' with 'code_challenge_method=plain'",
+    },
+  ];
+
+  for (const probe of probes) {
+    try {
+      const url =
+        `${SUPABASE_URL}/auth/v1/authorize?provider=google&skip_http_redirect=true` +
+        `&redirect_to=${encodeURIComponent(origin)}` +
+        probe.query;
+      const { res } = await fetchWithRetry(
+        url,
+        { headers: { apikey: ANON_KEY } },
+        `negative ${probe.name} (${origin})`
+      );
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.url) {
+        // Server itself rejected the request — the validator never gets
+        // to run, so we can't grade it. Treat as warn (not a regression).
+        record(
+          "warn",
+          probe.label,
+          `server rejected probe (HTTP ${res.status}); cannot grade validator`,
+          "Server-side rejection means the misconfiguration is caught earlier than the validator — usually fine."
+        );
+        continue;
+      }
+
+      // The probe with omitted PKCE has no `sent` to compare against;
+      // pass placeholders so validatePkce can still run normally.
+      const sent = { challenge: "x".repeat(43), method: "S256" };
+      const { buf } = await withCapture(async () => {
+        validatePkce(body.url, sent, origin);
+      });
+
+      if (probe.expect(buf)) {
+        record("pass", probe.label, `captured ${buf.length} entr${buf.length === 1 ? "y" : "ies"}, matched expected failure`);
+      } else {
+        const summary = buf
+          .map((e) => `[${e.state}] ${e.label}: ${e.detail || ""}`)
+          .join(" | ") || "(no entries)";
+        record(
+          "fail",
+          probe.label,
+          `expected ${probe.expectDescription}; got: ${summary}`,
+          "The validator regressed — it should have flagged this misconfiguration."
+        );
+      }
+    } catch (e) {
+      record("fail", probe.label, e.message, "Network or timeout running negative probe.");
+    }
+  }
+}
+
 main().catch((e) => {
   console.error(`${RED}Unexpected error:${RESET}`, e);
   process.exit(1);
