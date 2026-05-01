@@ -2380,6 +2380,54 @@ async function runTokenExchangeCheck() {
     negativeContract: "non_json_content_type",
   });
 
+  // ---- Probe 4b: Accept: text/xml with a valid-looking JSON body sent as
+  // raw text. STRONGER variant of probe 4: the body is parseable JSON shape
+  // (so any naive "the request was bad" code path is ruled out -- the
+  // server's choice of Content-Type is the ONLY remaining variable), and
+  // Accept negotiates a type the token endpoint must NOT honor as JSON.
+  //
+  // Acceptable server responses (any of these triggers the
+  // `non_json_content_type` contract handler and PASSES this probe):
+  //   - 406 Not Acceptable with a non-application/json Content-Type
+  //   - 415 Unsupported Media Type with a non-application/json Content-Type
+  //   - 4xx with text/xml | application/xml | text/plain | text/html
+  //   - any reply whose Content-Type does NOT include "application/json"
+  //
+  // Failure mode (the server ignored Accept and still answered JSON):
+  //   - the existing `non_json_content_type` branch records a fail with the
+  //     standard "negative branch not exercised" hint, so this probe joins
+  //     probe 4 as a regression sentinel for content-negotiation drift.
+  //
+  // We use rawBody (not body:) so the bytes on the wire are EXACTLY a
+  // valid JSON document -- no JSON.stringify intermediation by tokenProbe,
+  // no structural divergence from a real client payload.
+  await tokenProbe({
+    label: "Token endpoint contract handler fires on Accept: text/xml with JSON-shaped body",
+    grant: "pkce",
+    body: { auth_code: fakeCode, code_verifier: verifier },
+    expectStatus: () => true, // any status -- only Content-Type is asserted
+    expectedErrorCodes: null,
+    expectedDescriptionRe: null,
+    allowMissingContract: true,
+    rejectError: () => false,
+    requestOverrides: {
+      // Valid-looking JSON-shaped raw text. Sent verbatim so any non-JSON
+      // reply is attributable solely to the Accept negotiation.
+      rawBody: JSON.stringify({ auth_code: fakeCode, code_verifier: verifier }),
+      headers: {
+        // text/xml is deliberately narrow (no */* fallback) so a server
+        // that respects Accept will pick a non-JSON shape; one that ignores
+        // it will keep replying application/json and trip the contract.
+        Accept: "text/xml",
+        // Keep Content-Type honest -- we ARE sending JSON, even though we
+        // don't want JSON back. This rules out 415-on-request-body as a
+        // confounder (probe 5 covers malformed bodies separately).
+        "Content-Type": "application/json",
+      },
+    },
+    negativeContract: "non_json_content_type",
+  });
+
   // ---- Probe 5: send malformed JSON body. Negative-contract probe — opts
   // out of envelope allow-lists for the same reason as probe 4.
   await tokenProbe({
