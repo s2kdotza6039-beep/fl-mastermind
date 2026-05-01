@@ -629,7 +629,107 @@ async function main() {
     }
   }
 
+  // 4. Opt-in end-to-end redirect simulation.
+  if (/^(1|true|yes)$/i.test(process.env.E2E_CHECK || "")) {
+    console.log(`\n${DIM}E2E_CHECK enabled — simulating callback redirect for each origin…${RESET}`);
+    for (const origin of APP_ORIGINS) {
+      await runE2ERedirect(origin);
+    }
+  }
+
   await finish();
+}
+
+/**
+ * Simulate the tail end of the OAuth dance without ever touching Google's
+ * consent screen:
+ *   1. Call /auth/v1/authorize to obtain a fresh `state` value (proving the
+ *      Cloud project is willing to start the flow for this origin).
+ *   2. Replay the URL Google would have hit on cancel:
+ *      <SUPABASE_URL>/auth/v1/callback?state=<state>&error=access_denied&error_description=e2e
+ *   3. Manually follow GoTrue's 3xx redirects (no body posts) up to
+ *      E2E_MAX_REDIRECTS hops, capturing the final Location.
+ *   4. Assert the final URL's origin matches the requested APP_ORIGIN.
+ *
+ * A successful pass means every link in the chain — provider config,
+ * state allow-listing, redirect_to round-trip — is wired correctly.
+ * Any consent-screen / token-exchange issues are out of scope (they
+ * require a real Google login).
+ */
+async function runE2ERedirect(origin) {
+  const label = `E2E redirect lands on ${origin}`;
+  const maxHops = Number(process.env.E2E_MAX_REDIRECTS) || 5;
+  try {
+    // Step 1 — fresh authorize call to harvest a usable `state`.
+    const authUrl =
+      `${SUPABASE_URL}/auth/v1/authorize?provider=google&skip_http_redirect=true` +
+      `&redirect_to=${encodeURIComponent(origin)}`;
+    const { res: authRes } = await fetchWithRetry(
+      authUrl,
+      { headers: { apikey: ANON_KEY } },
+      `E2E authorize (${origin})`
+    );
+    const authBody = await authRes.json().catch(() => null);
+    if (!authRes.ok || !authBody?.url) {
+      record("fail", label, `authorize step failed: HTTP ${authRes.status}`);
+      return;
+    }
+    const state = new URL(authBody.url).searchParams.get("state");
+    if (!state) {
+      record("fail", label, "no state returned from /authorize", "Cannot replay callback without state.");
+      return;
+    }
+
+    // Step 2 — synthesize Google's "user cancelled" callback.
+    let next =
+      `${SUPABASE_URL}/auth/v1/callback?state=${encodeURIComponent(state)}` +
+      `&error=access_denied&error_description=e2e_simulated_cancel`;
+
+    // Step 3 — follow redirects manually so we can inspect each hop.
+    const chain = [];
+    let finalUrl = null;
+    for (let hop = 0; hop < maxHops; hop++) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), HTTP_TIMEOUT_MS);
+      let res;
+      try {
+        res = await fetch(next, {
+          redirect: "manual",
+          headers: { apikey: ANON_KEY },
+          signal: ctrl.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+      chain.push({ hop, status: res.status, url: next });
+      if (res.status >= 300 && res.status < 400) {
+        const loc = res.headers.get("location");
+        if (!loc) break;
+        next = new URL(loc, next).toString();
+        continue;
+      }
+      finalUrl = next;
+      break;
+    }
+    if (!finalUrl) finalUrl = next; // hit hop limit; treat current as final
+
+    // Step 4 — assert the final URL's origin matches.
+    const summary = originSummary(origin);
+    summary.e2e = { hops: chain.length, finalUrl, chain };
+    if (originsMatch(finalUrl, origin)) {
+      record("pass", label, `final → ${finalUrl} (${chain.length} hop${chain.length === 1 ? "" : "s"})`);
+    } else {
+      noteMismatch(origin, `e2e final url=${finalUrl}`);
+      record(
+        "fail",
+        label,
+        `final → ${finalUrl} (expected origin ${origin}, ${chain.length} hop${chain.length === 1 ? "" : "s"})`,
+        "Callback chain ends on the wrong origin — verify URL Configuration → Site URL/Redirect URLs."
+      );
+    }
+  } catch (e) {
+    record("fail", label, e.message, "Network or timeout during E2E simulation.");
+  }
 }
 
 async function finish() {
