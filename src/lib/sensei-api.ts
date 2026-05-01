@@ -1,4 +1,6 @@
 // Stream Studio Sensei chat from edge function
+import { supabase } from "@/integrations/supabase/client";
+
 export type ChatMsg = { role: "user" | "assistant"; content: string };
 
 export interface ChatContext {
@@ -22,13 +24,21 @@ export async function streamSenseiChat({
   onDone: () => void;
   onError: (msg: string) => void;
 }) {
+  // Require an authenticated session — protects content from anonymous scraping.
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    onError("Please sign in to chat with Sensei.");
+    return;
+  }
+
   let resp: Response;
   try {
     resp = await fetch(CHAT_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        Authorization: `Bearer ${session.access_token}`,
+        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
       },
       body: JSON.stringify({ messages, context }),
     });
