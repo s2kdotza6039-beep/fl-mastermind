@@ -28,15 +28,20 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
           APP_ORIGIN: ${{ secrets.APP_ORIGIN || 'https://localhost' }}
+          OUTPUT_JSON: ${{ github.workspace }}/oauth-check-results/report.json
         # Capture stdout, strip ANSI colors, expose as outputs.
         # Exit codes: 0=pass, 1=fail, 2=warn.
         run: |
           set +e
+          mkdir -p oauth-check-results
           OUTPUT=$(node scripts/check-google-oauth.mjs 2>&1)
           CODE=$?
           set -e
           CLEAN=$(printf '%s' "$OUTPUT" | sed -r "s/\x1B\[[0-9;]*[mK]//g")
           echo "$CLEAN"
+          # Persist raw + cleaned logs alongside the JSON report for the artifact
+          printf '%s\n' "$OUTPUT" > oauth-check-results/log.ansi.txt
+          printf '%s\n' "$CLEAN"  > oauth-check-results/log.txt
           if [ $CODE -eq 0 ]; then STATUS="pass"; fi
           if [ $CODE -eq 1 ]; then STATUS="fail"; fi
           if [ $CODE -eq 2 ]; then STATUS="warn"; fi
@@ -53,8 +58,19 @@ jobs:
             echo '```'
             echo "$CLEAN"
             echo '```'
+            echo ""
+            echo "Full JSON report and logs are attached as the **oauth-check-results** artifact."
           } >> "$GITHUB_STEP_SUMMARY"
           exit $CODE
+
+      - name: Upload OAuth check results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oauth-check-results
+          path: oauth-check-results/
+          if-no-files-found: warn
+          retention-days: 30
 
   notify:
     needs: oauth
