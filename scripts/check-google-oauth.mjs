@@ -1976,6 +1976,21 @@ async function runTokenAuthHeaderCheck() {
 /**
  * Single token-endpoint probe + assertion. Captures the response body,
  * content-type, and elapsed ms into the per-call summary.
+ *
+ * Optional `requestOverrides` lets a caller inject a non-default body or
+ * Accept/Content-Type. Used to provoke negative responses (e.g. non-JSON
+ * via Accept: text/html, malformed body via raw text) so we can exercise
+ * the script's own JSON-contract enforcement.
+ *
+ * Optional `negativeContract` inverts the probe verdict: the probe
+ * PASSES iff the script's contract handler fires the matching failure
+ * (proving we'd catch the misbehaviour in CI), and FAILS if the server
+ * still returns spec-shaped JSON (which would mean the negative branch
+ * is unreachable). Supported values:
+ *   - "non_json_content_type": the response Content-Type must NOT include
+ *     application/json, so the JSON-contract `warn` branch is exercised.
+ *   - "malformed_json_body":   the response body must FAIL JSON.parse(),
+ *     so the JSON-contract `fail` branch is exercised.
  */
 async function tokenProbe({
   label,
@@ -1987,21 +2002,27 @@ async function tokenProbe({
   rejectError,
   rejectHint,
   extraDetail,
+  requestOverrides,
+  negativeContract,
 }) {
   const url = `${TOKEN_ENDPOINT_URL}?grant_type=${encodeURIComponent(grant)}`;
+  const baseHeaders = {
+    apikey: ANON_KEY,
+    Authorization: `Bearer ${ANON_KEY}`,
+    "Content-Type": "application/json",
+  };
+  const headers = { ...baseHeaders, ...(requestOverrides?.headers || {}) };
+  // Allow callers to send a raw (possibly malformed) body string instead
+  // of a JSON-encoded object. `body` is still the structural payload used
+  // for keys reporting; `wireBody` is what actually goes on the wire.
+  const wireBody = requestOverrides?.rawBody !== undefined
+    ? requestOverrides.rawBody
+    : JSON.stringify(body);
   try {
     const { res, attempts, elapsedMs } = await fetchWithRetry(
       url,
-      {
-        method: "POST",
-        headers: {
-          apikey: ANON_KEY,
-          Authorization: `Bearer ${ANON_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      },
-      `POST ${TOKEN_ENDPOINT_PATH} grant_type=${grant}`,
+      { method: "POST", headers, body: wireBody },
+      `POST ${TOKEN_ENDPOINT_PATH} grant_type=${grant}${negativeContract ? ` [neg:${negativeContract}]` : ""}`,
       TOKEN_RETRY_OPTS
     );
     const ct = res.headers.get("content-type") || "";
