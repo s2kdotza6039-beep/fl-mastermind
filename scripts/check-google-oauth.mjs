@@ -320,14 +320,56 @@ const PKCE_VERIFIER_RE = /^[A-Za-z0-9\-._~]+$/;
 const PKCE_CHALLENGE_RE = /^[A-Za-z0-9\-_]+$/; // base64url, no padding
 
 /**
+ * Detect specific base64url edge-case violations and return a targeted
+ * reason string, or null if no edge case applies. Used by both the
+ * verifier and challenge paths so error messages identify the *exact*
+ * class of mistake (padding vs. standard-base64 chars vs. whitespace
+ * vs. non-ASCII), which is what most CI triagers actually need.
+ */
+function detectBase64UrlEdgeCase(value) {
+  if (typeof value !== "string") return "not a string";
+  // Order matters: check the most specific / actionable causes first so
+  // a value with multiple problems surfaces the one most likely to be
+  // the operator's actual mistake.
+  if (/=/.test(value)) return "contains '=' padding (base64url MUST be unpadded)";
+  if (/\+/.test(value)) return "contains '+' (use '-' for base64url)";
+  if (/\//.test(value)) return "contains '/' (use '_' for base64url)";
+  // Non-ASCII covers smart quotes, NBSP (U+00A0), zero-width chars, emoji,
+  // etc. Check this BEFORE the whitespace branch because JS `\s` matches
+  // many unicode space chars (NBSP included), and a paste-artifact NBSP
+  // is more diagnostically useful labeled as "non-ASCII" than "whitespace".
+  // eslint-disable-next-line no-control-regex
+  if (/[^\x00-\x7F]/.test(value)) {
+    return "contains non-ASCII / unicode chars (likely paste artifact: NBSP, smart quotes, ZWSP)";
+  }
+  if (/\s/.test(value)) {
+    const kinds = [];
+    if (/ /.test(value)) kinds.push("space");
+    if (/\t/.test(value)) kinds.push("tab");
+    if (/\r|\n/.test(value)) kinds.push("newline");
+    return `contains whitespace (${kinds.join(", ") || "unknown"}) — strip before sending`;
+  }
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1F\x7F]/.test(value)) return "contains ASCII control chars";
+  return null;
+}
+
+/**
  * Validate the format of a PKCE token (verifier OR challenge) per RFC 7636.
  * `kind` is "verifier" or "challenge" — drives length bounds & charset.
  * Returns { ok: boolean, reason?: string }.
  */
 function validatePkceFormat(value, kind) {
-  if (!value) return { ok: false, reason: "missing" };
+  if (value == null || value === "") return { ok: false, reason: "missing" };
+  if (typeof value !== "string") return { ok: false, reason: `not a string (got ${typeof value})` };
+
+  // Run edge-case detection FIRST so we report the precise problem
+  // ("contains '=' padding") instead of the generic regex failure.
+  const edge = detectBase64UrlEdgeCase(value);
   const len = value.length;
+
   if (kind === "verifier") {
+    if (edge) return { ok: false, reason: edge };
     if (len < 43 || len > 128) return { ok: false, reason: `length ${len} (must be 43–128)` };
     if (!PKCE_VERIFIER_RE.test(value)) {
       return { ok: false, reason: "contains chars outside [A-Z a-z 0-9 - . _ ~]" };
@@ -335,12 +377,10 @@ function validatePkceFormat(value, kind) {
     return { ok: true };
   }
   // challenge (S256)
+  if (edge) return { ok: false, reason: edge };
   if (len !== 43) return { ok: false, reason: `length ${len} (S256 challenge must be exactly 43)` };
   if (!PKCE_CHALLENGE_RE.test(value)) {
     return { ok: false, reason: "not valid base64url (allowed: A-Z a-z 0-9 - _)" };
-  }
-  if (/[+/=]/.test(value)) {
-    return { ok: false, reason: "contains base64 padding/non-url chars (+/=) — must be base64url unpadded" };
   }
   return { ok: true };
 }
@@ -1835,7 +1875,23 @@ async function runE2ELoginFlow(origin) {
   }
 }
 
-main().catch((e) => {
-  console.error(`${RED}Unexpected error:${RESET}`, e);
-  process.exit(1);
-});
+// Allow this file to be imported by tests without running the full
+// diagnostic suite. Only execute main() when invoked directly via
+// `node scripts/check-google-oauth.mjs`.
+const isDirectRun = (() => {
+  try {
+    const invoked = process.argv[1] && new URL(`file://${process.argv[1]}`).href;
+    return invoked === import.meta.url;
+  } catch {
+    return false;
+  }
+})();
+
+if (isDirectRun) {
+  main().catch((e) => {
+    console.error(`${RED}Unexpected error:${RESET}`, e);
+    process.exit(1);
+  });
+}
+
+export { validatePkceFormat, detectBase64UrlEdgeCase, generatePkce, s256Challenge };
