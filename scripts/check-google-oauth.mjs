@@ -115,10 +115,10 @@ async function main() {
     } else {
       const msg =
         body?.error_description || body?.msg || body?.error || `HTTP ${res.status}`;
-      const hint = /not enabled|unsupported provider/i.test(msg)
+      const hint = /missing oauth secret|client_id|client_secret/i.test(msg)
+        ? "Google client ID/secret missing — set them in Cloud auth settings or enable Lovable's managed credentials."
+        : /not enabled|unsupported provider/i.test(msg)
         ? "Provider not enabled — re-run social auth setup in Cloud."
-        : /missing oauth secret|client_id/i.test(msg)
-        ? "Google client ID/secret missing — set them in Cloud auth settings or use Lovable's managed credentials."
         : undefined;
       record("fail", "Authorize endpoint returns Google redirect", msg, hint);
     }
