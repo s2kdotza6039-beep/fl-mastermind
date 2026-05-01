@@ -1872,7 +1872,23 @@ async function runE2ELoginFlow(origin) {
   }
 }
 
-main().catch((e) => {
-  console.error(`${RED}Unexpected error:${RESET}`, e);
-  process.exit(1);
-});
+// Allow this file to be imported by tests without running the full
+// diagnostic suite. Only execute main() when invoked directly via
+// `node scripts/check-google-oauth.mjs`.
+const isDirectRun = (() => {
+  try {
+    const invoked = process.argv[1] && new URL(`file://${process.argv[1]}`).href;
+    return invoked === import.meta.url;
+  } catch {
+    return false;
+  }
+})();
+
+if (isDirectRun) {
+  main().catch((e) => {
+    console.error(`${RED}Unexpected error:${RESET}`, e);
+    process.exit(1);
+  });
+}
+
+export { validatePkceFormat, detectBase64UrlEdgeCase, generatePkce, s256Challenge };
