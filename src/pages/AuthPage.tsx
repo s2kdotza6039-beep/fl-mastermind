@@ -272,6 +272,12 @@ function SignInForm() {
       <button type="button" onClick={reset} className="text-xs text-muted-foreground hover:text-primary underline w-full text-center">
         Forgot password?
       </button>
+      <GoogleDiagnostics
+        oauthError={oauthError}
+        status={providerStatus}
+        refreshing={probing}
+        onRefresh={runProbe}
+      />
     </form>
   );
 }
