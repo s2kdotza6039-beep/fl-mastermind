@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createHash, randomBytes } from "node:crypto";
 /**
  * CI script: verify Google OAuth is correctly configured on the deployed
  * Lovable Cloud (Supabase) project. Mirrors the checks shown on /oauth-check.
@@ -181,11 +182,34 @@ async function fetchWithRetry(url, init = {}, label = "request") {
  * Generate a PKCE code_verifier + S256 code_challenge per RFC 7636.
  * verifier: 43–128 chars URL-safe; challenge: BASE64URL(SHA256(verifier)).
  */
-async function generatePkce() {
-  const { randomBytes, createHash } = await import("node:crypto");
+function generatePkce() {
   const verifier = randomBytes(32).toString("base64url");
   const challenge = createHash("sha256").update(verifier).digest("base64url");
   return { verifier, challenge, method: "S256" };
+}
+
+/**
+ * Build a CI-safe PKCE descriptor for inclusion in report.json.
+ * Returns: { method, length, prefix, suffix, sha256, present }
+ *   - prefix/suffix:  first/last 8 chars for visual diffing
+ *   - sha256:         hex digest of the raw value (compare-able across runs
+ *                     without leaking the original)
+ *   - length/present: cheap sanity hooks for downstream tooling
+ * The raw `code_verifier` is NEVER serialized — only the derived challenge.
+ */
+function fingerprintPkce(challenge, method) {
+  if (!challenge) {
+    return { present: false, method: method || null };
+  }
+  const sha256 = createHash("sha256").update(challenge).digest("hex");
+  return {
+    present: true,
+    method: method || null,
+    length: challenge.length,
+    prefix: challenge.slice(0, 8),
+    suffix: challenge.length > 16 ? challenge.slice(-8) : null,
+    sha256,
+  };
 }
 
 /**
@@ -204,11 +228,14 @@ function validatePkce(googleUrl, sent, origin) {
   const gotChallenge = parsed.searchParams.get("code_challenge");
   const gotMethod = parsed.searchParams.get("code_challenge_method");
   const summary = originSummary(origin);
+  // Sanitize challenges before serializing to the artifact: keep a short
+  // prefix for visual diffing + a SHA-256 fingerprint for cryptographic
+  // comparison without leaking the full verifier-derived value.
   summary.pkce = {
-    sentChallenge: sent.challenge,
-    gotChallenge,
-    method: gotMethod,
-    challengeMatches: gotChallenge === sent.challenge,
+    sent: fingerprintPkce(sent.challenge, sent.method),
+    received: fingerprintPkce(gotChallenge, gotMethod),
+    challengeMatches: !!gotChallenge && gotChallenge === sent.challenge,
+    methodMatches: (gotMethod || "").toUpperCase() === (sent.method || "").toUpperCase(),
     methodIsS256: (gotMethod || "").toUpperCase() === "S256",
   };
 
