@@ -2305,4 +2305,10 @@ if (isDirectRun) {
   });
 }
 
-export { validatePkceFormat, detectBase64UrlEdgeCase, generatePkce, s256Challenge };
+export {
+  validatePkceFormat,
+  detectBase64UrlEdgeCase,
+  generatePkce,
+  s256Challenge,
+  pkceRemediationHint,
+};
