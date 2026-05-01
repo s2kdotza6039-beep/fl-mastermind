@@ -2080,6 +2080,92 @@ async function runMalformedCodeChallengeProbes(origin) {
       },
       mode: "noise_with_verifier",
     },
+    // ── URL-safe vs standard base64 charset attacks (challenge edition) ─
+    // S256 challenges are base64url(SHA-256(verifier)) per RFC 7636 §4.2,
+    // exactly 43 chars, no padding, charset [A-Z a-z 0-9 - _]. We probe
+    // each forbidden character family and ensure the noise doesn't perturb
+    // the verdict relative to baseline.
+    {
+      id: "bad_charset_url_unreserved_extras_code_challenge",
+      desc: "code_challenge contains '!' and '*' (outside RFC 3986 unreserved)",
+      body: {
+        auth_code: fakeCode,
+        code_verifier: goodVerifier,
+        code_challenge: "a".repeat(20) + "!*" + "b".repeat(21),
+      },
+      mode: "noise_with_verifier",
+    },
+    {
+      id: "bad_charset_plus_slash_mixed_code_challenge",
+      desc: "code_challenge mixes '+' and '/' (full standard-base64 alphabet violation)",
+      body: {
+        auth_code: fakeCode,
+        code_verifier: goodVerifier,
+        code_challenge: "+/".repeat(21) + "+",
+      },
+      mode: "noise_with_verifier",
+    },
+    {
+      id: "bad_charset_percent_encoded_code_challenge",
+      desc: "code_challenge contains percent-encoded sequence ('%2B')",
+      body: {
+        auth_code: fakeCode,
+        code_verifier: goodVerifier,
+        code_challenge: "a".repeat(20) + "%2B" + "b".repeat(20),
+      },
+      mode: "noise_with_verifier",
+    },
+    // ── Mixed padding scenarios (challenge edition) ─────────────────────
+    {
+      id: "bad_padding_double_trailing_code_challenge",
+      desc: "code_challenge ends with '==' (double padding)",
+      body: {
+        auth_code: fakeCode,
+        code_verifier: goodVerifier,
+        code_challenge: "a".repeat(41) + "==",
+      },
+      mode: "noise_with_verifier",
+    },
+    {
+      id: "bad_padding_leading_code_challenge",
+      desc: "code_challenge starts with '=' (leading padding)",
+      body: {
+        auth_code: fakeCode,
+        code_verifier: goodVerifier,
+        code_challenge: "=" + "a".repeat(42),
+      },
+      mode: "noise_with_verifier",
+    },
+    {
+      id: "bad_padding_embedded_code_challenge",
+      desc: "code_challenge contains '=' embedded mid-string",
+      body: {
+        auth_code: fakeCode,
+        code_verifier: goodVerifier,
+        code_challenge: "a".repeat(20) + "=" + "b".repeat(22),
+      },
+      mode: "noise_with_verifier",
+    },
+    {
+      id: "bad_padding_standard_b64_full_code_challenge",
+      desc: "code_challenge is well-formed STANDARD base64 (with '+', '/', '=')",
+      body: {
+        auth_code: fakeCode,
+        code_verifier: goodVerifier,
+        code_challenge: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA+/==",
+      },
+      mode: "noise_with_verifier",
+    },
+    {
+      id: "bad_padding_only_equals_code_challenge",
+      desc: "code_challenge is 43 '=' characters (padding-only, no payload)",
+      body: {
+        auth_code: fakeCode,
+        code_verifier: goodVerifier,
+        code_challenge: "=".repeat(43),
+      },
+      mode: "noise_with_verifier",
+    },
   ];
 
   /** Capture shape of code_challenge without leaking values. */
