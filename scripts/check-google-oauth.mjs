@@ -38,6 +38,8 @@ import { createHash, randomBytes } from "node:crypto";
  *   PKCE_NEGATIVE_TESTS        "true" to additionally probe with omitted /
  *                              "plain" PKCE and assert the validator fails
  *                              with the expected error messages.
+ *   TOKEN_EXCHANGE_CHECK       "false" to skip the /auth/v1/token shape probes
+ *                              (default: enabled). Sends 3 synthetic POSTs.
  *
  * Usage:
  *   node scripts/check-google-oauth.mjs
