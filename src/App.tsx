@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -5,6 +6,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SessionProvider } from "@/context/SessionContext";
 import { StudioLayout } from "@/components/StudioLayout";
+import { ScrollToTop } from "@/components/ScrollToTop";
+import { armSenseiBootTone } from "@/lib/sensei-tone";
 import Dashboard from "./pages/Dashboard";
 import ChatPage from "./pages/ChatPage";
 import QuickFixPage from "./pages/QuickFixPage";
