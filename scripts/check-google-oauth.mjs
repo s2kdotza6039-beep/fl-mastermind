@@ -38,8 +38,11 @@ import { createHash, randomBytes } from "node:crypto";
  *   PKCE_NEGATIVE_TESTS        "true" to additionally probe with omitted /
  *                              "plain" PKCE and assert the validator fails
  *                              with the expected error messages.
- *   TOKEN_EXCHANGE_CHECK       "false" to skip the /auth/v1/token shape probes
+ *   TOKEN_EXCHANGE_CHECK       "false" to skip the token-endpoint shape probes
  *                              (default: enabled). Sends 3 synthetic POSTs.
+ *   TOKEN_ENDPOINT_PATH        Override the GoTrue token endpoint path
+ *                              (default: "/auth/v1/token"). Useful for
+ *                              self-hosted or proxied GoTrue deployments.
  *   E2E_LOGIN_FLOW             "true" to run an explicit login-flow trace:
  *                              captures the real `state` GoTrue mints, replays
  *                              the callback, and asserts redirect_to round-trips
@@ -56,6 +59,19 @@ const ANON_KEY =
   process.env.SUPABASE_PUBLISHABLE_KEY ||
   process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
   process.env.SUPABASE_ANON_KEY;
+
+/**
+ * Path of the GoTrue token-exchange endpoint, relative to SUPABASE_URL.
+ * Override via TOKEN_ENDPOINT_PATH for non-default GoTrue mounts
+ * (e.g. self-hosted "/gotrue/v1/token" or proxied "/api/auth/v1/token").
+ * Leading slash is enforced; trailing slashes are stripped.
+ */
+const TOKEN_ENDPOINT_PATH = (() => {
+  const raw = (process.env.TOKEN_ENDPOINT_PATH || "/auth/v1/token").trim();
+  const withLead = raw.startsWith("/") ? raw : `/${raw}`;
+  return withLead.replace(/\/+$/, "");
+})();
+const TOKEN_ENDPOINT_URL = `${(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").replace(/\/+$/, "")}${TOKEN_ENDPOINT_PATH}`;
 
 const HTTP_TIMEOUT_MS = Number(process.env.HTTP_TIMEOUT_MS) || 10_000;
 const HTTP_MAX_RETRIES = Number(process.env.HTTP_MAX_RETRIES) || 3;
@@ -826,7 +842,7 @@ async function main() {
 
   // 6. Always-on token-exchange shape check (cheap; no real code consumed).
   if (/^(0|false|no)$/i.test(process.env.TOKEN_EXCHANGE_CHECK || "") === false) {
-    console.log(`\n${DIM}Probing /auth/v1/token shape (PKCE grant)…${RESET}`);
+    console.log(`\n${DIM}Probing ${TOKEN_ENDPOINT_PATH} shape (PKCE grant)…${RESET}`);
     await runTokenExchangeCheck();
   }
 
@@ -949,6 +965,11 @@ async function finish() {
       exitCode,
       counts: { passed, warned, failed, total: results.length },
       target: SUPABASE_URL || null,
+      tokenEndpoint: {
+        path: TOKEN_ENDPOINT_PATH,
+        url: TOKEN_ENDPOINT_URL || null,
+        overridden: !!process.env.TOKEN_ENDPOINT_PATH,
+      },
       appOrigins: APP_ORIGINS,
       ranAt: new Date().toISOString(),
       env: {
@@ -956,6 +977,7 @@ async function finish() {
         SUPABASE_PUBLISHABLE_KEY: !!ANON_KEY,
         APP_ORIGIN: !!process.env.APP_ORIGIN,
         APP_ORIGINS: !!process.env.APP_ORIGINS,
+        TOKEN_ENDPOINT_PATH: !!process.env.TOKEN_ENDPOINT_PATH,
       },
       ci: {
         repository: process.env.GITHUB_REPOSITORY || null,
@@ -1186,7 +1208,7 @@ async function runTokenExchangeCheck() {
 async function runTokenAuthHeaderCheck() {
   const verifier = randomBytes(32).toString("base64url");
   const fakeCode = "lovable-oauth-check-hdr-" + randomBytes(8).toString("hex");
-  const url = `${SUPABASE_URL}/auth/v1/token?grant_type=pkce`;
+  const url = `${TOKEN_ENDPOINT_URL}?grant_type=pkce`;
   const body = JSON.stringify({ auth_code: fakeCode, code_verifier: verifier });
 
   const variants = [
@@ -1264,7 +1286,7 @@ async function runTokenAuthHeaderCheck() {
       "fail",
       "Token endpoint rejects requests without apikey/Authorization",
       `B returned the SAME response as A (${sig(A)}) — auth headers are not being validated`,
-      "/auth/v1/token must require an apikey. Check the project's Auth proxy / API gateway configuration.",
+      `${TOKEN_ENDPOINT_PATH} must require an apikey. Check the project's Auth proxy / API gateway configuration.`,
       responses
     );
   } else {
@@ -1351,7 +1373,7 @@ async function tokenProbe({
   rejectHint,
   extraDetail,
 }) {
-  const url = `${SUPABASE_URL}/auth/v1/token?grant_type=${encodeURIComponent(grant)}`;
+  const url = `${TOKEN_ENDPOINT_URL}?grant_type=${encodeURIComponent(grant)}`;
   try {
     const { res, attempts, elapsedMs } = await fetchWithRetry(
       url,
@@ -1364,7 +1386,7 @@ async function tokenProbe({
         },
         body: JSON.stringify(body),
       },
-      `POST /auth/v1/token grant_type=${grant}`
+      `POST ${TOKEN_ENDPOINT_PATH} grant_type=${grant}`
     );
     const ct = res.headers.get("content-type") || "";
     const text = await res.text();
