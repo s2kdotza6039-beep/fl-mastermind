@@ -205,12 +205,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * Non-retryable 4xx responses are returned immediately so the caller can
  * surface the precise error to the user.
  */
-async function fetchWithRetry(url, init = {}, label = "request") {
-  const attempts = HTTP_MAX_RETRIES + 1;
+async function fetchWithRetry(url, init = {}, label = "request", opts = {}) {
+  const timeoutMs = Number.isFinite(opts.timeoutMs) ? opts.timeoutMs : HTTP_TIMEOUT_MS;
+  const maxRetries = Number.isFinite(opts.maxRetries) ? opts.maxRetries : HTTP_MAX_RETRIES;
+  const backoffMs = Number.isFinite(opts.backoffMs) ? opts.backoffMs : HTTP_BACKOFF_MS;
+  const backoffFactor = Number.isFinite(opts.backoffFactor) ? opts.backoffFactor : 2;
+  const backoffMaxMs = Number.isFinite(opts.backoffMaxMs) ? opts.backoffMaxMs : Infinity;
+  const jitterMs = Number.isFinite(opts.jitterMs) ? opts.jitterMs : 0;
+  const computeWait = (attempt) => {
+    const base = backoffMs * Math.pow(backoffFactor, attempt - 1);
+    const jitter = jitterMs ? (Math.random() * 2 - 1) * jitterMs : 0;
+    return Math.min(backoffMaxMs, Math.max(0, base + jitter));
+  };
+
+  const attempts = maxRetries + 1;
   let lastErr;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), HTTP_TIMEOUT_MS);
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     const start = Date.now();
     try {
       const res = await fetch(url, { ...init, signal: ctrl.signal });
@@ -219,7 +231,7 @@ async function fetchWithRetry(url, init = {}, label = "request") {
       const retryable = [408, 425, 429].includes(res.status) || res.status >= 500;
       if (!retryable) return { res, attempts: attempt, elapsedMs: elapsed };
 
-      let waitMs = HTTP_BACKOFF_MS * Math.pow(2, attempt - 1);
+      let waitMs = computeWait(attempt);
       const retryAfter = res.headers.get("retry-after");
       if (retryAfter) {
         const asInt = Number(retryAfter);
@@ -238,12 +250,12 @@ async function fetchWithRetry(url, init = {}, label = "request") {
       const elapsed = Date.now() - start;
       const isTimeout = e?.name === "AbortError";
       const reason = isTimeout
-        ? `timed out after ${HTTP_TIMEOUT_MS}ms`
+        ? `timed out after ${timeoutMs}ms`
         : `network error: ${e?.message || e}`;
       lastErr = new Error(`${label} ${reason} (attempt ${attempt}/${attempts}, ${elapsed}ms)`);
       if (attempt === attempts) throw lastErr;
-      const waitMs = HTTP_BACKOFF_MS * Math.pow(2, attempt - 1);
-      console.log(`${DIM}  ↻ ${label}: ${reason}, retrying in ${waitMs}ms${RESET}`);
+      const waitMs = computeWait(attempt);
+      console.log(`${DIM}  ↻ ${label}: ${reason}, retrying in ${Math.round(waitMs)}ms${RESET}`);
       await sleep(waitMs);
     }
   }
