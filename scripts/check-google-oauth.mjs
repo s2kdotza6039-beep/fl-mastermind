@@ -1503,7 +1503,58 @@ async function runTokenExchangeCheck() {
     rejectError: () => false,
   });
 
-  // ---- Probe 4..N: header-sensitivity check (audience/auth headers).
+  // ---- Probe 4: response is non-JSON (Accept: text/html). Verifies the
+  //              script's "non-JSON content-type" warn branch fires when the
+  //              token endpoint is content-negotiated into returning HTML.
+  await tokenProbe({
+    label: "Token endpoint contract handler fires on non-JSON content-type",
+    grant: "pkce",
+    body: { auth_code: fakeCode, code_verifier: verifier },
+    expectStatus: () => true, // any status — we only care about content-type
+    expectedErrorCodes: null,
+    expectedDescriptionRe: null,
+    rejectError: () => false,
+    requestOverrides: {
+      headers: {
+        // Force content negotiation away from JSON. GoTrue and most edge
+        // proxies honor Accept on error paths; if the server insists on
+        // application/json regardless, the probe explicitly fails so we
+        // know the negative branch is unreachable.
+        Accept: "text/html, */*;q=0.1",
+      },
+    },
+    negativeContract: "non_json_content_type",
+  });
+
+  // ---- Probe 5: send malformed JSON body. Verifies the script's
+  //              "response was not JSON" fail branch fires. We send raw
+  //              text that is not valid JSON; the server is expected to
+  //              reject it with a 4xx + non-JSON or otherwise unparseable
+  //              body. If the server politely returns a JSON envelope we
+  //              fail loudly because the contract branch is unreachable.
+  await tokenProbe({
+    label: "Token endpoint contract handler fires on malformed JSON body",
+    grant: "pkce",
+    body: { auth_code: fakeCode, code_verifier: verifier },
+    expectStatus: () => true,
+    expectedErrorCodes: null,
+    expectedDescriptionRe: null,
+    rejectError: () => false,
+    requestOverrides: {
+      // Garbage that JSON.parse on either side will reject.
+      rawBody: "{this-is-not-json: ,,",
+      headers: {
+        // Lie about Content-Type so a strict body parser short-circuits
+        // before semantic validation, increasing the odds of a non-JSON
+        // error response.
+        "Content-Type": "text/plain",
+        Accept: "text/html, */*;q=0.1",
+      },
+    },
+    negativeContract: "malformed_json_body",
+  });
+
+  // ---- Probe 6..N: header-sensitivity check (audience/auth headers).
   await runTokenAuthHeaderCheck();
 }
 
@@ -1976,6 +2027,21 @@ async function runTokenAuthHeaderCheck() {
 /**
  * Single token-endpoint probe + assertion. Captures the response body,
  * content-type, and elapsed ms into the per-call summary.
+ *
+ * Optional `requestOverrides` lets a caller inject a non-default body or
+ * Accept/Content-Type. Used to provoke negative responses (e.g. non-JSON
+ * via Accept: text/html, malformed body via raw text) so we can exercise
+ * the script's own JSON-contract enforcement.
+ *
+ * Optional `negativeContract` inverts the probe verdict: the probe
+ * PASSES iff the script's contract handler fires the matching failure
+ * (proving we'd catch the misbehaviour in CI), and FAILS if the server
+ * still returns spec-shaped JSON (which would mean the negative branch
+ * is unreachable). Supported values:
+ *   - "non_json_content_type": the response Content-Type must NOT include
+ *     application/json, so the JSON-contract `warn` branch is exercised.
+ *   - "malformed_json_body":   the response body must FAIL JSON.parse(),
+ *     so the JSON-contract `fail` branch is exercised.
  */
 async function tokenProbe({
   label,
@@ -1987,21 +2053,27 @@ async function tokenProbe({
   rejectError,
   rejectHint,
   extraDetail,
+  requestOverrides,
+  negativeContract,
 }) {
   const url = `${TOKEN_ENDPOINT_URL}?grant_type=${encodeURIComponent(grant)}`;
+  const baseHeaders = {
+    apikey: ANON_KEY,
+    Authorization: `Bearer ${ANON_KEY}`,
+    "Content-Type": "application/json",
+  };
+  const headers = { ...baseHeaders, ...(requestOverrides?.headers || {}) };
+  // Allow callers to send a raw (possibly malformed) body string instead
+  // of a JSON-encoded object. `body` is still the structural payload used
+  // for keys reporting; `wireBody` is what actually goes on the wire.
+  const wireBody = requestOverrides?.rawBody !== undefined
+    ? requestOverrides.rawBody
+    : JSON.stringify(body);
   try {
     const { res, attempts, elapsedMs } = await fetchWithRetry(
       url,
-      {
-        method: "POST",
-        headers: {
-          apikey: ANON_KEY,
-          Authorization: `Bearer ${ANON_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      },
-      `POST ${TOKEN_ENDPOINT_PATH} grant_type=${grant}`,
+      { method: "POST", headers, body: wireBody },
+      `POST ${TOKEN_ENDPOINT_PATH} grant_type=${grant}${negativeContract ? ` [neg:${negativeContract}]` : ""}`,
       TOKEN_RETRY_OPTS
     );
     const ct = res.headers.get("content-type") || "";
@@ -2030,7 +2102,9 @@ async function tokenProbe({
         grantTypeSource: "query",
         // Keys-only — values may contain code_verifier / refresh_token, never log them.
         payloadKeys: requestPayloadKeys,
-        headerKeys: ["apikey", "Authorization", "Content-Type"],
+        headerKeys: Object.keys(headers).sort(),
+        rawBody: requestOverrides?.rawBody !== undefined,
+        negativeContract: negativeContract || null,
       },
       requestPayloadKeys,
       status: res.status,
@@ -2045,6 +2119,67 @@ async function tokenProbe({
       attempts,
       elapsedMs,
     };
+
+    // ── Negative-contract probes ────────────────────────────────────────
+    // These cases EXIST to verify that the script's own JSON contract
+    // enforcement actually fires when the server misbehaves. We invert
+    // the verdict: a "pass" here means the strict-JSON branch we'd hit
+    // in the positive path was triggered, so CI would catch it for real
+    // GoTrue regressions.
+    if (negativeContract === "non_json_content_type") {
+      const isJson = ct.includes("application/json");
+      if (!isJson) {
+        record(
+          "pass",
+          label,
+          `confirmed contract handler fires on non-JSON content-type: "${ct}"${tail}`,
+          undefined,
+          { ...meta, negativeContractFired: "non_json_content_type" }
+        );
+      } else {
+        record(
+          "fail",
+          label,
+          `expected non-JSON response (Accept override) but server returned application/json${tail} — negative branch not exercised`,
+          "The token endpoint ignored Accept negotiation. Either the override no longer works (re-tune the case) or content-negotiation is permanently disabled — the JSON-contract `warn` branch in tokenProbe is now unreachable.",
+          { ...meta, negativeContractFired: null }
+        );
+      }
+      return;
+    }
+    if (negativeContract === "malformed_json_body") {
+      // We sent a malformed body. We expect the server to reply with a 4xx
+      // and EITHER (a) a non-JSON body OR (b) JSON that JSON.parse rejects.
+      // Either outcome proves the script's body-parse fail branch fires.
+      const parseFailed = parsed === null;
+      const is4xx = res.status >= 400 && res.status < 500;
+      if (parseFailed && is4xx) {
+        record(
+          "pass",
+          label,
+          `confirmed contract handler fires on unparseable body (HTTP ${res.status}, ct="${ct}", body: ${text.slice(0, 80)}…)${tail}`,
+          undefined,
+          { ...meta, negativeContractFired: "malformed_json_body" }
+        );
+      } else if (parseFailed && !is4xx) {
+        record(
+          "fail",
+          label,
+          `body unparseable but status was ${res.status} (expected 4xx)${tail}`,
+          "Token endpoint accepted a malformed JSON body without 4xx — request validation is too permissive.",
+          { ...meta, negativeContractFired: "malformed_json_body" }
+        );
+      } else {
+        record(
+          "fail",
+          label,
+          `expected unparseable response body but JSON.parse succeeded${tail} — negative branch not exercised`,
+          "The server appears to tolerate malformed JSON or returned a generic JSON error envelope. The body-parse `fail` branch in tokenProbe is unreachable through this case — re-tune the malformed payload (e.g. send invalid UTF-8) or accept that the contract can't be exercised against this deployment.",
+          { ...meta, negativeContractFired: null }
+        );
+      }
+      return;
+    }
 
     if (!expectStatus(res.status)) {
       record("fail", label, `unexpected status${tail}: ${text.slice(0, 200)}`, undefined, meta);
@@ -2143,7 +2278,9 @@ async function tokenProbe({
           grantType: grant,
           grantTypeSource: "query",
           payloadKeys: requestPayloadKeys,
-          headerKeys: ["apikey", "Authorization", "Content-Type"],
+          headerKeys: Object.keys(headers).sort(),
+          rawBody: requestOverrides?.rawBody !== undefined,
+          negativeContract: negativeContract || null,
         },
         requestPayloadKeys,
       }
