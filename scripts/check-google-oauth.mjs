@@ -815,6 +815,199 @@ function expectedRedirectUriFor(origin) {
 }
 
 /**
+ * GoTrue version/build probe.
+ *
+ * Many remediation hints in this file ("upgrade past v2.130 for plain-PKCE
+ * removal", "challenge-rewriting fixed in v2.140+") are only actionable if
+ * we can tell the operator which GoTrue build they are actually running.
+ * This probe fetches:
+ *
+ *   1. GET <SUPABASE_URL>/auth/v1/health   — canonical: { name, version, description }
+ *   2. GET <SUPABASE_URL>/auth/v1/settings — fallback; some proxies expose
+ *                                            X-Sb-Gotrue-Version on this route.
+ *
+ * Behavior (non-fatal):
+ *   - On a successful parse we record() a "pass" (or "warn" if the version
+ *     falls in a known-bad range) and stash a structured object on
+ *     originSummaries[origin].gotrueBuild.
+ *   - For known-bad ranges we also call attachPkceRemediation() so the
+ *     ranked hints in report.json carry the exact upgrade target.
+ *   - When no version is exposed we record() a "warn" (NOT "fail") so a
+ *     missing /health doesn't break the suite for self-hosted deployments.
+ *
+ * The fetch is memoized per Supabase host so multiple origins sharing one
+ * Cloud project only hit the network once.
+ */
+const __gotrueBuildCache = new Map(); // host → Promise<result|null>
+
+// Known-bad GoTrue build ranges referenced by remediation hint copy elsewhere
+// in this file. Keep these in sync with pkceRemediationHint() / hint strings.
+const GOTRUE_BAD_RANGES = [
+  {
+    id: "plain_pkce_removed",
+    maxExclusive: "2.130.0",
+    summary: "GoTrue < 2.130 still accepts plain PKCE; upgrade to 2.130+ to force S256 enforcement.",
+  },
+  {
+    id: "challenge_rewriting",
+    maxExclusive: "2.140.0",
+    summary: "GoTrue < 2.140 had challenge-rewriting bugs that mangle code_challenge in transit; upgrade to 2.140+.",
+  },
+];
+
+function compareSemver(a, b) {
+  const pa = a.split(".").map((n) => parseInt(n, 10) || 0);
+  const pb = b.split(".").map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
+  }
+  return 0;
+}
+
+function classifyGotrueVersion(version) {
+  if (!version) return [];
+  const m = String(version).match(/(\d+\.\d+\.\d+)/);
+  if (!m) return [];
+  const semver = m[1];
+  const hits = [];
+  for (const range of GOTRUE_BAD_RANGES) {
+    if (compareSemver(semver, range.maxExclusive) < 0) {
+      hits.push({ id: range.id, semver, maxExclusive: range.maxExclusive, summary: range.summary });
+    }
+  }
+  return hits;
+}
+
+async function fetchGotrueBuildOnce(supabaseHost, baseUrl) {
+  if (__gotrueBuildCache.has(supabaseHost)) return __gotrueBuildCache.get(supabaseHost);
+  const promise = (async () => {
+    const tried = [];
+    // 1. /auth/v1/health — canonical for managed Supabase / recent GoTrue.
+    try {
+      const url = `${baseUrl.replace(/\/$/, "")}/auth/v1/health`;
+      const { res } = await fetchWithRetry(
+        url,
+        { headers: { apikey: ANON_KEY } },
+        "GET /auth/v1/health"
+      );
+      const headerVersion = res.headers.get("x-sb-gotrue-version") || null;
+      let body = null;
+      try { body = await res.json(); } catch { /* non-json */ }
+      tried.push({ source: "/auth/v1/health", status: res.status, ok: res.ok });
+      if (res.ok && (body?.version || headerVersion)) {
+        return {
+          source: "/auth/v1/health",
+          version: body?.version || headerVersion,
+          name: body?.name || null,
+          description: body?.description || null,
+          headerVersion,
+          raw: body ?? null,
+          tried,
+        };
+      }
+    } catch (e) {
+      tried.push({ source: "/auth/v1/health", error: e.message });
+    }
+    // 2. /auth/v1/settings — fallback; only trust the version header (the body
+    //    can leak per-project provider config and we don't want to snapshot it).
+    try {
+      const url = `${baseUrl.replace(/\/$/, "")}/auth/v1/settings`;
+      const { res } = await fetchWithRetry(
+        url,
+        { headers: { apikey: ANON_KEY } },
+        "GET /auth/v1/settings"
+      );
+      const headerVersion = res.headers.get("x-sb-gotrue-version") || null;
+      tried.push({ source: "/auth/v1/settings", status: res.status, ok: res.ok });
+      if (res.ok && headerVersion) {
+        return {
+          source: "/auth/v1/settings",
+          version: headerVersion,
+          name: null,
+          description: null,
+          headerVersion,
+          raw: null,
+          tried,
+        };
+      }
+    } catch (e) {
+      tried.push({ source: "/auth/v1/settings", error: e.message });
+    }
+    return { source: null, version: null, tried };
+  })();
+  __gotrueBuildCache.set(supabaseHost, promise);
+  return promise;
+}
+
+async function probeGotrueBuildInfo(origin) {
+  const label = `GoTrue build info reachable (${origin})`;
+  let supabaseHost;
+  try { supabaseHost = new URL(SUPABASE_URL).host; }
+  catch {
+    record("warn", label, "SUPABASE_URL is not a valid URL — skipping build probe.");
+    return null;
+  }
+
+  const result = await fetchGotrueBuildOnce(supabaseHost, SUPABASE_URL);
+  const summary = originSummary(origin);
+
+  if (!result || !result.version) {
+    summary.gotrueBuild = {
+      ok: false,
+      host: supabaseHost,
+      reason: "no version exposed",
+      tried: result?.tried ?? [],
+    };
+    record(
+      "warn",
+      label,
+      `No version returned from /auth/v1/health or /auth/v1/settings on ${supabaseHost}. Remediation hints will fall back to generic copy.`,
+      "If this is self-hosted GoTrue, expose the version via the X-Sb-Gotrue-Version response header so the probe can pin advice to your build."
+    );
+    return null;
+  }
+
+  const classification = classifyGotrueVersion(result.version);
+  summary.gotrueBuild = {
+    ok: true,
+    host: supabaseHost,
+    source: result.source,
+    version: result.version,
+    name: result.name,
+    description: result.description,
+    headerVersion: result.headerVersion,
+    classification,
+    tried: result.tried,
+  };
+
+  if (classification.length === 0) {
+    record(
+      "pass",
+      label,
+      `${result.name || "gotrue"} ${result.version} (via ${result.source}); no known-bad PKCE ranges matched.`
+    );
+  } else {
+    const ids = classification.map((c) => c.id).join(", ");
+    record(
+      "warn",
+      label,
+      `${result.name || "gotrue"} ${result.version} (via ${result.source}) matches known-bad range(s): ${ids}.`,
+      classification.map((c) => c.summary).join(" ")
+    );
+    if (typeof attachPkceRemediation === "function") {
+      for (const c of classification) {
+        attachPkceRemediation(origin, {
+          kind: `gotrue_${c.id}`,
+          summary: `${c.summary} (detected ${result.version} on ${supabaseHost}).`,
+          sources: [`/auth/v1/health on ${supabaseHost}`],
+        });
+      }
+    }
+  }
+  return summary.gotrueBuild;
+}
+
+/**
  * Per-origin redirect_uri allowlist gate. Runs BEFORE any PKCE work for an
  * origin so we never spend probes against a misconfigured pair.
  *
