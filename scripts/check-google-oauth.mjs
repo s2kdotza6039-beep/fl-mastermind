@@ -544,11 +544,14 @@ function validatePkce(googleUrl, sent, origin) {
   if (!gotChallenge || !gotMethod) {
     const miss = `${!gotChallenge ? "code_challenge" : ""}${!gotChallenge && !gotMethod ? " & " : ""}${!gotMethod ? "code_challenge_method" : ""}`;
     noteMismatch(origin, `pkce: missing ${miss}`);
+    const hint = pkceRemediationHint(origin, "missing_params");
+    attachPkceRemediation(origin, hint);
     record(
       "fail",
       `PKCE forwarded to Google (${origin})`,
       `missing ${miss}`,
-      "Set flow_type='pkce' in the client and ensure GoTrue forwards code_challenge — required for the auth code flow."
+      `Set flow_type='pkce' and ensure GoTrue forwards code_challenge. ${hint.summary}`,
+      { remediation: hint }
     );
     return { challenge: gotChallenge, method: gotMethod };
   }
@@ -560,11 +563,14 @@ function validatePkce(googleUrl, sent, origin) {
       ? `case mismatch: "${gotMethod}" (must be exact "S256")`
       : `code_challenge_method="${gotMethod}" (only "S256" is accepted)`;
     noteMismatch(origin, `pkce: method=${gotMethod} (expected S256)`);
+    const hint = pkceRemediationHint(origin, "method_not_s256");
+    attachPkceRemediation(origin, hint);
     record(
       "fail",
       `PKCE method is S256 (${origin})`,
       reason,
-      "Plain PKCE is insecure and case-sensitive aliases are not interoperable — use exactly 'S256'."
+      `Plain PKCE is insecure and case-sensitive aliases are not interoperable — use exactly 'S256'. ${hint.summary}`,
+      { remediation: hint }
     );
   } else {
     record("pass", `PKCE method is S256 (${origin})`, "code_challenge_method=S256");
