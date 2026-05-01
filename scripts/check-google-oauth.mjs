@@ -1353,6 +1353,155 @@ async function runE2ERedirect(origin) {
   }
 }
 
+/**
+ * Compute a sha256 fingerprint of a secret-ish value, for safe logging.
+ * Returns a 12-hex-char prefix (48 bits — enough to confirm "same value
+ * across runs" without enabling brute-force recovery for short keys).
+ */
+function fingerprintSecret(v) {
+  if (v === null || v === undefined || v === "") return null;
+  return createHash("sha256").update(String(v)).digest("hex").slice(0, 12);
+}
+
+/**
+ * Build the standalone remediation export document for ONE origin.
+ *
+ * Captures three blocks:
+ *   - meta:        when the export was generated, script-level context
+ *   - remediation: the deduped/counted bucket from
+ *                  originSummaries[origin].pkce.remediation (deep-copied
+ *                  so the file is self-contained)
+ *   - config:      every env var / resolved config value referenced by
+ *                  any of the remediation hints' `sources` strings, in
+ *                  one of three shapes:
+ *                    { kind: "public",   value: "<verbatim>" }
+ *                    { kind: "resolved", value: "<computed>", source: "..." }
+ *                    { kind: "secret",   present: bool, length, sha256_12 }
+ *
+ * Pure function over its inputs (origin + originSummaries + env-like) so
+ * it's unit-testable without touching disk or the live process.env.
+ */
+function buildRemediationExport(origin, summaries, env = process.env) {
+  const summary = summaries[origin] || {};
+  const pkce = summary.pkce || {};
+  const remediation = pkce.remediation && typeof pkce.remediation === "object"
+    ? JSON.parse(JSON.stringify(pkce.remediation))
+    : { byKind: {}, ranked: [], totalEvents: 0, uniqueKinds: 0 };
+
+  // Resolve the per-origin callback (mirrors expectedCallback() logic so
+  // operators see the EXACT URL their misconfigured Google client should
+  // be allowlisted with).
+  let resolvedCallback = null;
+  let callbackSource = null;
+  if (typeof APP_CALLBACKS !== "undefined" && APP_CALLBACKS.has?.(origin)) {
+    resolvedCallback = APP_CALLBACKS.get(origin);
+    callbackSource = "APP_CALLBACKS override";
+  } else {
+    const path = env.EXPECTED_CALLBACK_PATH || "/auth/v1/callback";
+    resolvedCallback = `${(env.SUPABASE_URL || env.VITE_SUPABASE_URL || "").replace(/\/+$/, "")}${path}`;
+    callbackSource = env.APP_CALLBACKS || env.EXPECTED_CALLBACK_PATH
+      ? "EXPECTED_CALLBACK_PATH + SUPABASE_URL"
+      : "default (/auth/v1/callback on SUPABASE_URL)";
+  }
+
+  // Env vars referenced by remediation sources. Each entry classifies
+  // the value's sensitivity so the export never leaks raw credentials.
+  const config = {
+    APP_ORIGINS: { kind: "public", value: env.APP_ORIGINS || env.APP_ORIGIN || null },
+    APP_CALLBACKS: { kind: "public", value: env.APP_CALLBACKS || null },
+    EXPECTED_CLIENT_ID: { kind: "public", value: env.EXPECTED_CLIENT_ID || null },
+    EXPECTED_RESPONSE_TYPE: { kind: "public", value: env.EXPECTED_RESPONSE_TYPE || null },
+    EXPECTED_SCOPES: { kind: "public", value: env.EXPECTED_SCOPES || null },
+    EXPECTED_CALLBACK_PATH: { kind: "public", value: env.EXPECTED_CALLBACK_PATH || null },
+    TOKEN_ENDPOINT_PATH: { kind: "public", value: env.TOKEN_ENDPOINT_PATH || null },
+    SUPABASE_URL: { kind: "public", value: env.SUPABASE_URL || env.VITE_SUPABASE_URL || null },
+    SUPABASE_PUBLISHABLE_KEY: {
+      kind: "secret",
+      present: !!(env.SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY),
+      length: (env.SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY || "").length || null,
+      sha256_12: fingerprintSecret(env.SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY),
+    },
+    resolvedCallbackUrlForOrigin: { kind: "resolved", value: resolvedCallback, source: callbackSource },
+    resolvedTokenEndpointUrl: {
+      kind: "resolved",
+      value: typeof TOKEN_ENDPOINT_URL === "string" ? TOKEN_ENDPOINT_URL : null,
+      source: "SUPABASE_URL + TOKEN_ENDPOINT_PATH",
+    },
+  };
+
+  return {
+    schema: "lovable.oauth.remediation-export.v1",
+    meta: {
+      generatedAt: new Date().toISOString(),
+      origin,
+      originInAppOrigins: APP_ORIGINS.includes(origin),
+      script: "scripts/check-google-oauth.mjs",
+      // CI breadcrumbs (handy when the file is attached to a bug report).
+      ci: {
+        repository: env.GITHUB_REPOSITORY || null,
+        ref: env.GITHUB_REF_NAME || null,
+        sha: env.GITHUB_SHA || null,
+        runId: env.GITHUB_RUN_ID || null,
+      },
+    },
+    remediation,
+    mismatches: Array.isArray(summary.mismatches) ? [...summary.mismatches] : [],
+    config,
+  };
+}
+
+/**
+ * Slugify an origin URL into a filesystem-safe filename component.
+ * "https://app.example.com" → "https-app-example-com"
+ */
+function originSlug(origin) {
+  return String(origin).replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Drive the --export-remediation flag end-to-end: resolve the target
+ * origin(s), build the export document(s), write to disk. Returns a list
+ * of { origin, path } pairs for logging.
+ */
+async function runRemediationExport() {
+  if (!CLI.exportRemediation) return [];
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const targets = CLI.exportRemediation === "all"
+    ? APP_ORIGINS.slice()
+    : [CLI.exportRemediation];
+
+  // Validate each target is an origin we actually probed (otherwise the
+  // export would be empty and confusing).
+  for (const o of targets) {
+    if (!APP_ORIGINS.includes(o)) {
+      console.error(
+        `${YELLOW}--export-remediation=${o}: origin is not in APP_ORIGINS [${APP_ORIGINS.join(", ")}]; the export will reflect what was probed, which may be empty.${RESET}`
+      );
+    }
+  }
+
+  const written = [];
+  if (CLI.exportRemediation === "all") {
+    const dir = CLI.exportOut || "./oauth-remediation";
+    fs.mkdirSync(dir, { recursive: true });
+    for (const o of targets) {
+      const file = path.join(dir, `${originSlug(o)}.json`);
+      const doc = buildRemediationExport(o, originSummaries);
+      fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n");
+      written.push({ origin: o, path: file });
+    }
+  } else {
+    const o = targets[0];
+    const file = CLI.exportOut || `./oauth-remediation-${originSlug(o)}.json`;
+    fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
+    const doc = buildRemediationExport(o, originSummaries);
+    fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n");
+    written.push({ origin: o, path: file });
+  }
+  return written;
+}
+
 async function finish() {
   const failed = results.filter((r) => r.state === "fail").length;
   const warned = results.filter((r) => r.state === "warn").length;
