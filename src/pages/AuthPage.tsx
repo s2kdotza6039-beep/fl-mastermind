@@ -9,8 +9,106 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Crown, Loader2, Eye, EyeOff } from "lucide-react";
+import { Crown, Loader2, Eye, EyeOff, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
+
+type ProviderStatus = {
+  google: "enabled" | "disabled" | "unknown";
+  checkedAt: string;
+  rawError?: string;
+};
+
+async function probeGoogleProvider(): Promise<ProviderStatus> {
+  // Hit the GoTrue /authorize endpoint with skip_http_redirect to inspect provider status
+  // without actually redirecting the browser.
+  try {
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/auth/v1/authorize?provider=google&skip_http_redirect=true`;
+    const res = await fetch(url, {
+      headers: { apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY },
+    });
+    if (res.ok) return { google: "enabled", checkedAt: new Date().toLocaleTimeString() };
+    let body: any = null;
+    try { body = await res.json(); } catch {}
+    const msg = body?.error_description || body?.msg || body?.error || `HTTP ${res.status}`;
+    if (/not enabled|unsupported provider/i.test(msg)) {
+      return { google: "disabled", checkedAt: new Date().toLocaleTimeString(), rawError: msg };
+    }
+    return { google: "unknown", checkedAt: new Date().toLocaleTimeString(), rawError: msg };
+  } catch (e: any) {
+    return { google: "unknown", checkedAt: new Date().toLocaleTimeString(), rawError: e?.message || String(e) };
+  }
+}
+
+function GoogleDiagnostics({
+  oauthError,
+  status,
+  refreshing,
+  onRefresh,
+}: {
+  oauthError: string | null;
+  status: ProviderStatus | null;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
+  if (!oauthError && !status) return null;
+
+  const ok = status?.google === "enabled" && !oauthError;
+  const Icon = ok ? CheckCircle2 : status?.google === "disabled" || oauthError ? XCircle : AlertTriangle;
+  const tone = ok
+    ? "border-emerald-500/40 bg-emerald-500/5 text-emerald-200"
+    : status?.google === "disabled" || oauthError
+    ? "border-destructive/50 bg-destructive/10 text-destructive-foreground"
+    : "border-amber-500/40 bg-amber-500/5 text-amber-200";
+
+  return (
+    <div className={`mt-4 rounded-md border p-3 text-xs space-y-2 ${tone}`}>
+      <div className="flex items-start gap-2">
+        <Icon className="w-4 h-4 mt-0.5 shrink-0" />
+        <div className="flex-1 space-y-1">
+          <p className="font-semibold">Google sign-in diagnostics</p>
+          {oauthError && (
+            <p>
+              <span className="font-medium">Last OAuth error:</span> {oauthError}
+            </p>
+          )}
+          {status && (
+            <ul className="space-y-0.5">
+              <li>
+                <span className="font-medium">Provider status:</span>{" "}
+                {status.google === "enabled" && "✅ Google provider is enabled"}
+                {status.google === "disabled" && "❌ Google provider is NOT enabled in Cloud auth"}
+                {status.google === "unknown" && "⚠️ Could not determine provider status"}
+              </li>
+              {status.rawError && (
+                <li className="break-all">
+                  <span className="font-medium">Server says:</span> {status.rawError}
+                </li>
+              )}
+              <li className="opacity-70">
+                <span className="font-medium">Redirect URI sent:</span> {window.location.origin}
+              </li>
+              <li className="opacity-70">
+                <span className="font-medium">Auth endpoint:</span>{" "}
+                {import.meta.env.VITE_SUPABASE_URL}/auth/v1/authorize
+              </li>
+              <li className="opacity-70">
+                <span className="font-medium">Checked:</span> {status.checkedAt}
+              </li>
+            </ul>
+          )}
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="underline hover:opacity-80 mt-1"
+          >
+            {refreshing ? "Re-checking…" : "Re-check provider status"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function PasswordInput(props: React.ComponentProps<typeof Input>) {
   const [show, setShow] = useState(false);
@@ -84,6 +182,31 @@ function SignInForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [oauthError, setOauthError] = useState<string | null>(null);
+  const [providerStatus, setProviderStatus] = useState<ProviderStatus | null>(null);
+  const [probing, setProbing] = useState(false);
+
+  // Pick up OAuth errors that came back in the URL (hash or query) after a failed redirect
+  useEffect(() => {
+    const sources = [window.location.hash.replace(/^#/, ""), window.location.search.replace(/^\?/, "")];
+    for (const src of sources) {
+      if (!src) continue;
+      const params = new URLSearchParams(src);
+      const err = params.get("error_description") || params.get("error");
+      if (err) {
+        setOauthError(decodeURIComponent(err));
+        runProbe();
+        break;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function runProbe() {
+    setProbing(true);
+    setProviderStatus(await probeGoogleProvider());
+    setProbing(false);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -120,10 +243,16 @@ function SignInForm() {
   }
 
   async function google() {
+    setOauthError(null);
+    await runProbe();
     const result = await lovable.auth.signInWithOAuth("google", {
       redirect_uri: window.location.origin,
     });
-    if (result.error) toast.error(result.error.message || "Google sign-in failed");
+    if (result.error) {
+      const msg = result.error.message || "Google sign-in failed";
+      setOauthError(msg);
+      toast.error(msg);
+    }
   }
 
   return (
@@ -143,6 +272,12 @@ function SignInForm() {
       <button type="button" onClick={reset} className="text-xs text-muted-foreground hover:text-primary underline w-full text-center">
         Forgot password?
       </button>
+      <GoogleDiagnostics
+        oauthError={oauthError}
+        status={providerStatus}
+        refreshing={probing}
+        onRefresh={runProbe}
+      />
     </form>
   );
 }
