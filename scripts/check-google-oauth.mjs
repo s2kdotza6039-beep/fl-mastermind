@@ -1449,8 +1449,23 @@ async function runTokenExchangeCheck() {
   // and falls back to `{ msg, code }` on some legacy paths. We require the
   // canonical fields to be present AND match an explicit allow-list per probe,
   // so a future GoTrue change that swaps codes around fails CI loudly.
+  //
+  // STRICT CONTRACT POLICY (no fallback behavior):
+  //   - Every positive probe MUST declare BOTH `expectedErrorCodes` (a
+  //     non-empty allow-list of canonical `error` codes) AND
+  //     `expectedDescriptionRe` (a regex the `error_description`/`msg` must
+  //     match). Omitting either is a CI-failing configuration error in
+  //     tokenProbe — there is no implicit "anything goes" fallback.
+  //   - A description mismatch is a hard `fail`, not a `warn`. Drift in
+  //     user-visible error text is a regression we want to surface loudly.
+  //   - Negative-contract probes (e.g. malformed body, content-type)
+  //     intentionally opt out via `allowMissingContract: true` because
+  //     they assert on transport-level behavior, not envelope shape.
 
-  // ---- Probe 1: correct shape, bogus code → "invalid_grant" / "invalid_request" / "flow_state_not_found"
+  // ---- Probe 1: correct shape, bogus code → grant-layer rejection.
+  // Allow-list is the documented set of GoTrue error codes for "the request
+  // shape is fine but the grant material is wrong". Description regex pins
+  // the wording families GoTrue uses across versions for this case.
   await tokenProbe({
     label: "Token endpoint accepts PKCE grant shape",
     grant: "pkce",
@@ -1462,7 +1477,7 @@ async function runTokenExchangeCheck() {
       "flow_state_not_found",
       "bad_code_verifier",
     ],
-    expectedDescriptionRe: /invalid|expired|not.?found|bad|flow.?state|code/i,
+    expectedDescriptionRe: /\b(invalid|expired|not\s*found|bad|flow[_\s-]?state|code|grant|verifier)\b/i,
     rejectError: (err) =>
       /missing|required|code_verifier.*required|auth_code.*required/i.test(
         `${err.error_description || err.msg || ""}`
@@ -1471,7 +1486,10 @@ async function runTokenExchangeCheck() {
       "GoTrue rejected our request as malformed — the param schema this script sends (auth_code + code_verifier) no longer matches the deployed version.",
   });
 
-  // ---- Probe 2: wrong grant_type → "unsupported_grant_type" or "invalid_grant"
+  // ---- Probe 2: wrong grant_type=password with PKCE body. The endpoint must
+  // refuse to silently treat the body as PKCE; allow-list covers both the
+  // "unsupported grant" rejection and the "validation failed" rejection
+  // depending on which layer catches it first.
   await tokenProbe({
     label: "Token endpoint distinguishes grant_type",
     grant: "password",
@@ -1483,12 +1501,15 @@ async function runTokenExchangeCheck() {
       "invalid_request",
       "validation_failed",
     ],
-    expectedDescriptionRe: /grant|password|email|missing|invalid/i,
+    expectedDescriptionRe: /\b(grant|password|email|missing|invalid|unsupported|validation)\b/i,
     rejectError: () => false,
     extraDetail: "POST grant_type=password with PKCE body should be rejected",
   });
 
-  // ---- Probe 3: missing code_verifier → must point at THE missing field
+  // ---- Probe 3: missing code_verifier — error MUST point at the missing
+  // field. The description regex is intentionally narrow (mentions
+  // verifier/missing/required) so a generic "invalid_grant" without a
+  // pointer-to-the-bad-field fails the contract.
   await tokenProbe({
     label: "Token endpoint requires code_verifier",
     grant: "pkce",
@@ -1499,13 +1520,13 @@ async function runTokenExchangeCheck() {
       "invalid_grant",
       "validation_failed",
     ],
-    expectedDescriptionRe: /code_verifier|verifier|missing|required/i,
+    expectedDescriptionRe: /\b(code_verifier|verifier|missing|required)\b/i,
     rejectError: () => false,
   });
 
-  // ---- Probe 4: response is non-JSON (Accept: text/html). Verifies the
-  //              script's "non-JSON content-type" warn branch fires when the
-  //              token endpoint is content-negotiated into returning HTML.
+  // ---- Probe 4: response is non-JSON (Accept: text/html). Negative-contract
+  // probe — opts out of the envelope allow-lists because the assertion is
+  // about Content-Type, not error vocabulary.
   await tokenProbe({
     label: "Token endpoint contract handler fires on non-JSON content-type",
     grant: "pkce",
@@ -1513,25 +1534,18 @@ async function runTokenExchangeCheck() {
     expectStatus: () => true, // any status — we only care about content-type
     expectedErrorCodes: null,
     expectedDescriptionRe: null,
+    allowMissingContract: true,
     rejectError: () => false,
     requestOverrides: {
       headers: {
-        // Force content negotiation away from JSON. GoTrue and most edge
-        // proxies honor Accept on error paths; if the server insists on
-        // application/json regardless, the probe explicitly fails so we
-        // know the negative branch is unreachable.
         Accept: "text/html, */*;q=0.1",
       },
     },
     negativeContract: "non_json_content_type",
   });
 
-  // ---- Probe 5: send malformed JSON body. Verifies the script's
-  //              "response was not JSON" fail branch fires. We send raw
-  //              text that is not valid JSON; the server is expected to
-  //              reject it with a 4xx + non-JSON or otherwise unparseable
-  //              body. If the server politely returns a JSON envelope we
-  //              fail loudly because the contract branch is unreachable.
+  // ---- Probe 5: send malformed JSON body. Negative-contract probe — opts
+  // out of envelope allow-lists for the same reason as probe 4.
   await tokenProbe({
     label: "Token endpoint contract handler fires on malformed JSON body",
     grant: "pkce",
@@ -1539,14 +1553,11 @@ async function runTokenExchangeCheck() {
     expectStatus: () => true,
     expectedErrorCodes: null,
     expectedDescriptionRe: null,
+    allowMissingContract: true,
     rejectError: () => false,
     requestOverrides: {
-      // Garbage that JSON.parse on either side will reject.
       rawBody: "{this-is-not-json: ,,",
       headers: {
-        // Lie about Content-Type so a strict body parser short-circuits
-        // before semantic validation, increasing the odds of a non-JSON
-        // error response.
         "Content-Type": "text/plain",
         Accept: "text/html, */*;q=0.1",
       },
