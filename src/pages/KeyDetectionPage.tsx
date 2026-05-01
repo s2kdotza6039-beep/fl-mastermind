@@ -20,6 +20,7 @@ import {
   RHYTHM_STYLES, type RhythmStyle, type GeneratedRhythm,
 } from "@/lib/rhythm-generator";
 import { useSession } from "@/context/SessionContext";
+import { watermarkExport } from "@/lib/watermark";
 
 const NOTES: Note[] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
@@ -247,7 +248,7 @@ export default function KeyDetectionPage() {
     !!uploadResult && uploadResult.confidence < CONFIDENCE_THRESHOLD && !lowConfidenceAck;
 
   // ---- Export Roman numerals + chord list as TXT
-  const exportChordsTxt = () => {
+  const exportChordsTxt = async () => {
     const ch = diatonicChords(root, scale);
     const progs = suggestedProgressions(root, scale);
     const lines = [
