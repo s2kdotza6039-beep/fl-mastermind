@@ -552,6 +552,165 @@ function attachPkceRemediation(origin, hint) {
 }
 
 /**
+ * Allow-list of OAuth/PKCE-relevant param names that are SAFE to echo
+ * verbatim into report.json. Anything not on this list is either redacted
+ * (`code_verifier`, secrets) or fingerprinted (`code_challenge`, `state`).
+ *
+ * Keep this in sync with what real GoTrue / Google authorize+token exchanges
+ * carry. Adding a key here is an explicit decision that the value is not
+ * sensitive.
+ */
+const PKCE_REQUEST_SAFE_PARAMS = new Set([
+  "provider",
+  "response_type",
+  "scope",
+  "redirect_to",
+  "redirect_uri",
+  "code_challenge_method",
+  "skip_http_redirect",
+  "flow_type",
+  "grant_type",
+  "prompt",
+  "access_type",
+  "include_granted_scopes",
+  "hd",
+]);
+
+// Params that must NEVER appear in the report. Includes obvious secrets and
+// any one-shot bearer-style values.
+const PKCE_REQUEST_REDACTED_PARAMS = new Set([
+  "code_verifier",
+  "client_secret",
+  "refresh_token",
+  "access_token",
+  "id_token",
+  "password",
+  "apikey",
+  "api_key",
+  "authorization",
+]);
+
+// Params we keep but FINGERPRINT (length + sha256_12) so cross-request
+// correlation is possible without leaking the value itself.
+const PKCE_REQUEST_FINGERPRINT_PARAMS = new Set([
+  "code",
+  "code_challenge",
+  "state",
+  "client_id",
+  "nonce",
+]);
+
+function fingerprintParamValue(value) {
+  if (value == null) return { present: false };
+  const str = String(value);
+  return {
+    present: true,
+    length: str.length,
+    sha256_12: createHash("sha256").update(str).digest("hex").slice(0, 12),
+  };
+}
+
+/**
+ * Snapshot a URL or URLSearchParams-like object as a redacted, report-safe
+ * record of what was sent. Returns an object — never a raw URL string —
+ * so secrets cannot accidentally re-appear via string interpolation.
+ *
+ *   {
+ *     method, url (origin+pathname only), pathname,
+ *     params: { <safe>: value, <fingerprinted>: {...} },
+ *     redactedKeys: [...],     // keys we dropped entirely
+ *     fingerprintedKeys: [...],// keys we kept as fingerprints
+ *     unknownKeys: [...],      // keys not in any allowlist (kept as null)
+ *   }
+ */
+function snapshotPkceHttpRequest({ method = "GET", url = null, params = null, headerKeys = [], extra = null } = {}) {
+  let parsedUrl = null;
+  let pathname = null;
+  let urlNoQuery = null;
+  let sp = null;
+  if (url) {
+    try { parsedUrl = new URL(url); }
+    catch { parsedUrl = null; }
+    if (parsedUrl) {
+      pathname = parsedUrl.pathname;
+      urlNoQuery = `${parsedUrl.origin}${parsedUrl.pathname}`;
+      sp = parsedUrl.searchParams;
+    }
+  }
+  // Merge in any explicit body params (POST /token uses URL-encoded bodies).
+  const merged = new URLSearchParams();
+  if (sp) for (const [k, v] of sp.entries()) merged.append(k, v);
+  if (params) {
+    if (params instanceof URLSearchParams) {
+      for (const [k, v] of params.entries()) merged.append(k, v);
+    } else if (typeof params === "object") {
+      for (const [k, v] of Object.entries(params)) {
+        if (v == null) continue;
+        merged.append(k, String(v));
+      }
+    }
+  }
+
+  const out = {};
+  const redactedKeys = [];
+  const fingerprintedKeys = [];
+  const unknownKeys = [];
+  for (const [k, v] of merged.entries()) {
+    const lower = k.toLowerCase();
+    if (PKCE_REQUEST_REDACTED_PARAMS.has(lower)) {
+      redactedKeys.push(k);
+      continue;
+    }
+    if (PKCE_REQUEST_FINGERPRINT_PARAMS.has(lower)) {
+      out[k] = fingerprintParamValue(v);
+      fingerprintedKeys.push(k);
+      continue;
+    }
+    if (PKCE_REQUEST_SAFE_PARAMS.has(lower)) {
+      out[k] = v;
+      continue;
+    }
+    // Unknown key — keep the key name (so we can audit), but null the value.
+    out[k] = null;
+    unknownKeys.push(k);
+  }
+
+  return {
+    method,
+    url: urlNoQuery,
+    pathname,
+    params: out,
+    redactedKeys: [...new Set(redactedKeys)],
+    fingerprintedKeys: [...new Set(fingerprintedKeys)],
+    unknownKeys: [...new Set(unknownKeys)],
+    headerKeys: Array.isArray(headerKeys) ? headerKeys.slice() : [],
+    ...(extra && typeof extra === "object" ? { extra } : {}),
+  };
+}
+
+/**
+ * Attach a PKCE failure case (with its redacted request snapshot) onto
+ * originSummaries[origin].pkce.failureRequests. Each entry is keyed by
+ * the failure `kind` reported via remediation hints, so report.json
+ * consumers can join failures ↔ remediation ↔ request shape.
+ *
+ * Multiple failures of the same kind are appended (not deduped) so the
+ * order matches the order of record() calls; deduping happens in the
+ * remediation bucket via attachPkceRemediation().
+ */
+function attachPkceFailureRequest(origin, kind, request) {
+  if (!origin || !kind || !request) return;
+  const summary = originSummary(origin);
+  if (!summary.pkce) summary.pkce = {};
+  if (!Array.isArray(summary.pkce.failureRequests)) summary.pkce.failureRequests = [];
+  summary.pkce.failureRequests.push({
+    kind,
+    at: new Date().toISOString(),
+    request,
+  });
+}
+
+/**
  * Insert/merge a hint into the deduped remediation bucket.
  * Pure function over `bucket` — no global state.
  */
