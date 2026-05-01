@@ -2,6 +2,8 @@ import { ReactNode } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { SessionHeader } from "./SessionHeader";
+import { UserMenu } from "./UserMenu";
+import { Footer } from "./Footer";
 
 export const StudioLayout = ({ children }: { children: ReactNode }) => {
   return (
@@ -14,8 +16,14 @@ export const StudioLayout = ({ children }: { children: ReactNode }) => {
             <div className="ml-3 flex-1 min-w-0">
               <SessionHeader />
             </div>
+            <div className="ml-3 flex-shrink-0">
+              <UserMenu />
+            </div>
           </header>
-          <main className="flex-1 overflow-auto scrollbar-thin">{children}</main>
+          <main className="flex-1 overflow-auto scrollbar-thin">
+            {children}
+            <Footer />
+          </main>
         </div>
       </div>
     </SidebarProvider>
