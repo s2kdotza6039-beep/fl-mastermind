@@ -67,6 +67,61 @@ function record(state, label, detail, hint) {
   if (hint) console.log(`  ${YELLOW}→ ${hint}${RESET}`);
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Fetch with per-attempt timeout and exponential backoff.
+ * Retries on: AbortError (timeout), network errors, HTTP 408/425/429/5xx.
+ * Honors `Retry-After` (seconds or HTTP-date) when present.
+ * Non-retryable 4xx responses are returned immediately so the caller can
+ * surface the precise error to the user.
+ */
+async function fetchWithRetry(url, init = {}, label = "request") {
+  const attempts = HTTP_MAX_RETRIES + 1;
+  let lastErr;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), HTTP_TIMEOUT_MS);
+    const start = Date.now();
+    try {
+      const res = await fetch(url, { ...init, signal: ctrl.signal });
+      clearTimeout(timer);
+      const elapsed = Date.now() - start;
+      const retryable = [408, 425, 429].includes(res.status) || res.status >= 500;
+      if (!retryable) return { res, attempts: attempt, elapsedMs: elapsed };
+
+      let waitMs = HTTP_BACKOFF_MS * Math.pow(2, attempt - 1);
+      const retryAfter = res.headers.get("retry-after");
+      if (retryAfter) {
+        const asInt = Number(retryAfter);
+        if (Number.isFinite(asInt)) waitMs = Math.max(waitMs, asInt * 1000);
+        else {
+          const dateMs = Date.parse(retryAfter);
+          if (!Number.isNaN(dateMs)) waitMs = Math.max(waitMs, dateMs - Date.now());
+        }
+      }
+      lastErr = new Error(`HTTP ${res.status} on ${label} (attempt ${attempt}/${attempts}, ${elapsed}ms)`);
+      if (attempt === attempts) return { res, attempts: attempt, elapsedMs: elapsed };
+      console.log(`${DIM}  ↻ ${label}: HTTP ${res.status}, retrying in ${Math.round(waitMs)}ms${RESET}`);
+      await sleep(waitMs);
+    } catch (e) {
+      clearTimeout(timer);
+      const elapsed = Date.now() - start;
+      const isTimeout = e?.name === "AbortError";
+      const reason = isTimeout
+        ? `timed out after ${HTTP_TIMEOUT_MS}ms`
+        : `network error: ${e?.message || e}`;
+      lastErr = new Error(`${label} ${reason} (attempt ${attempt}/${attempts}, ${elapsed}ms)`);
+      if (attempt === attempts) throw lastErr;
+      const waitMs = HTTP_BACKOFF_MS * Math.pow(2, attempt - 1);
+      console.log(`${DIM}  ↻ ${label}: ${reason}, retrying in ${waitMs}ms${RESET}`);
+      await sleep(waitMs);
+    }
+  }
+  throw lastErr || new Error(`${label} failed`);
+}
+
+
 async function main() {
   console.log(`${BOLD}Google OAuth configuration check${RESET}`);
   console.log(`${DIM}Target: ${SUPABASE_URL || "(none)"}${RESET}\n`);
