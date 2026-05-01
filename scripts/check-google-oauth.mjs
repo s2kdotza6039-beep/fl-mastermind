@@ -815,6 +815,140 @@ function expectedRedirectUriFor(origin) {
 }
 
 /**
+ * Per-origin redirect_uri allowlist gate. Runs BEFORE any PKCE work for an
+ * origin so we never spend probes against a misconfigured pair.
+ *
+ * Rules (strict, no fallback):
+ *   1. `origin` itself must appear in APP_ORIGINS (the allowlist seeded from
+ *      env). A drift here means the caller is asking us to probe an origin
+ *      that the rest of the suite does not consider trusted.
+ *   2. The expected redirect_uri MUST parse as an absolute URL.
+ *   3. Its host MUST be either:
+ *        a. the same host as `origin` (when the callback is derived from the
+ *           app origin — APP_CALLBACKS or non-default EXPECTED_CALLBACK_PATH
+ *           was set), OR
+ *        b. the SUPABASE_URL host (managed default).
+ *      Any other host indicates an APP_CALLBACKS override pointing at an
+ *      untrusted third party — that would silently leak the auth code.
+ *   4. The path MUST equal EXPECTED_CALLBACK_PATH unless an explicit
+ *      APP_CALLBACKS override is in play (overrides may legitimately use a
+ *      different path; we only require the host check above).
+ *   5. The scheme MUST be https for non-localhost origins.
+ *
+ * Returns { ok: true, expected } when the gate passes; { ok: false } when
+ * any rule fails (and a record() entry has already been emitted).
+ *
+ * Pure-ish: reads APP_ORIGINS / APP_CALLBACKS / EXPECTED_CALLBACK_PATH from
+ * module scope, mirroring the rest of the validators in this file.
+ */
+function validateRedirectUriAgainstAllowlist(origin) {
+  const label = `redirect_uri matches origin allowlist (${origin})`;
+
+  // Rule 1: origin allowlist membership.
+  if (!APP_ORIGINS.includes(origin)) {
+    record(
+      "fail",
+      label,
+      `origin "${origin}" is not present in APP_ORIGINS [${APP_ORIGINS.join(", ")}]`,
+      `Add "${origin}" to APP_ORIGINS (or remove it from the per-origin probe list) before running PKCE checks.`
+    );
+    noteMismatch(origin, "redirect_uri gate: origin not in APP_ORIGINS");
+    return { ok: false };
+  }
+
+  const expected = expectedRedirectUriFor(origin);
+
+  // Rule 2: parseable URL.
+  let parsed;
+  try { parsed = new URL(expected.url); }
+  catch {
+    record(
+      "fail",
+      label,
+      `expected redirect_uri is not a valid URL: "${expected.url}" (source: ${expected.source})`,
+      "Fix the APP_CALLBACKS / EXPECTED_CALLBACK_PATH value so it resolves to an absolute https URL."
+    );
+    noteMismatch(origin, "redirect_uri gate: unparseable expected URL");
+    return { ok: false };
+  }
+
+  let originUrl;
+  try { originUrl = new URL(origin); }
+  catch {
+    record(
+      "fail",
+      label,
+      `origin "${origin}" is not a valid URL`,
+      "APP_ORIGINS entries must be absolute origins like https://app.example.com"
+    );
+    noteMismatch(origin, "redirect_uri gate: unparseable origin");
+    return { ok: false };
+  }
+
+  let supabaseUrl;
+  try { supabaseUrl = new URL(SUPABASE_URL); } catch { supabaseUrl = null; }
+
+  const hasOverride = APP_CALLBACKS.has(origin);
+  const isOriginHost = parsed.host === originUrl.host;
+  const isSupabaseHost = supabaseUrl && parsed.host === supabaseUrl.host;
+
+  // Rule 3: host must be origin host OR supabase host (no third parties).
+  if (!isOriginHost && !isSupabaseHost) {
+    record(
+      "fail",
+      label,
+      `expected redirect_uri host "${parsed.host}" matches neither origin host "${originUrl.host}" nor SUPABASE_URL host "${supabaseUrl?.host ?? "(unset)"}" (source: ${expected.source})`,
+      `Point APP_CALLBACKS["${origin}"] at either the app origin or the managed Cloud callback host — never a third party.`
+    );
+    noteMismatch(origin, `redirect_uri gate: untrusted host ${parsed.host}`);
+    return { ok: false };
+  }
+
+  // Rule 4: path must equal EXPECTED_CALLBACK_PATH unless an explicit override is set.
+  if (!hasOverride && parsed.pathname !== EXPECTED_CALLBACK_PATH) {
+    record(
+      "fail",
+      label,
+      `expected redirect_uri path "${parsed.pathname}" != EXPECTED_CALLBACK_PATH "${EXPECTED_CALLBACK_PATH}" (source: ${expected.source})`,
+      `Either set APP_CALLBACKS["${origin}"]=<full-callback-url> if this origin really uses a different path, or align EXPECTED_CALLBACK_PATH.`
+    );
+    noteMismatch(origin, `redirect_uri gate: wrong path ${parsed.pathname}`);
+    return { ok: false };
+  }
+
+  // Rule 5: https for non-localhost.
+  const isLocalhost = /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(parsed.hostname);
+  if (parsed.protocol !== "https:" && !isLocalhost) {
+    record(
+      "fail",
+      label,
+      `expected redirect_uri uses non-https scheme "${parsed.protocol}" for non-localhost host "${parsed.hostname}"`,
+      "Use https:// for all non-localhost callback URLs."
+    );
+    noteMismatch(origin, `redirect_uri gate: insecure scheme ${parsed.protocol}`);
+    return { ok: false };
+  }
+
+  record(
+    "pass",
+    label,
+    `${expected.url} (source: ${expected.source}; host=${isOriginHost ? "origin" : "supabase"}${hasOverride ? "; override" : ""})`
+  );
+  // Stash the validated expectation so downstream probes can read it without
+  // re-resolving (and so report.json shows what was gated).
+  const summary = originSummary(origin);
+  summary.redirectUriGate = {
+    ok: true,
+    expected: expected.url,
+    source: expected.source,
+    host: parsed.host,
+    matchedHost: isOriginHost ? "origin" : "supabase",
+    hasOverride,
+  };
+  return { ok: true, expected };
+}
+
+/**
  * Validate the standard OAuth params on the Google authorize URL:
  *   - response_type must equal EXPECTED_RESPONSE_TYPE (default "code")
  *   - scope must include every entry in EXPECTED_SCOPES
