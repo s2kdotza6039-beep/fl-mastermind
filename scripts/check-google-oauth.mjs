@@ -1857,6 +1857,53 @@ async function runMalformedPkceProbes(origin) {
  * (e.g. proxy starts returning HTML 502s) which the equality checks alone
  * would miss.
  */
+
+/**
+ * Build a structured rawErrorPayload for report.json.
+ *
+ * GoTrue's /auth/v1/token endpoint can return either the OAuth2 canonical
+ * envelope `{ error, error_description, error_uri }` or the legacy GoTrue
+ * envelope `{ msg, code, error_code, error_id }`. When a contract assertion
+ * breaks, diffs are far more useful if BOTH sets of fields are surfaced
+ * verbatim alongside a capped raw body — so reviewers see exactly what
+ * GoTrue said, not just what the script normalized.
+ *
+ * Never includes secrets: the token endpoint does not echo `code_verifier`
+ * or `auth_code` in error bodies, so the parsed payload is safe to log.
+ * The raw body is capped at RAW_BODY_CAP bytes to avoid giant report.json.
+ */
+const RAW_BODY_CAP = 1024;
+function buildRawErrorPayload({ status, contentType, text, parsed }) {
+  const truncated = typeof text === "string" && text.length > RAW_BODY_CAP;
+  const rawBody = typeof text === "string" ? text.slice(0, RAW_BODY_CAP) : null;
+  const jsonParseable = parsed !== null && parsed !== undefined;
+  return {
+    status,
+    contentType: contentType || null,
+    jsonParseable,
+    bodyTruncated: truncated,
+    bodyByteLength: typeof text === "string" ? text.length : null,
+    rawBody,
+    canonical: {
+      // OAuth 2 / RFC 6749 §5.2
+      error: parsed?.error ?? null,
+      error_description: parsed?.error_description ?? null,
+      error_uri: parsed?.error_uri ?? null,
+    },
+    legacy: {
+      // GoTrue native envelope
+      msg: parsed?.msg ?? null,
+      code: parsed?.code ?? null,
+      error_code: parsed?.error_code ?? null,
+      error_id: parsed?.error_id ?? null,
+    },
+    // All top-level keys observed — flags unexpected fields (e.g.
+    // `weak_password`, `mfa_required`) without us having to guess.
+    parsedKeys: jsonParseable && typeof parsed === "object" && !Array.isArray(parsed)
+      ? Object.keys(parsed).sort()
+      : null,
+  };
+}
 async function runTokenAuthHeaderCheck() {
   const verifier = randomBytes(32).toString("base64url");
   const fakeCode = "lovable-oauth-check-hdr-" + randomBytes(8).toString("hex");
@@ -1906,14 +1953,19 @@ async function runTokenAuthHeaderCheck() {
       const text = await res.text();
       let parsed = null;
       try { parsed = JSON.parse(text); } catch { /* non-json */ }
+      const ct = res.headers.get("content-type") || "";
       responses[v.key] = {
         status: res.status,
         error: parsed?.error || null,
         errorDescription: parsed?.error_description || parsed?.msg || null,
-        contentType: res.headers.get("content-type") || "",
+        contentType: ct,
         elapsedMs,
         attempts,
         body: text.slice(0, 200),
+        // Verbatim error envelope (canonical OAuth2 + legacy GoTrue fields)
+        // so report.json diffs surface exactly what GoTrue returned when a
+        // contract assertion breaks — not just the script's normalized view.
+        rawErrorPayload: buildRawErrorPayload({ status: res.status, contentType: ct, text, parsed }),
         request: {
           grantType,
           grantTypeSource: "query",
@@ -2228,6 +2280,9 @@ async function tokenProbe({
       errorDescription,
       hasErrorField: !!parsed?.error,
       hasDescriptionField: !!parsed?.error_description,
+      // Verbatim error envelope (canonical + legacy fields + capped raw body)
+      // so report.json shows exactly what GoTrue returned on contract breaks.
+      rawErrorPayload: buildRawErrorPayload({ status: res.status, contentType: ct, text, parsed }),
       expectedErrorCodes: expectedErrorCodes || null,
       attempts,
       elapsedMs,
@@ -2561,4 +2616,5 @@ export {
   generatePkce,
   s256Challenge,
   pkceRemediationHint,
+  buildRawErrorPayload,
 };
