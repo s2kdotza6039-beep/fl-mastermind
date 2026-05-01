@@ -529,11 +529,14 @@ function validatePkce(googleUrl, sent, origin) {
       record("pass", `PKCE verifier format valid (${origin})`, `${sent.verifier.length} chars, RFC 7636 charset`);
     } else {
       noteMismatch(origin, `pkce: verifier ${verifierFmt.reason}`);
+      const hint = pkceRemediationHint(origin, "verifier_format");
+      attachPkceRemediation(origin, hint);
       record(
         "fail",
         `PKCE verifier format valid (${origin})`,
         verifierFmt.reason,
-        "code_verifier must be 43–128 chars from [A-Z a-z 0-9 - . _ ~] — check the script's randomBytes/base64url path."
+        `code_verifier must be 43–128 chars from [A-Z a-z 0-9 - . _ ~]. ${hint.summary}`,
+        { remediation: hint }
       );
     }
   }
