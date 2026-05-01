@@ -1529,7 +1529,28 @@ async function tokenProbe({
       meta
     );
   } catch (e) {
-    record("fail", label, e.message, "Network or timeout — check runner connectivity to the Cloud project URL.");
+    const requestPayloadKeys =
+      body && typeof body === "object" ? Object.keys(body).sort() : [];
+    record(
+      "fail",
+      label,
+      e.message,
+      "Network or timeout — check runner connectivity to the Cloud project URL.",
+      {
+        grant,
+        grantType: grant,
+        grantTypeSource: "query",
+        request: {
+          method: "POST",
+          url,
+          grantType: grant,
+          grantTypeSource: "query",
+          payloadKeys: requestPayloadKeys,
+          headerKeys: ["apikey", "Authorization", "Content-Type"],
+        },
+        requestPayloadKeys,
+      }
+    );
   }
 }
 
