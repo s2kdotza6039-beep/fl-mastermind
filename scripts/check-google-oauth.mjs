@@ -3745,4 +3745,6 @@ export {
   buildRemediationExport,
   originSlug,
   fingerprintSecret,
+  validateRedirectUriAgainstAllowlist,
+  expectedRedirectUriFor,
 };
