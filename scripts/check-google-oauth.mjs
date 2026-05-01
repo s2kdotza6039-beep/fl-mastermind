@@ -77,6 +77,56 @@ const HTTP_TIMEOUT_MS = Number(process.env.HTTP_TIMEOUT_MS) || 10_000;
 const HTTP_MAX_RETRIES = Number(process.env.HTTP_MAX_RETRIES) || 3;
 const HTTP_BACKOFF_MS = Number(process.env.HTTP_BACKOFF_MS) || 500;
 
+/**
+ * Token-endpoint-specific retry/backoff overrides.
+ *
+ * The /auth/v1/token probes are the most flake-prone in CI: they hit a
+ * rate-limited GoTrue endpoint, often through a shared egress IP, and
+ * transient 5xx / 429 / connection-reset errors should not fail the
+ * pipeline. These envs let operators tune the probe budget without
+ * affecting the rest of the script's HTTP behaviour.
+ *
+ *   TOKEN_HTTP_TIMEOUT_MS       per-request timeout (default: HTTP_TIMEOUT_MS)
+ *   TOKEN_HTTP_MAX_RETRIES      max retry attempts  (default: max(HTTP_MAX_RETRIES, 4))
+ *   TOKEN_HTTP_BACKOFF_MS       initial backoff ms  (default: max(HTTP_BACKOFF_MS, 750))
+ *   TOKEN_HTTP_BACKOFF_FACTOR   exponential factor  (default: 2)
+ *   TOKEN_HTTP_BACKOFF_MAX_MS   cap for any single backoff wait (default: 15000)
+ *   TOKEN_HTTP_JITTER_MS        +/- random jitter ms applied to each wait (default: 250)
+ */
+const TOKEN_HTTP_TIMEOUT_MS =
+  Number(process.env.TOKEN_HTTP_TIMEOUT_MS) || HTTP_TIMEOUT_MS;
+const TOKEN_HTTP_MAX_RETRIES = (() => {
+  const raw = Number(process.env.TOKEN_HTTP_MAX_RETRIES);
+  if (Number.isFinite(raw) && raw >= 0) return raw;
+  return Math.max(HTTP_MAX_RETRIES, 4);
+})();
+const TOKEN_HTTP_BACKOFF_MS = (() => {
+  const raw = Number(process.env.TOKEN_HTTP_BACKOFF_MS);
+  if (Number.isFinite(raw) && raw >= 0) return raw;
+  return Math.max(HTTP_BACKOFF_MS, 750);
+})();
+const TOKEN_HTTP_BACKOFF_FACTOR =
+  Number(process.env.TOKEN_HTTP_BACKOFF_FACTOR) || 2;
+const TOKEN_HTTP_BACKOFF_MAX_MS =
+  Number(process.env.TOKEN_HTTP_BACKOFF_MAX_MS) || 15_000;
+const TOKEN_HTTP_JITTER_MS = (() => {
+  const raw = Number(process.env.TOKEN_HTTP_JITTER_MS);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 250;
+})();
+
+/**
+ * Bundle of overrides passed to fetchWithRetry for any /auth/v1/token call.
+ * Kept as a single object so future probe sites stay in sync automatically.
+ */
+const TOKEN_RETRY_OPTS = Object.freeze({
+  timeoutMs: TOKEN_HTTP_TIMEOUT_MS,
+  maxRetries: TOKEN_HTTP_MAX_RETRIES,
+  backoffMs: TOKEN_HTTP_BACKOFF_MS,
+  backoffFactor: TOKEN_HTTP_BACKOFF_FACTOR,
+  backoffMaxMs: TOKEN_HTTP_BACKOFF_MAX_MS,
+  jitterMs: TOKEN_HTTP_JITTER_MS,
+});
+
 function parseOrigins() {
   const list = (process.env.APP_ORIGINS || process.env.APP_ORIGIN || "https://localhost")
     .split(/[,\n]/)
