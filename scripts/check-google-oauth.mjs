@@ -581,11 +581,14 @@ function validatePkce(googleUrl, sent, origin) {
     record("pass", `PKCE challenge format valid (${origin})`, `43-char base64url, no padding`);
   } else {
     noteMismatch(origin, `pkce: challenge ${challengeFmt.reason}`);
+    const hint = pkceRemediationHint(origin, "challenge_format");
+    attachPkceRemediation(origin, hint);
     record(
       "fail",
       `PKCE challenge format valid (${origin})`,
       challengeFmt.reason,
-      "code_challenge for S256 must be exactly 43 base64url chars (A-Z a-z 0-9 - _) with no padding. A different length or charset means GoTrue rewrote or mis-encoded the value."
+      `code_challenge for S256 must be exactly 43 base64url chars (A-Z a-z 0-9 - _) with no padding. ${hint.summary}`,
+      { remediation: hint }
     );
   }
 
@@ -605,11 +608,14 @@ function validatePkce(googleUrl, sent, origin) {
     // (a) Self-check: our generator must be deterministic + spec-correct.
     if (recomputed !== sent.challenge) {
       noteMismatch(origin, "pkce: recomputed challenge != sent challenge");
+      const hint = pkceRemediationHint(origin, "self_recompute");
+      attachPkceRemediation(origin, hint);
       record(
         "fail",
         `PKCE recompute matches sent challenge (${origin})`,
         `recompute(verifier) ${recomputed.slice(0, 16)}… != sent ${sent.challenge.slice(0, 16)}…`,
-        "The script's S256 derivation is broken — base64url encoding or hash input changed. Token exchange would fail for every user."
+        `The script's S256 derivation is broken. ${hint.summary}`,
+        { remediation: hint }
       );
       // If our own crypto path is wrong, comparing to gotChallenge is moot.
       return { challenge: gotChallenge, method: gotMethod };
@@ -624,11 +630,14 @@ function validatePkce(googleUrl, sent, origin) {
     //     auth server will derive from our verifier at token-exchange time.
     if (gotChallenge && recomputed !== gotChallenge) {
       noteMismatch(origin, "pkce: recomputed challenge != received challenge");
+      const hint = pkceRemediationHint(origin, "server_recompute");
+      attachPkceRemediation(origin, hint);
       record(
         "fail",
         `PKCE recompute matches received challenge (${origin})`,
         `recompute(verifier) ${recomputed.slice(0, 16)}… != received ${gotChallenge.slice(0, 16)}…`,
-        "Server-forwarded code_challenge will not validate against our code_verifier at /token. GoTrue or a proxy is rewriting the challenge — token exchange is guaranteed to fail with 'invalid_grant'."
+        `Server-forwarded code_challenge will not validate at /token — token exchange is guaranteed to fail with 'invalid_grant'. ${hint.summary}`,
+        { remediation: hint }
       );
       return { challenge: gotChallenge, method: gotMethod };
     }
@@ -636,11 +645,14 @@ function validatePkce(googleUrl, sent, origin) {
 
   if (gotChallenge !== sent.challenge) {
     noteMismatch(origin, "pkce: challenge rewritten by server");
+    const hint = pkceRemediationHint(origin, "challenge_rewritten");
+    attachPkceRemediation(origin, hint);
     record(
       "fail",
       `PKCE challenge preserved (${origin})`,
       `sent ${sent.challenge.slice(0, 16)}…, got ${gotChallenge.slice(0, 16)}…`,
-      "GoTrue rewrote the challenge — token exchange will fail. Verify the project isn't running an old GoTrue version."
+      `GoTrue rewrote the challenge — token exchange will fail. ${hint.summary}`,
+      { remediation: hint }
     );
   } else {
     record("pass", `PKCE challenge preserved (${origin})`, `${gotChallenge.slice(0, 16)}…`);
