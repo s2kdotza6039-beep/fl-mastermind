@@ -436,6 +436,51 @@ function validatePkce(googleUrl, sent, origin) {
     );
   }
 
+  // ── Recompute-and-compare (RFC 7636 §4.6 client-side equivalent) ─────
+  // Independently recompute BASE64URL(SHA256(verifier)) and compare against
+  // both (a) the challenge we sent and (b) the challenge GoTrue forwarded.
+  // This is the same operation the auth server performs at /token time, so
+  // a mismatch here means the token exchange is guaranteed to fail with
+  // "invalid_grant" / "code challenge does not match" — catch it now in CI
+  // instead of after a real user is bounced from Google.
+  if (sent.verifier) {
+    const recomputed = s256Challenge(sent.verifier);
+    summary.pkce.recomputedChallenge = fingerprintPkce(recomputed, "S256");
+    summary.pkce.recomputedMatchesSent = recomputed === sent.challenge;
+    summary.pkce.recomputedMatchesReceived = !!gotChallenge && recomputed === gotChallenge;
+
+    // (a) Self-check: our generator must be deterministic + spec-correct.
+    if (recomputed !== sent.challenge) {
+      noteMismatch(origin, "pkce: recomputed challenge != sent challenge");
+      record(
+        "fail",
+        `PKCE recompute matches sent challenge (${origin})`,
+        `recompute(verifier) ${recomputed.slice(0, 16)}… != sent ${sent.challenge.slice(0, 16)}…`,
+        "The script's S256 derivation is broken — base64url encoding or hash input changed. Token exchange would fail for every user."
+      );
+      // If our own crypto path is wrong, comparing to gotChallenge is moot.
+      return { challenge: gotChallenge, method: gotMethod };
+    }
+    record(
+      "pass",
+      `PKCE recompute matches sent challenge (${origin})`,
+      `BASE64URL(SHA256(verifier)) == sent challenge (${recomputed.slice(0, 16)}…)`
+    );
+
+    // (b) Server-roundtrip check: what GoTrue forwarded must equal what the
+    //     auth server will derive from our verifier at token-exchange time.
+    if (gotChallenge && recomputed !== gotChallenge) {
+      noteMismatch(origin, "pkce: recomputed challenge != received challenge");
+      record(
+        "fail",
+        `PKCE recompute matches received challenge (${origin})`,
+        `recompute(verifier) ${recomputed.slice(0, 16)}… != received ${gotChallenge.slice(0, 16)}…`,
+        "Server-forwarded code_challenge will not validate against our code_verifier at /token. GoTrue or a proxy is rewriting the challenge — token exchange is guaranteed to fail with 'invalid_grant'."
+      );
+      return { challenge: gotChallenge, method: gotMethod };
+    }
+  }
+
   if (gotChallenge !== sent.challenge) {
     noteMismatch(origin, "pkce: challenge rewritten by server");
     record(
@@ -446,6 +491,13 @@ function validatePkce(googleUrl, sent, origin) {
     );
   } else {
     record("pass", `PKCE challenge preserved (${origin})`, `${gotChallenge.slice(0, 16)}…`);
+    if (sent.verifier) {
+      record(
+        "pass",
+        `PKCE end-to-end S256 derivation verified (${origin})`,
+        `received challenge == BASE64URL(SHA256(verifier))`
+      );
+    }
   }
   return { challenge: gotChallenge, method: gotMethod };
 }
