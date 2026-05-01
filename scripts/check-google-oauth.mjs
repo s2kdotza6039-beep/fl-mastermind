@@ -22,6 +22,17 @@ import { createHash, randomBytes } from "node:crypto";
  *   HTTP_TIMEOUT_MS            per-request timeout in ms (default: 10000)
  *   HTTP_MAX_RETRIES           max retry attempts on transient failures (default: 3)
  *   HTTP_BACKOFF_MS            initial backoff in ms, doubles each retry (default: 500)
+ *   TOKEN_HTTP_TIMEOUT_MS      per-request timeout for token-endpoint probes
+ *                              (default: HTTP_TIMEOUT_MS)
+ *   TOKEN_HTTP_MAX_RETRIES     max retries for token-endpoint probes only
+ *                              (default: max(HTTP_MAX_RETRIES, 4))
+ *   TOKEN_HTTP_BACKOFF_MS      initial backoff for token-endpoint probes
+ *                              (default: max(HTTP_BACKOFF_MS, 750))
+ *   TOKEN_HTTP_BACKOFF_FACTOR  exponential factor for token retries (default: 2)
+ *   TOKEN_HTTP_BACKOFF_MAX_MS  cap on any single backoff wait (default: 15000)
+ *   TOKEN_HTTP_JITTER_MS       +/- random jitter ms per wait (default: 250) —
+ *                              spreads retries across CI shards to avoid
+ *                              synchronized rate-limit hits
  *   EXPECTED_CLIENT_ID         if set, every authorize URL must use this Google client_id
  *   EXPECTED_SCOPES            comma/space-separated scopes that MUST appear (default: "openid email profile")
  *   EXPECTED_RESPONSE_TYPE     required response_type (default: "code")
