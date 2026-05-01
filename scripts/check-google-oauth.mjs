@@ -652,6 +652,14 @@ async function main() {
     }
   }
 
+  // 5. Opt-in negative-test pass: prove the validator catches misconfigured PKCE.
+  if (/^(1|true|yes)$/i.test(process.env.PKCE_NEGATIVE_TESTS || "")) {
+    console.log(`\n${DIM}PKCE_NEGATIVE_TESTS enabled — verifying validator rejects bad PKCE…${RESET}`);
+    for (const origin of APP_ORIGINS) {
+      await runPkceNegativeTests(origin);
+    }
+  }
+
   await finish();
 }
 
