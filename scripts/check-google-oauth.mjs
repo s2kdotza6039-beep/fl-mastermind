@@ -92,10 +92,10 @@ function noteMismatch(origin, msg) {
 // When non-null, record() appends here instead of `results` and stays silent.
 // Used by the negative-test pass to grade the validator without polluting CI output.
 let captureBuffer = null;
-function withCapture(fn) {
+async function withCapture(fn) {
   const buf = [];
   captureBuffer = buf;
-  try { return Promise.resolve(fn()).then((v) => ({ value: v, buf })); }
+  try { const value = await fn(); return { value, buf }; }
   finally { captureBuffer = null; }
 }
 
