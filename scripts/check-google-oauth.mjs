@@ -404,6 +404,21 @@ async function main() {
         const preview = body.url.slice(0, 120) + (body.url.length > 120 ? "…" : "");
         record("pass", label, preview + tail);
         validateCallback(body.url, origin);
+        const clientId = validateAuthorizeParams(body.url, origin);
+        if (clientId) {
+          if (seenClientIds.size && !seenClientIds.has(clientId)) {
+            const others = [...seenClientIds.entries()]
+              .map(([cid, o]) => `${o}=${cid}`)
+              .join("; ");
+            record(
+              "fail",
+              `client_id consistent across origins (${origin})`,
+              `${origin} uses ${clientId}, but other origins used ${others}`,
+              "All APP_ORIGINS should resolve to the same Google OAuth client. Mixed client_ids usually mean SUPABASE_URL points at a different project than expected."
+            );
+          }
+          seenClientIds.set(clientId, origin);
+        }
         const got = validatePkce(body.url, pkce, origin);
         if (got?.challenge) {
           const prev = seenChallenges.get(got.challenge);
