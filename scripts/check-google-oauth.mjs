@@ -736,6 +736,12 @@ async function main() {
     }
   }
 
+  // 6. Always-on token-exchange shape check (cheap; no real code consumed).
+  if (/^(0|false|no)$/i.test(process.env.TOKEN_EXCHANGE_CHECK || "") === false) {
+    console.log(`\n${DIM}Probing /auth/v1/token shape (PKCE grant)…${RESET}`);
+    await runTokenExchangeCheck();
+  }
+
   await finish();
 }
 
