@@ -1016,6 +1016,17 @@ async function main() {
   if (/^(0|false|no)$/i.test(process.env.TOKEN_EXCHANGE_CHECK || "") === false) {
     console.log(`\n${DIM}Probing ${TOKEN_ENDPOINT_PATH} shape (PKCE grant)…${RESET}`);
     await runTokenExchangeCheck();
+
+    // 6b. Per-origin malformed-PKCE probe suite. Each origin gets its own
+    //     batch of synthetic POSTs that deliberately violate RFC 7636
+    //     (missing/short/long/wrong-charset code_verifier). The exact
+    //     failure reason is captured into originSummaries[origin].malformedPkce
+    //     so CI artifacts show, per origin, that GoTrue is enforcing each
+    //     contract.
+    console.log(`\n${DIM}Probing ${TOKEN_ENDPOINT_PATH} with malformed PKCE per origin…${RESET}`);
+    for (const origin of APP_ORIGINS) {
+      await runMalformedPkceProbes(origin);
+    }
   }
 
   await finish();
