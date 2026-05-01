@@ -2227,7 +2227,9 @@ async function tokenProbe({
           grantType: grant,
           grantTypeSource: "query",
           payloadKeys: requestPayloadKeys,
-          headerKeys: ["apikey", "Authorization", "Content-Type"],
+          headerKeys: Object.keys(headers).sort(),
+          rawBody: requestOverrides?.rawBody !== undefined,
+          negativeContract: negativeContract || null,
         },
         requestPayloadKeys,
       }
