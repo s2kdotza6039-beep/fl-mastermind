@@ -1503,7 +1503,58 @@ async function runTokenExchangeCheck() {
     rejectError: () => false,
   });
 
-  // ---- Probe 4..N: header-sensitivity check (audience/auth headers).
+  // ---- Probe 4: response is non-JSON (Accept: text/html). Verifies the
+  //              script's "non-JSON content-type" warn branch fires when the
+  //              token endpoint is content-negotiated into returning HTML.
+  await tokenProbe({
+    label: "Token endpoint contract handler fires on non-JSON content-type",
+    grant: "pkce",
+    body: { auth_code: fakeCode, code_verifier: verifier },
+    expectStatus: () => true, // any status — we only care about content-type
+    expectedErrorCodes: null,
+    expectedDescriptionRe: null,
+    rejectError: () => false,
+    requestOverrides: {
+      headers: {
+        // Force content negotiation away from JSON. GoTrue and most edge
+        // proxies honor Accept on error paths; if the server insists on
+        // application/json regardless, the probe explicitly fails so we
+        // know the negative branch is unreachable.
+        Accept: "text/html, */*;q=0.1",
+      },
+    },
+    negativeContract: "non_json_content_type",
+  });
+
+  // ---- Probe 5: send malformed JSON body. Verifies the script's
+  //              "response was not JSON" fail branch fires. We send raw
+  //              text that is not valid JSON; the server is expected to
+  //              reject it with a 4xx + non-JSON or otherwise unparseable
+  //              body. If the server politely returns a JSON envelope we
+  //              fail loudly because the contract branch is unreachable.
+  await tokenProbe({
+    label: "Token endpoint contract handler fires on malformed JSON body",
+    grant: "pkce",
+    body: { auth_code: fakeCode, code_verifier: verifier },
+    expectStatus: () => true,
+    expectedErrorCodes: null,
+    expectedDescriptionRe: null,
+    rejectError: () => false,
+    requestOverrides: {
+      // Garbage that JSON.parse on either side will reject.
+      rawBody: "{this-is-not-json: ,,",
+      headers: {
+        // Lie about Content-Type so a strict body parser short-circuits
+        // before semantic validation, increasing the odds of a non-JSON
+        // error response.
+        "Content-Type": "text/plain",
+        Accept: "text/html, */*;q=0.1",
+      },
+    },
+    negativeContract: "malformed_json_body",
+  });
+
+  // ---- Probe 6..N: header-sensitivity check (audience/auth headers).
   await runTokenAuthHeaderCheck();
 }
 
