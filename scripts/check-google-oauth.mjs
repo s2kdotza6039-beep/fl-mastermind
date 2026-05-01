@@ -1686,6 +1686,90 @@ async function runMalformedPkceProbes(origin) {
       body: { auth_code: fakeCode, code_verifier: null },
       expectErrorRe: /verifier|missing|required|null|invalid|invalid_request/i,
     },
+    // ── URL-safe vs standard base64 charset attacks ─────────────────────
+    // RFC 7636 §4.1 requires `code_verifier = unreserved-char` where
+    // unreserved-char ∈ [A-Z a-z 0-9 - . _ ~]. Standard-base64 punctuation
+    // ('+', '/') is NOT in that grammar; padding ('=') is explicitly
+    // forbidden; URL-safe base64 substitutions ('-', '_') ARE allowed but
+    // must not be silently translated to/from '+'/'/'. The cases below
+    // exercise each direction.
+    {
+      id: "bad_charset_slash",
+      desc: "code_verifier contains '/' (standard base64, not base64url)",
+      body: { auth_code: fakeCode, code_verifier: "/".repeat(43) },
+      expectErrorRe: /verifier|invalid|bad_code_verifier|invalid_grant/i,
+    },
+    {
+      id: "bad_charset_plus_slash_mixed",
+      desc: "code_verifier mixes '+' and '/' (full standard-base64 alphabet violation)",
+      body: {
+        auth_code: fakeCode,
+        code_verifier: "+/".repeat(21) + "+", // 43 chars, alternating +/ then '+'
+      },
+      expectErrorRe: /verifier|invalid|bad_code_verifier|invalid_grant/i,
+    },
+    {
+      id: "bad_charset_url_unreserved_extras",
+      desc: "code_verifier contains characters outside RFC 3986 unreserved set ('!', '*')",
+      body: {
+        auth_code: fakeCode,
+        code_verifier: "a".repeat(20) + "!*" + "b".repeat(21),
+      },
+      expectErrorRe: /verifier|invalid|bad_code_verifier|invalid_grant/i,
+    },
+    {
+      id: "bad_charset_percent_encoded",
+      desc: "code_verifier contains a percent-encoded sequence ('%2B' should not auto-decode to '+')",
+      body: {
+        auth_code: fakeCode,
+        code_verifier: "a".repeat(20) + "%2B" + "b".repeat(20),
+      },
+      expectErrorRe: /verifier|invalid|bad_code_verifier|invalid_grant/i,
+    },
+    // ── Mixed padding scenarios ─────────────────────────────────────────
+    // base64url is supposed to OMIT padding, and any '=' is a contract
+    // violation. We test single-trailing, double-trailing, leading,
+    // embedded, and a "valid-base64-with-padding" shape that would parse
+    // under permissive decoders.
+    {
+      id: "bad_padding_double_trailing",
+      desc: "code_verifier ends with '==' (double padding)",
+      body: { auth_code: fakeCode, code_verifier: "a".repeat(41) + "==" },
+      expectErrorRe: /verifier|invalid|bad_code_verifier|invalid_grant|padding/i,
+    },
+    {
+      id: "bad_padding_leading",
+      desc: "code_verifier starts with '=' (leading padding — never valid)",
+      body: { auth_code: fakeCode, code_verifier: "=" + "a".repeat(42) },
+      expectErrorRe: /verifier|invalid|bad_code_verifier|invalid_grant|padding/i,
+    },
+    {
+      id: "bad_padding_embedded",
+      desc: "code_verifier contains '=' embedded mid-string (never valid)",
+      body: {
+        auth_code: fakeCode,
+        code_verifier: "a".repeat(20) + "=" + "b".repeat(22),
+      },
+      expectErrorRe: /verifier|invalid|bad_code_verifier|invalid_grant|padding/i,
+    },
+    {
+      id: "bad_padding_standard_b64_full",
+      desc: "code_verifier is well-formed STANDARD base64 (with '+', '/', '=') — full charset confusion",
+      body: {
+        auth_code: fakeCode,
+        // 44-char standard base64 with padding — would decode under a
+        // permissive Buffer.from(s, 'base64') call. Tests that GoTrue
+        // doesn't quietly normalize standard → url-safe before validating.
+        code_verifier: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA+/==",
+      },
+      expectErrorRe: /verifier|invalid|bad_code_verifier|invalid_grant|padding|length/i,
+    },
+    {
+      id: "bad_padding_only_equals",
+      desc: "code_verifier is 43 '=' characters (padding-only, no payload)",
+      body: { auth_code: fakeCode, code_verifier: "=".repeat(43) },
+      expectErrorRe: /verifier|invalid|bad_code_verifier|invalid_grant|padding/i,
+    },
   ];
 
   /** @type {Record<string, any>} */
