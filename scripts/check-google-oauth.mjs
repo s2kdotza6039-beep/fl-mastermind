@@ -214,6 +214,37 @@ function fingerprintPkce(challenge, method) {
   };
 }
 
+// RFC 7636 §4.1: code_verifier = 43..128 chars from [A-Z a-z 0-9 - . _ ~]
+const PKCE_VERIFIER_RE = /^[A-Za-z0-9\-._~]+$/;
+// RFC 7636 §4.2: code_challenge for S256 = BASE64URL(SHA256(verifier)) → 43 chars
+const PKCE_CHALLENGE_RE = /^[A-Za-z0-9\-_]+$/; // base64url, no padding
+
+/**
+ * Validate the format of a PKCE token (verifier OR challenge) per RFC 7636.
+ * `kind` is "verifier" or "challenge" — drives length bounds & charset.
+ * Returns { ok: boolean, reason?: string }.
+ */
+function validatePkceFormat(value, kind) {
+  if (!value) return { ok: false, reason: "missing" };
+  const len = value.length;
+  if (kind === "verifier") {
+    if (len < 43 || len > 128) return { ok: false, reason: `length ${len} (must be 43–128)` };
+    if (!PKCE_VERIFIER_RE.test(value)) {
+      return { ok: false, reason: "contains chars outside [A-Z a-z 0-9 - . _ ~]" };
+    }
+    return { ok: true };
+  }
+  // challenge (S256)
+  if (len !== 43) return { ok: false, reason: `length ${len} (S256 challenge must be exactly 43)` };
+  if (!PKCE_CHALLENGE_RE.test(value)) {
+    return { ok: false, reason: "not valid base64url (allowed: A-Z a-z 0-9 - _)" };
+  }
+  if (/[+/=]/.test(value)) {
+    return { ok: false, reason: "contains base64 padding/non-url chars (+/=) — must be base64url unpadded" };
+  }
+  return { ok: true };
+}
+
 /**
  * Validate that the authorize URL returned by GoTrue forwarded our PKCE
  * parameters to Google unchanged. Some misconfigurations (e.g. flow_type
