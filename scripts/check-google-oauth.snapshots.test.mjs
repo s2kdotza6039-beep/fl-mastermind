@@ -153,8 +153,9 @@ if (UPDATE) {
 }
 
 // One test per fixture so a single drift doesn't mask others.
+// Skip per-fixture comparisons in UPDATE mode — by design we're rewriting.
 for (const name of Object.keys(FIXTURES)) {
-  test(`snapshot: ${name}`, () => {
+  test(`snapshot: ${name}`, { skip: UPDATE ? "UPDATE_SNAPSHOTS=1" : false }, () => {
     assert.ok(
       Object.prototype.hasOwnProperty.call(stored, name),
       `No snapshot stored for "${name}". Run with UPDATE_SNAPSHOTS=1 to seed.`
