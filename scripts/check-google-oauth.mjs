@@ -335,8 +335,13 @@ function validateCallback(googleUrl, origin) {
 
   const expectedCallback = `${SUPABASE_URL.replace(/\/$/, "")}/auth/v1/callback`;
   const actualCallback = parsed.searchParams.get("redirect_uri");
+  const summary = originSummary(origin);
+  summary.redirectUri = actualCallback;
+  summary.expectedRedirectUri = expectedCallback;
+  summary.redirectUriMatches = actualCallback === expectedCallback;
 
   if (!actualCallback) {
+    noteMismatch(origin, "redirect_uri missing");
     record(
       "fail",
       `Supabase callback present (${origin})`,
@@ -344,6 +349,7 @@ function validateCallback(googleUrl, origin) {
       "GoTrue should always set redirect_uri=<SUPABASE_URL>/auth/v1/callback. Re-check provider configuration."
     );
   } else if (actualCallback !== expectedCallback) {
+    noteMismatch(origin, `redirect_uri=${actualCallback} (expected ${expectedCallback})`);
     record(
       "fail",
       `Supabase callback matches /auth/v1/callback (${origin})`,
@@ -359,14 +365,24 @@ function validateCallback(googleUrl, origin) {
   // method we used so failures are debuggable.
   const stateParam = parsed.searchParams.get("state") || "";
   const decoded = extractRedirectTo(parsed.searchParams.get("redirect_to"), stateParam);
+  const stateMatches =
+    !!decoded.value && originsMatch(decoded.value, origin);
+  summary.state = {
+    raw: stateParam ? `${stateParam.slice(0, 32)}…` : null,
+    length: stateParam.length,
+    decoder: decoded.source,
+    decodedRedirectTo: decoded.value,
+    originMatches: stateMatches,
+  };
 
-  if (decoded.value && originsMatch(decoded.value, origin)) {
+  if (decoded.value && stateMatches) {
     record(
       "pass",
       `Authorize URL preserves redirect_to (${origin})`,
       `found via ${decoded.source}: ${decoded.value}`
     );
   } else if (decoded.value) {
+    noteMismatch(origin, `redirect_to=${decoded.value} (expected origin ${origin})`);
     record(
       "fail",
       `Authorize URL preserves redirect_to (${origin})`,
@@ -374,6 +390,8 @@ function validateCallback(googleUrl, origin) {
       "Origin mismatch — the user will be redirected to the wrong environment after sign-in. Check the redirect_to passed to signInWithOAuth."
     );
   } else if (stateParam.includes(encodeURIComponent(origin)) || stateParam.includes(origin)) {
+    summary.state.decoder = "substring";
+    summary.state.originMatches = true;
     record(
       "pass",
       `Authorize URL preserves redirect_to (${origin})`,
