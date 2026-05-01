@@ -21,6 +21,9 @@
  *   HTTP_TIMEOUT_MS            per-request timeout in ms (default: 10000)
  *   HTTP_MAX_RETRIES           max retry attempts on transient failures (default: 3)
  *   HTTP_BACKOFF_MS            initial backoff in ms, doubles each retry (default: 500)
+ *   EXPECTED_CLIENT_ID         if set, every authorize URL must use this Google client_id
+ *   EXPECTED_SCOPES            comma/space-separated scopes that MUST appear (default: "openid email profile")
+ *   EXPECTED_RESPONSE_TYPE     required response_type (default: "code")
  *
  * Usage:
  *   node scripts/check-google-oauth.mjs
