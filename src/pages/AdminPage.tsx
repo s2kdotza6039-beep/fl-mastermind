@@ -1,13 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/PageHeader";
-import { Shield, Users, Activity, AlertTriangle, Crown, Loader2 } from "lucide-react";
+import { Shield, Users, Activity, AlertTriangle, Crown, Loader2, Search, X } from "lucide-react";
 import { toast } from "sonner";
+
 
 interface UserRow {
   user_id: string;
@@ -23,6 +25,18 @@ export default function AdminPage() {
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userQuery, setUserQuery] = useState("");
+
+  const filteredUsers = useMemo(() => {
+    const q = userQuery.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter((u) => {
+      const name = (u.display_name || "").toLowerCase();
+      const id = u.user_id.toLowerCase();
+      const roles = u.roles.join(" ").toLowerCase();
+      return name.includes(q) || id.includes(q) || roles.includes(q);
+    });
+  }, [users, userQuery]);
 
   async function load() {
     setLoading(true);
@@ -95,9 +109,35 @@ export default function AdminPage() {
 
         <TabsContent value="users">
           <Card className="studio-card p-4 mt-4">
+            <div className="relative mb-3">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <Input
+                value={userQuery}
+                onChange={(e) => setUserQuery(e.target.value)}
+                placeholder="Search users by name, ID, or role…"
+                aria-label="Search users"
+                maxLength={100}
+                className="pl-9 pr-9"
+              />
+              {userQuery && (
+                <button
+                  type="button"
+                  onClick={() => setUserQuery("")}
+                  aria-label="Clear search"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-muted text-muted-foreground"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
               <div className="space-y-2">
-                {users.map((u) => (
+                {filteredUsers.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-6">
+                    No users match "{userQuery}".
+                  </p>
+                )}
+                {filteredUsers.map((u) => (
                   <div key={u.user_id} className="flex items-center justify-between gap-3 p-3 rounded border border-border">
                     <div className="min-w-0">
                       <div className="font-medium truncate">{u.display_name || u.user_id.slice(0, 8)}</div>
