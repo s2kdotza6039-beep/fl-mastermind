@@ -25,6 +25,18 @@ export default function AdminPage() {
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userQuery, setUserQuery] = useState("");
+
+  const filteredUsers = useMemo(() => {
+    const q = userQuery.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter((u) => {
+      const name = (u.display_name || "").toLowerCase();
+      const id = u.user_id.toLowerCase();
+      const roles = u.roles.join(" ").toLowerCase();
+      return name.includes(q) || id.includes(q) || roles.includes(q);
+    });
+  }, [users, userQuery]);
 
   async function load() {
     setLoading(true);
