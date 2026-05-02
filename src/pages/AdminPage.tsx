@@ -14,6 +14,7 @@ import { toast } from "sonner";
 interface UserRow {
   user_id: string;
   display_name: string | null;
+  email: string | null;
   roles: string[];
 }
 interface LogRow { id: string; user_id: string | null; event_type: string; metadata: any; created_at: string; }
@@ -32,27 +33,43 @@ export default function AdminPage() {
     if (!q) return users;
     return users.filter((u) => {
       const name = (u.display_name || "").toLowerCase();
+      const email = (u.email || "").toLowerCase();
       const id = u.user_id.toLowerCase();
       const roles = u.roles.join(" ").toLowerCase();
-      return name.includes(q) || id.includes(q) || roles.includes(q);
+      return name.includes(q) || email.includes(q) || id.includes(q) || roles.includes(q);
     });
   }, [users, userQuery]);
 
   async function load() {
     setLoading(true);
-    const [profilesQ, rolesQ, logsQ, alertsQ] = await Promise.all([
+    const [profilesQ, rolesQ, logsQ, alertsQ, emailsQ] = await Promise.all([
       supabase.from("profiles").select("user_id, display_name").limit(500),
       supabase.from("user_roles").select("user_id, role"),
       supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(100),
       supabase.from("security_alerts").select("*").order("created_at", { ascending: false }).limit(100),
+      supabase.rpc("admin_list_user_emails"),
     ]);
     if (profilesQ.data && rolesQ.data) {
+      const emailMap = new Map<string, string>();
+      (emailsQ.data as Array<{ user_id: string; email: string | null }> | null)?.forEach((e) => {
+        if (e.email) emailMap.set(e.user_id, e.email);
+      });
       const map = new Map<string, UserRow>();
       profilesQ.data.forEach((p: any) =>
-        map.set(p.user_id, { user_id: p.user_id, display_name: p.display_name, roles: [] }),
+        map.set(p.user_id, {
+          user_id: p.user_id,
+          display_name: p.display_name,
+          email: emailMap.get(p.user_id) ?? null,
+          roles: [],
+        }),
       );
       rolesQ.data.forEach((r: any) => {
-        const row = map.get(r.user_id) || { user_id: r.user_id, display_name: null, roles: [] };
+        const row = map.get(r.user_id) || {
+          user_id: r.user_id,
+          display_name: null,
+          email: emailMap.get(r.user_id) ?? null,
+          roles: [],
+        };
         row.roles.push(r.role);
         map.set(r.user_id, row);
       });
@@ -141,6 +158,9 @@ export default function AdminPage() {
                   <div key={u.user_id} className="flex items-center justify-between gap-3 p-3 rounded border border-border">
                     <div className="min-w-0">
                       <div className="font-medium truncate">{u.display_name || u.user_id.slice(0, 8)}</div>
+                      {u.email && (
+                        <div className="text-xs text-muted-foreground truncate">{u.email}</div>
+                      )}
                       <div className="flex gap-1 mt-1">
                         {u.roles.map((r) => (
                           <Badge key={r} variant={r === "admin" ? "default" : r === "paid" ? "secondary" : "outline"}>{r}</Badge>
