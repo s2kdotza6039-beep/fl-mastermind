@@ -135,26 +135,40 @@ export default function AdminPage() {
 
         <TabsContent value="users">
           <Card className="studio-card p-4 mt-4">
-            <div className="relative mb-3">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-              <Input
-                value={userQuery}
-                onChange={(e) => setUserQuery(e.target.value)}
-                placeholder="Search users by name, ID, or role…"
-                aria-label="Search users"
-                maxLength={100}
-                className="pl-9 pr-9"
-              />
-              {userQuery && (
-                <button
-                  type="button"
-                  onClick={() => setUserQuery("")}
-                  aria-label="Clear search"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-muted text-muted-foreground"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
+            <div className="flex flex-col sm:flex-row gap-2 mb-3">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <Input
+                  value={userQuery}
+                  onChange={(e) => setUserQuery(e.target.value)}
+                  placeholder="Search users by name, email, ID, or role…"
+                  aria-label="Search users"
+                  maxLength={100}
+                  className="pl-9 pr-9"
+                />
+                {userQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setUserQuery("")}
+                    aria-label="Clear search"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-muted text-muted-foreground"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              <Select value={roleFilter} onValueChange={(v) => setRoleFilter(v as typeof roleFilter)}>
+                <SelectTrigger className="sm:w-44" aria-label="Filter by role">
+                  <SelectValue placeholder="All roles" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All roles</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="paid">Paid</SelectItem>
+                  <SelectItem value="free">Free</SelectItem>
+                  <SelectItem value="none">No role</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
               <div className="space-y-2">
