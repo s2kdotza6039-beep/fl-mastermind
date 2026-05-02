@@ -158,6 +158,9 @@ export default function AdminPage() {
                   <div key={u.user_id} className="flex items-center justify-between gap-3 p-3 rounded border border-border">
                     <div className="min-w-0">
                       <div className="font-medium truncate">{u.display_name || u.user_id.slice(0, 8)}</div>
+                      {u.email && (
+                        <div className="text-xs text-muted-foreground truncate">{u.email}</div>
+                      )}
                       <div className="flex gap-1 mt-1">
                         {u.roles.map((r) => (
                           <Badge key={r} variant={r === "admin" ? "default" : r === "paid" ? "secondary" : "outline"}>{r}</Badge>
