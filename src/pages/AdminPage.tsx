@@ -28,18 +28,26 @@ export default function AdminPage() {
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [userQuery, setUserQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "paid" | "free" | "none">("all");
 
   const filteredUsers = useMemo(() => {
     const q = userQuery.trim().toLowerCase();
-    if (!q) return users;
     return users.filter((u) => {
+      if (roleFilter !== "all") {
+        if (roleFilter === "none") {
+          if (u.roles.length > 0) return false;
+        } else if (!u.roles.includes(roleFilter)) {
+          return false;
+        }
+      }
+      if (!q) return true;
       const name = (u.display_name || "").toLowerCase();
       const email = (u.email || "").toLowerCase();
       const id = u.user_id.toLowerCase();
       const roles = u.roles.join(" ").toLowerCase();
       return name.includes(q) || email.includes(q) || id.includes(q) || roles.includes(q);
     });
-  }, [users, userQuery]);
+  }, [users, userQuery, roleFilter]);
 
   async function load() {
     setLoading(true);
