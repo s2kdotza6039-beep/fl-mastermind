@@ -14,6 +14,7 @@ import { toast } from "sonner";
 interface UserRow {
   user_id: string;
   display_name: string | null;
+  email: string | null;
   roles: string[];
 }
 interface LogRow { id: string; user_id: string | null; event_type: string; metadata: any; created_at: string; }
