@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/PageHeader";
 import { Shield, Users, Activity, AlertTriangle, Crown, Loader2, Search, X } from "lucide-react";
 import { toast } from "sonner";
-import { useMemo } from "react";
+
 
 interface UserRow {
   user_id: string;
