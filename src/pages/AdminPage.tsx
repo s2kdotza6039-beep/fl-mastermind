@@ -109,9 +109,35 @@ export default function AdminPage() {
 
         <TabsContent value="users">
           <Card className="studio-card p-4 mt-4">
+            <div className="relative mb-3">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <Input
+                value={userQuery}
+                onChange={(e) => setUserQuery(e.target.value)}
+                placeholder="Search users by name, ID, or role…"
+                aria-label="Search users"
+                maxLength={100}
+                className="pl-9 pr-9"
+              />
+              {userQuery && (
+                <button
+                  type="button"
+                  onClick={() => setUserQuery("")}
+                  aria-label="Clear search"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-muted text-muted-foreground"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
               <div className="space-y-2">
-                {users.map((u) => (
+                {filteredUsers.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-6">
+                    No users match "{userQuery}".
+                  </p>
+                )}
+                {filteredUsers.map((u) => (
                   <div key={u.user_id} className="flex items-center justify-between gap-3 p-3 rounded border border-border">
                     <div className="min-w-0">
                       <div className="font-medium truncate">{u.display_name || u.user_id.slice(0, 8)}</div>
