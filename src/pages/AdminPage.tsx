@@ -33,27 +33,43 @@ export default function AdminPage() {
     if (!q) return users;
     return users.filter((u) => {
       const name = (u.display_name || "").toLowerCase();
+      const email = (u.email || "").toLowerCase();
       const id = u.user_id.toLowerCase();
       const roles = u.roles.join(" ").toLowerCase();
-      return name.includes(q) || id.includes(q) || roles.includes(q);
+      return name.includes(q) || email.includes(q) || id.includes(q) || roles.includes(q);
     });
   }, [users, userQuery]);
 
   async function load() {
     setLoading(true);
-    const [profilesQ, rolesQ, logsQ, alertsQ] = await Promise.all([
+    const [profilesQ, rolesQ, logsQ, alertsQ, emailsQ] = await Promise.all([
       supabase.from("profiles").select("user_id, display_name").limit(500),
       supabase.from("user_roles").select("user_id, role"),
       supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(100),
       supabase.from("security_alerts").select("*").order("created_at", { ascending: false }).limit(100),
+      supabase.rpc("admin_list_user_emails"),
     ]);
     if (profilesQ.data && rolesQ.data) {
+      const emailMap = new Map<string, string>();
+      (emailsQ.data as Array<{ user_id: string; email: string | null }> | null)?.forEach((e) => {
+        if (e.email) emailMap.set(e.user_id, e.email);
+      });
       const map = new Map<string, UserRow>();
       profilesQ.data.forEach((p: any) =>
-        map.set(p.user_id, { user_id: p.user_id, display_name: p.display_name, roles: [] }),
+        map.set(p.user_id, {
+          user_id: p.user_id,
+          display_name: p.display_name,
+          email: emailMap.get(p.user_id) ?? null,
+          roles: [],
+        }),
       );
       rolesQ.data.forEach((r: any) => {
-        const row = map.get(r.user_id) || { user_id: r.user_id, display_name: null, roles: [] };
+        const row = map.get(r.user_id) || {
+          user_id: r.user_id,
+          display_name: null,
+          email: emailMap.get(r.user_id) ?? null,
+          roles: [],
+        };
         row.roles.push(r.role);
         map.set(r.user_id, row);
       });
