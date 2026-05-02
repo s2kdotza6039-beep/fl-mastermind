@@ -5,9 +5,11 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/PageHeader";
-import { Shield, Users, Activity, AlertTriangle, Crown, Loader2 } from "lucide-react";
+import { Shield, Users, Activity, AlertTriangle, Crown, Loader2, Search, X } from "lucide-react";
 import { toast } from "sonner";
+import { useMemo } from "react";
 
 interface UserRow {
   user_id: string;
