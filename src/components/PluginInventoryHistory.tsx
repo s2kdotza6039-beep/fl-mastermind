@@ -571,6 +571,7 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
                                         {d.added.length > 5 ? `, +${d.added.length - 5} more` : ""}
                                         <span className="block text-[9px] text-emerald-500/70 not-italic">
                                           Why: not in your current {label.toLowerCase()} list → each addition raises completion by 1.
+                                          {" "}Example: <strong>{d.added[0]}</strong> goes from <em>absent</em> → <em>present</em>, taking {label.toLowerCase()} count <strong>{beforeCount} → {beforeCount + 1}</strong>{d.added.length > 1 ? ` (and so on through ${d.added.length} adds, ending at ${beforeCount + d.added.length})` : ""}.
                                         </span>
                                       </div>
                                     )}
@@ -580,9 +581,11 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
                                         {d.removed.length > 5 ? `, +${d.removed.length - 5} more` : ""}
                                         <span className="block text-[9px] text-destructive/70 not-italic">
                                           Why: present today but missing from this snapshot → each removal drops completion by 1.
+                                          {" "}Example: <strong>{d.removed[0]}</strong> goes from <em>present</em> → <em>absent</em>, taking {label.toLowerCase()} count <strong>{beforeCount} → {beforeCount - 1}</strong>{d.removed.length > 1 ? ` (continuing through ${d.removed.length} removes, ending at ${Math.max(0, beforeCount - d.removed.length)})` : ""}.
                                         </span>
                                       </div>
                                     )}
+
                                   </div>
                                 );
                               })}
