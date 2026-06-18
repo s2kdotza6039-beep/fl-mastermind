@@ -302,6 +302,22 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
               ) : (
                 <>
                   <SenseiMarkdown content={m.content || "…"} messageId={`m-${i}`} />
+                  {(() => {
+                    const hits = findPrioritized(m.content, ownedAll);
+                    if (hits.length === 0) return null;
+                    return (
+                      <div className="mt-2 pt-2 border-t border-border/40">
+                        <div className="text-[10px] uppercase tracking-widest text-primary/80 mb-1 flex items-center gap-1">
+                          <Boxes className="w-3 h-3" /> Sensei prioritized from your inventory
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {hits.map((h) => (
+                            <span key={h} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30">{h}</span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {!loading && i === messages.length - 1 && m.content.length > 50 && (
                     <Button
                       size="sm"
