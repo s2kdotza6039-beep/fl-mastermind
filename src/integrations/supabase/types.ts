@@ -137,6 +137,42 @@ export type Database = {
         }
         Relationships: []
       }
+      user_plugin_inventory_history: {
+        Row: {
+          change_type: string
+          changed_by: string | null
+          created_at: string
+          custom_plugins: string[]
+          id: string
+          inventory_completed: boolean
+          native_plugins: string[]
+          third_party_plugins: string[]
+          user_id: string
+        }
+        Insert: {
+          change_type: string
+          changed_by?: string | null
+          created_at?: string
+          custom_plugins?: string[]
+          id?: string
+          inventory_completed?: boolean
+          native_plugins?: string[]
+          third_party_plugins?: string[]
+          user_id: string
+        }
+        Update: {
+          change_type?: string
+          changed_by?: string | null
+          created_at?: string
+          custom_plugins?: string[]
+          id?: string
+          inventory_completed?: boolean
+          native_plugins?: string[]
+          third_party_plugins?: string[]
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
