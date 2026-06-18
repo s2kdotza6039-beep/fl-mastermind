@@ -104,6 +104,39 @@ export type Database = {
         }
         Relationships: []
       }
+      user_plugin_inventory: {
+        Row: {
+          created_at: string
+          custom_plugins: string[]
+          id: string
+          inventory_completed: boolean
+          native_plugins: string[]
+          third_party_plugins: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          custom_plugins?: string[]
+          id?: string
+          inventory_completed?: boolean
+          native_plugins?: string[]
+          third_party_plugins?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          custom_plugins?: string[]
+          id?: string
+          inventory_completed?: boolean
+          native_plugins?: string[]
+          third_party_plugins?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
