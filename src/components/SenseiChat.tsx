@@ -60,7 +60,14 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
 
     await streamSenseiChat({
       messages: next,
-      context: { genre, stage, projectName },
+      context: {
+        genre, stage, projectName,
+        flVersion: setup?.fl_version ?? undefined,
+        flEdition: setup?.fl_edition ?? undefined,
+        mainUse: setup?.main_use ?? undefined,
+        mainGenre: setup?.main_genre ?? undefined,
+        skillLevel: setup?.skill_level ?? undefined,
+      },
       onDelta: upsert,
       onDone: () => setLoading(false),
       onError: (msg) => {
