@@ -188,8 +188,18 @@ export default function StudioSetupPage() {
                   </div>
                 </div>
                 {i > 0 && (
-                  <Button size="sm" variant="outline" disabled={saving} onClick={() => revertTo(h)}>
-                    <Undo2 className="w-3 h-3 mr-1" /> Revert
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={revertingId !== null || saving}
+                    onClick={() => setPendingRevert(h)}
+                  >
+                    {revertingId === h.id ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : (
+                      <Undo2 className="w-3 h-3 mr-1" />
+                    )}
+                    {revertingId === h.id ? "Reverting…" : "Revert"}
                   </Button>
                 )}
               </li>
@@ -197,6 +207,42 @@ export default function StudioSetupPage() {
           </ul>
         </Card>
       )}
+
+      <AlertDialog open={!!pendingRevert} onOpenChange={(o) => !o && revertingId === null && setPendingRevert(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revert FL Studio setup?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will overwrite your current setup with the snapshot from{" "}
+              {pendingRevert && new Date(pendingRevert.changed_at).toLocaleString()}.
+              <br />
+              <span className="block mt-2 text-foreground">
+                {pendingRevert &&
+                  [pendingRevert.fl_version, pendingRevert.fl_edition, pendingRevert.main_use, pendingRevert.main_genre, pendingRevert.skill_level]
+                    .filter(Boolean)
+                    .join(" · ")}
+              </span>
+              <span className="block mt-2 text-xs">Your current setup is saved in history — you can revert back any time.</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={revertingId !== null}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={revertingId !== null}
+              onClick={(e) => {
+                e.preventDefault();
+                if (pendingRevert) revertTo(pendingRevert);
+              }}
+            >
+              {revertingId !== null ? (
+                <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Reverting…</>
+              ) : (
+                "Yes, revert"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
