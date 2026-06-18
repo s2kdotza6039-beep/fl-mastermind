@@ -41,7 +41,7 @@ export default function AdminPage() {
   const [setups, setSetups] = useState<SetupRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [userQuery, setUserQuery] = useState("");
-  const [setupQuery, setSetupQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "paid" | "free" | "none">("all");
   const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "paid" | "free" | "none">("all");
 
   const filteredUsers = useMemo(() => {
