@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Boxes, Save, Loader2, Plus, X, Search } from "lucide-react";
+import { Boxes, Save, Loader2, Plus, X, Search, CheckSquare, Square } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
