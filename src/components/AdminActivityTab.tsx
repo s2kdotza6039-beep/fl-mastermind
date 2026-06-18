@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -6,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Download, Loader2, RefreshCw, ChevronLeft, ChevronRight, X, Columns, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Activity, CheckCircle2 } from "lucide-react";
+import { Search, Download, Loader2, RefreshCw, ChevronLeft, ChevronRight, X, Columns, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Activity, CheckCircle2, ArrowUpDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -93,14 +94,42 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryCapHit, setSummaryCapHit] = useState(false);
 
-  // Filters
-  const [eventFilter, setEventFilter] = useState<EventFilter>("all");
-  const [query, setQuery] = useState("");
-  const [snapshotId, setSnapshotId] = useState("");
-  const [userQuery, setUserQuery] = useState("");
-  const [preset, setPreset] = useState<number>(0);
-  const [from, setFrom] = useState<string>("");
-  const [to, setTo] = useState<string>("");
+  // URL-backed filter state. Distinct `a_` prefix so we don't collide with SetupsTab params.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const param = (k: string, fallback = "") => searchParams.get(k) ?? fallback;
+
+  const eventFilter = (param("a_event", "all") as EventFilter);
+  const query = param("a_q");
+  const snapshotId = param("a_snap");
+  const userQuery = param("a_user");
+  const preset = (() => {
+    const idx = parseInt(param("a_preset", "0"), 10);
+    return Number.isFinite(idx) && idx >= 0 && idx < PRESETS.length ? idx : 0;
+  })();
+  const from = param("a_from");
+  const to = param("a_to");
+  const sort = param("a_sort", "created_at:desc");
+
+  const setParam = (updates: Record<string, string | null>) => {
+    const next = new URLSearchParams(searchParams);
+    Object.entries(updates).forEach(([k, v]) => {
+      if (v == null || v === "" || v === "all" || (k === "a_preset" && v === "0") || (k === "a_sort" && v === "created_at:desc")) {
+        next.delete(k);
+      } else {
+        next.set(k, v);
+      }
+    });
+    setSearchParams(next, { replace: true });
+  };
+
+  const setEventFilter = (v: EventFilter) => setParam({ a_event: v });
+  const setQuery = (v: string) => setParam({ a_q: v });
+  const setSnapshotId = (v: string) => setParam({ a_snap: v });
+  const setUserQuery = (v: string) => setParam({ a_user: v });
+  const setPreset = (v: number) => setParam({ a_preset: String(v), a_from: null, a_to: null });
+  const setFrom = (v: string) => setParam({ a_from: v, a_preset: "0" });
+  const setTo = (v: string) => setParam({ a_to: v, a_preset: "0" });
+  const setSort = (v: string) => setParam({ a_sort: v });
 
   // Column picker
   const [columnKeys, setColumnKeys] = useState<string[]>(loadStoredColumns);
@@ -177,11 +206,22 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
     });
   }, [rows, query]);
 
+  // Parse sort: "<column>:<dir>". JSON-path columns use "metadata->>key" — PostgREST
+  // sorts those as text, which is fine for the small integer values we surface here.
+  const applyOrder = (q: any) => {
+    const [colRaw, dirRaw] = sort.split(":");
+    const col = colRaw || "created_at";
+    const ascending = dirRaw === "asc";
+    // Always disambiguate ties with created_at desc for stable pagination.
+    if (col === "created_at") return q.order("created_at", { ascending });
+    return q.order(col, { ascending }).order("created_at", { ascending: false });
+  };
+
   const loadPage = async (targetPage: number) => {
     setLoading(true);
     setError(null);
     try {
-      const q = buildBase(true).order("created_at", { ascending: false })
+      const q = applyOrder(buildBase(true))
         .range(targetPage * PAGE_SIZE, (targetPage + 1) * PAGE_SIZE - 1);
       const { data, error, count } = await q;
       if (error) throw error;
@@ -199,7 +239,7 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
   const loadSummary = async () => {
     setSummaryLoading(true);
     try {
-      const q = buildBase(false).order("created_at", { ascending: false }).limit(SUMMARY_CAP);
+      const q = applyOrder(buildBase(false)).limit(SUMMARY_CAP);
       const { data, error } = await q;
       if (error) throw error;
       const arr = (data as LogRow[]) ?? [];
@@ -217,7 +257,7 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
     void loadPage(0);
     void loadSummary();
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  }, [eventFilter, preset, from, to, snapshotId, userQuery, users.length]);
+  }, [eventFilter, preset, from, to, snapshotId, userQuery, sort, users.length]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
@@ -292,8 +332,11 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
   };
 
   const clearAll = () => {
-    setEventFilter("all"); setQuery(""); setSnapshotId(""); setUserQuery("");
-    setPreset(0); setFrom(""); setTo("");
+    // Reset every URL-backed filter at once.
+    setParam({
+      a_event: null, a_q: null, a_snap: null, a_user: null,
+      a_preset: null, a_from: null, a_to: null, a_sort: null,
+    });
   };
 
   const renderMeta = (r: LogRow) => {
@@ -409,6 +452,22 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
           <span className="text-muted-foreground">→</span>
           <Input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPreset(0); }} className="h-8 text-xs w-36" />
 
+          <div className="flex items-center gap-1">
+            <ArrowUpDown className="w-3 h-3 text-muted-foreground" />
+            <Select value={sort} onValueChange={setSort}>
+              <SelectTrigger className="h-8 text-xs w-52" aria-label="Sort"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="created_at:desc">Newest first</SelectItem>
+                <SelectItem value="created_at:asc">Oldest first</SelectItem>
+                <SelectItem value="event_type:asc">Event type A→Z</SelectItem>
+                <SelectItem value="event_type:desc">Event type Z→A</SelectItem>
+                <SelectItem value="user_id:asc">User id A→Z</SelectItem>
+                <SelectItem value="metadata->>added:desc">Completion Δ (most added)</SelectItem>
+                <SelectItem value="metadata->>removed:desc">Completion Δ (most removed)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <Button size="sm" variant="ghost" className="h-8 text-xs ml-auto" onClick={clearAll}>
             <X className="w-3 h-3 mr-1" /> Clear
           </Button>
@@ -469,8 +528,8 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
             </PopoverContent>
           </Popover>
 
-          <Button size="sm" className="h-8 text-xs" onClick={exportCsv} disabled={summaryLoading || summary.length === 0}>
-            <Download className="w-3 h-3 mr-1" /> Export CSV
+          <Button size="sm" className="h-8 text-xs" onClick={exportCsv} disabled={summaryLoading || summary.length === 0} title="Exports every event matching the current filters, sort, and column order">
+            <Download className="w-3 h-3 mr-1" /> Export filtered results
           </Button>
         </div>
 

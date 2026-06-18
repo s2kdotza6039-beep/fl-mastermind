@@ -54,6 +54,8 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
   const [pointDetail, setPointDetail] = useState<{ snap: HistorySnapshot; prev: HistorySnapshot | null } | null>(null);
+  const [sheetConfirming, setSheetConfirming] = useState(false);
+  const [sheetRestoring, setSheetRestoring] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -224,7 +226,7 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
 
           <CompletenessChart
             snaps={filtered}
-            onPointClick={(s, prev) => setPointDetail({ snap: s, prev })}
+            onPointClick={(s, prev) => { setSheetConfirming(false); setPointDetail({ snap: s, prev }); }}
           />
 
 
@@ -389,7 +391,7 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
         </AlertDialogContent>
       </AlertDialog>
 
-      <Sheet open={!!pointDetail} onOpenChange={(o) => { if (!o) setPointDetail(null); }}>
+      <Sheet open={!!pointDetail} onOpenChange={(o) => { if (!o) { setPointDetail(null); setSheetConfirming(false); } }}>
         <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
           {pointDetail && (() => {
             const s = pointDetail.snap;
@@ -456,16 +458,90 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
                     </p>
                   )}
 
-                  {!isCurrent && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => { setPendingRestore(s); setPointDetail(null); }}
-                    >
-                      <Undo2 className="w-3 h-3 mr-1" /> Restore this snapshot
-                    </Button>
-                  )}
+                  {!isCurrent && (() => {
+                    // Dry-run diff: this snapshot vs the user's CURRENT edit state.
+                    const dryN = ciDiff(current.native, s.native_plugins);
+                    const dryT = ciDiff(current.third, s.third_party_plugins);
+                    const dryC = ciDiff(current.custom, s.custom_plugins);
+                    const totalAdded = dryN.added.length + dryT.added.length + dryC.added.length;
+                    const totalRemoved = dryN.removed.length + dryT.removed.length + dryC.removed.length;
+                    const noChange = totalAdded === 0 && totalRemoved === 0;
+
+                    if (!sheetConfirming) {
+                      return (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => setSheetConfirming(true)}
+                        >
+                          <Undo2 className="w-3 h-3 mr-1" /> Restore this snapshot…
+                        </Button>
+                      );
+                    }
+
+                    return (
+                      <div className="border border-amber-500/40 bg-amber-500/10 rounded p-3 space-y-2">
+                        <div className="text-[10px] uppercase tracking-widest text-amber-500 font-medium">
+                          Confirm restore — dry run vs your current inventory
+                        </div>
+                        {noChange ? (
+                          <p className="text-[11px] text-muted-foreground italic">
+                            Restoring won't change anything — your current inventory already matches this snapshot.
+                          </p>
+                        ) : (
+                          <div className="space-y-1">
+                            <div className="text-[11px]">
+                              <span className="text-emerald-500 font-medium">+{totalAdded}</span>{" "}
+                              <span className="text-muted-foreground">would be added</span>{" · "}
+                              <span className="text-destructive font-medium">−{totalRemoved}</span>{" "}
+                              <span className="text-muted-foreground">would be removed</span>
+                            </div>
+                            {([
+                              ["Native", dryN],
+                              ["Third-party", dryT],
+                              ["Custom", dryC],
+                            ] as const).map(([label, d]) => (
+                              (d.added.length > 0 || d.removed.length > 0) && (
+                                <div key={label} className="text-[10px] pl-2 border-l border-amber-500/40">
+                                  <span className="text-muted-foreground">{label}:</span>{" "}
+                                  {d.added.length > 0 && <span className="text-emerald-500">+{d.added.length} ({d.added.slice(0, 3).join(", ")}{d.added.length > 3 ? "…" : ""})</span>}
+                                  {d.added.length > 0 && d.removed.length > 0 && <span className="text-muted-foreground"> · </span>}
+                                  {d.removed.length > 0 && <span className="text-destructive">−{d.removed.length} ({d.removed.slice(0, 3).join(", ")}{d.removed.length > 3 ? "…" : ""})</span>}
+                                </div>
+                              )
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 pt-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="flex-1 h-7 text-xs"
+                            onClick={() => setSheetConfirming(false)}
+                            disabled={sheetRestoring}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="flex-1 h-7 text-xs"
+                            onClick={async () => {
+                              setSheetRestoring(true);
+                              await onRestore(s);
+                              setSheetRestoring(false);
+                              setSheetConfirming(false);
+                              setPointDetail(null);
+                            }}
+                            disabled={sheetRestoring}
+                          >
+                            {sheetRestoring ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Undo2 className="w-3 h-3 mr-1" />}
+                            Confirm restore
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </>
             );
