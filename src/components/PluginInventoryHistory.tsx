@@ -52,6 +52,7 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
   const [restoring, setRestoring] = useState(false);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
+  const [pointDetail, setPointDetail] = useState<{ snap: HistorySnapshot; prev: HistorySnapshot | null } | null>(null);
 
   useEffect(() => {
     if (!user) return;
