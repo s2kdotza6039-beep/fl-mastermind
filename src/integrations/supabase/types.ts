@@ -164,6 +164,48 @@ export type Database = {
         }
         Relationships: []
       }
+      user_studio_setup_history: {
+        Row: {
+          change_type: string
+          changed_at: string
+          changed_by: string | null
+          fl_edition: string | null
+          fl_version: string | null
+          id: string
+          main_genre: string | null
+          main_use: string | null
+          setup_completed: boolean
+          skill_level: string | null
+          user_id: string
+        }
+        Insert: {
+          change_type?: string
+          changed_at?: string
+          changed_by?: string | null
+          fl_edition?: string | null
+          fl_version?: string | null
+          id?: string
+          main_genre?: string | null
+          main_use?: string | null
+          setup_completed?: boolean
+          skill_level?: string | null
+          user_id: string
+        }
+        Update: {
+          change_type?: string
+          changed_at?: string
+          changed_by?: string | null
+          fl_edition?: string | null
+          fl_version?: string | null
+          id?: string
+          main_genre?: string | null
+          main_use?: string | null
+          setup_completed?: boolean
+          skill_level?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

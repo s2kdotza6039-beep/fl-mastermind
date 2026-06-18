@@ -1,5 +1,6 @@
 // Studio Sensei — AI music production coach (streaming, secured)
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { editionToTier, eligiblePlugins, forbiddenPlugins } from "./fl-plugin-eligibility.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -234,11 +235,18 @@ Deno.serve(async (req) => {
       if (typeof ctx.mainGenre === "string") studioParts.push(`Preferred genre: ${ctx.mainGenre.slice(0, 40)}`);
       if (typeof ctx.skillLevel === "string") studioParts.push(`Skill level: ${ctx.skillLevel.slice(0, 30)}`);
       if (studioParts.length) {
+        const tier = editionToTier(typeof ctx.flEdition === "string" ? ctx.flEdition : null);
+        const allowed = eligiblePlugins(tier);
+        const blocked = forbiddenPlugins(tier);
         system += `\n\nUSER FL STUDIO PROFILE:\n${studioParts.join("\n")}
+
+FL STUDIO PLUGIN ELIGIBILITY (HARD GATE — enforce before recommending any plugin):
+- ALLOWED stock plugins for this user's edition: ${allowed.join(", ")}.
+- DO NOT recommend these (not in this edition): ${blocked.length ? blocked.join(", ") : "(none — all stock unlocked)"}.
+- If a blocked plugin is the obvious answer, recommend the closest ALLOWED stock alternative and briefly note the upgrade path.
 
 FL STUDIO ADAPTATION RULES (MANDATORY):
 - Never assume the user owns plugins not included in their edition.
-- If unsure, suggest FL Studio stock alternatives first (Fruity Parametric EQ 2, Fruity Limiter, Fruity Compressor, Fruity Reeverb 2, Fruity Delay, Edison, Soundgoodizer).
 - Fruity Edition: stock-only workflow, no Patcher/Maximus/Pitcher/Newtone. Suggest workarounds.
 - Producer Edition: prioritize common stock tools, recording, audio editing, basic Patcher.
 - Signature Bundle or All Plugins Edition: enable advanced suggestions (Maximus, Pitcher, Newtone, advanced Patcher chains, Gross Beat, Harmor, Sytrus).

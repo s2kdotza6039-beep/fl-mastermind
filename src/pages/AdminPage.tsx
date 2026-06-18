@@ -8,7 +8,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageHeader } from "@/components/PageHeader";
-import { Shield, Users, Activity, AlertTriangle, Crown, Loader2, Search, X } from "lucide-react";
+import { Shield, Users, Activity, AlertTriangle, Crown, Loader2, Search, X, Sliders, Download } from "lucide-react";
 import { toast } from "sonner";
 
 
@@ -20,14 +20,26 @@ interface UserRow {
 }
 interface LogRow { id: string; user_id: string | null; event_type: string; metadata: any; created_at: string; }
 interface AlertRow { id: string; user_id: string | null; severity: string; alert_type: string; message: string; resolved: boolean; created_at: string; }
+interface SetupRow {
+  user_id: string;
+  fl_version: string | null;
+  fl_edition: string | null;
+  main_use: string | null;
+  main_genre: string | null;
+  skill_level: string | null;
+  setup_completed: boolean;
+  updated_at: string;
+}
 
 export default function AdminPage() {
   const { user } = useAuth();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
+  const [setups, setSetups] = useState<SetupRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [userQuery, setUserQuery] = useState("");
+  const [setupQuery, setSetupQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "paid" | "free" | "none">("all");
 
   const filteredUsers = useMemo(() => {
@@ -51,12 +63,13 @@ export default function AdminPage() {
 
   async function load() {
     setLoading(true);
-    const [profilesQ, rolesQ, logsQ, alertsQ, emailsQ] = await Promise.all([
+    const [profilesQ, rolesQ, logsQ, alertsQ, emailsQ, setupsQ] = await Promise.all([
       supabase.from("profiles").select("user_id, display_name").limit(500),
       supabase.from("user_roles").select("user_id, role"),
       supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(100),
       supabase.from("security_alerts").select("*").order("created_at", { ascending: false }).limit(100),
       supabase.rpc("admin_list_user_emails"),
+      supabase.from("user_studio_setup").select("user_id, fl_version, fl_edition, main_use, main_genre, skill_level, setup_completed, updated_at").limit(500),
     ]);
     if (profilesQ.data && rolesQ.data) {
       const emailMap = new Map<string, string>();
@@ -86,6 +99,7 @@ export default function AdminPage() {
     }
     if (logsQ.data) setLogs(logsQ.data as LogRow[]);
     if (alertsQ.data) setAlerts(alertsQ.data as AlertRow[]);
+    if (setupsQ.data) setSetups(setupsQ.data as SetupRow[]);
     setLoading(false);
   }
 
@@ -129,6 +143,7 @@ export default function AdminPage() {
       <Tabs defaultValue="users">
         <TabsList>
           <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="setups">FL Setups</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="alerts">Alerts {unresolved > 0 && <Badge variant="destructive" className="ml-2">{unresolved}</Badge>}</TabsTrigger>
         </TabsList>
@@ -213,6 +228,17 @@ export default function AdminPage() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="setups">
+          <SetupsTab
+            setups={setups}
+            users={users}
+            loading={loading}
+            query={setupQuery}
+            setQuery={setSetupQuery}
+          />
+        </TabsContent>
+
+
         <TabsContent value="activity">
           <Card className="studio-card p-4 mt-4 max-h-[60vh] overflow-auto">
             {logs.map((l) => (
@@ -260,3 +286,132 @@ function Stat({ label, value, icon, highlight }: { label: string; value: number;
     </Card>
   );
 }
+
+function SetupsTab({
+  setups, users, loading, query, setQuery,
+}: {
+  setups: SetupRow[];
+  users: UserRow[];
+  loading: boolean;
+  query: string;
+  setQuery: (v: string) => void;
+}) {
+  const userMap = useMemo(() => {
+    const m = new Map<string, UserRow>();
+    users.forEach((u) => m.set(u.user_id, u));
+    return m;
+  }, [users]);
+
+  const rows = useMemo(() => {
+    return setups.map((s) => {
+      const u = userMap.get(s.user_id);
+      return {
+        ...s,
+        display_name: u?.display_name ?? null,
+        email: u?.email ?? null,
+      };
+    });
+  }, [setups, userMap]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) =>
+      [r.display_name, r.email, r.user_id, r.fl_version, r.fl_edition, r.main_use, r.main_genre, r.skill_level]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q))
+    );
+  }, [rows, query]);
+
+  const exportCsv = () => {
+    const headers = ["user_id", "display_name", "email", "fl_version", "fl_edition", "main_use", "main_genre", "skill_level", "setup_completed", "updated_at"];
+    const esc = (v: unknown) => {
+      const s = v == null ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const csv = [
+      headers.join(","),
+      ...filtered.map((r) => headers.map((h) => esc((r as any)[h])).join(",")),
+    ].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `fl-studio-setups-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${filtered.length} setup${filtered.length === 1 ? "" : "s"}.`);
+  };
+
+  return (
+    <Card className="studio-card p-4 mt-4">
+      <div className="flex flex-col sm:flex-row gap-2 mb-3">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search setups by user, email, version, edition, genre…"
+            aria-label="Search FL Studio setups"
+            maxLength={100}
+            className="pl-9 pr-9"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-muted text-muted-foreground"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <Button onClick={exportCsv} disabled={filtered.length === 0} variant="outline" className="sm:w-auto">
+          <Download className="w-4 h-4 mr-2" /> Export CSV
+        </Button>
+      </div>
+
+      {loading ? (
+        <Loader2 className="w-5 h-5 animate-spin" />
+      ) : filtered.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-6">
+          {setups.length === 0 ? "No users have completed setup yet." : `No setups match "${query}".`}
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="text-left text-muted-foreground border-b border-border">
+              <tr>
+                <th className="py-2 pr-3 font-medium"><Sliders className="w-3 h-3 inline mr-1" />User</th>
+                <th className="py-2 pr-3 font-medium">Version</th>
+                <th className="py-2 pr-3 font-medium">Edition</th>
+                <th className="py-2 pr-3 font-medium">Main Use</th>
+                <th className="py-2 pr-3 font-medium">Genre</th>
+                <th className="py-2 pr-3 font-medium">Skill</th>
+                <th className="py-2 pr-3 font-medium">Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r) => (
+                <tr key={r.user_id} className="border-b border-border/40">
+                  <td className="py-2 pr-3 min-w-[160px]">
+                    <div className="font-medium truncate">{r.display_name || r.user_id.slice(0, 8)}</div>
+                    {r.email && <div className="text-muted-foreground truncate">{r.email}</div>}
+                  </td>
+                  <td className="py-2 pr-3">{r.fl_version || "—"}</td>
+                  <td className="py-2 pr-3">{r.fl_edition || "—"}</td>
+                  <td className="py-2 pr-3">{r.main_use || "—"}</td>
+                  <td className="py-2 pr-3">{r.main_genre || "—"}</td>
+                  <td className="py-2 pr-3">{r.skill_level || "—"}</td>
+                  <td className="py-2 pr-3 text-muted-foreground">{new Date(r.updated_at).toLocaleDateString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+

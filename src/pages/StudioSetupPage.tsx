@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Sliders, Save, Loader2 } from "lucide-react";
+import { Sliders, Save, Loader2, History, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,19 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageHeader } from "@/components/PageHeader";
 import { useStudioSetup } from "@/context/StudioSetupContext";
+import { useAuth } from "@/context/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+
+interface HistoryRow {
+  id: string;
+  fl_version: string | null;
+  fl_edition: string | null;
+  main_use: string | null;
+  main_genre: string | null;
+  skill_level: string | null;
+  change_type: string;
+  changed_at: string;
+}
 
 const FL_VERSIONS = ["FL Studio 20", "FL Studio 21", "FL Studio 24", "FL Studio 25", "Other / Not sure"];
 const FL_EDITIONS = ["Fruity Edition", "Producer Edition", "Signature Bundle", "All Plugins Edition", "Trial Version", "Not sure"];
@@ -17,13 +30,15 @@ const SKILL = ["Beginner", "Intermediate", "Advanced"];
 
 export default function StudioSetupPage() {
   const navigate = useNavigate();
-  const { setup, loading, save } = useStudioSetup();
+  const { user } = useAuth();
+  const { setup, loading, save, refresh } = useStudioSetup();
   const [flVersion, setFlVersion] = useState("");
   const [flEdition, setFlEdition] = useState("");
   const [mainUse, setMainUse] = useState("");
   const [mainGenre, setMainGenre] = useState("");
   const [skillLevel, setSkillLevel] = useState("");
   const [saving, setSaving] = useState(false);
+  const [history, setHistory] = useState<HistoryRow[]>([]);
 
   useEffect(() => {
     if (setup) {
@@ -34,6 +49,34 @@ export default function StudioSetupPage() {
       setSkillLevel(setup.skill_level ?? "");
     }
   }, [setup]);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("user_studio_setup_history")
+      .select("id, fl_version, fl_edition, main_use, main_genre, skill_level, change_type, changed_at")
+      .eq("user_id", user.id)
+      .order("changed_at", { ascending: false })
+      .limit(20)
+      .then(({ data }) => setHistory((data as HistoryRow[]) ?? []));
+  }, [user, setup]);
+
+  const revertTo = async (h: HistoryRow) => {
+    setSaving(true);
+    const { error } = await save({
+      fl_version: h.fl_version,
+      fl_edition: h.fl_edition,
+      main_use: h.main_use,
+      main_genre: h.main_genre,
+      skill_level: h.skill_level,
+    });
+    setSaving(false);
+    if (error) return toast.error(error);
+    toast.success("Reverted to previous setup.");
+    refresh();
+  };
+
+
 
   const allFilled = flVersion && flEdition && mainUse && mainGenre && skillLevel;
 
@@ -117,6 +160,36 @@ export default function StudioSetupPage() {
           </>
         )}
       </Card>
+
+      {history.length > 1 && (
+        <Card className="studio-card p-6 mt-6">
+          <h3 className="font-display text-base font-bold flex items-center gap-2 mb-1">
+            <History className="w-4 h-4 text-primary" /> Setup History
+          </h3>
+          <p className="text-xs text-muted-foreground mb-4">
+            Every change to your FL Studio setup is recorded. Revert to any earlier snapshot if a recent change made Sensei's advice worse.
+          </p>
+          <ul className="space-y-2">
+            {history.map((h, i) => (
+              <li key={h.id} className="flex items-center justify-between gap-3 p-3 rounded border border-border text-xs">
+                <div className="min-w-0">
+                  <div className="text-muted-foreground">
+                    {new Date(h.changed_at).toLocaleString()} · <span className="uppercase tracking-wider">{h.change_type}</span>
+                  </div>
+                  <div className="truncate text-foreground">
+                    {[h.fl_version, h.fl_edition, h.main_use, h.main_genre, h.skill_level].filter(Boolean).join(" · ") || "(empty)"}
+                  </div>
+                </div>
+                {i > 0 && (
+                  <Button size="sm" variant="outline" disabled={saving} onClick={() => revertTo(h)}>
+                    <Undo2 className="w-3 h-3 mr-1" /> Revert
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
     </div>
   );
 }
