@@ -752,12 +752,13 @@ function InventoriesTab({ users }: { users: UserRow[] }) {
             </button>
           )}
         </div>
-        <Button onClick={exportCsv} disabled={filtered.length === 0 || loading || !!error} variant="outline" className="sm:w-auto">
-          <Download className="w-4 h-4 mr-2" /> Export CSV
+        <Button onClick={() => setPreview(buildSummaryPreview())} disabled={filtered.length === 0 || loading || !!error} variant="outline" className="sm:w-auto">
+          <Eye className="w-4 h-4 mr-2" /> Preview & export
         </Button>
-        <Button onClick={exportRulesCsv} disabled={filtered.length === 0 || loading || !!error} variant="outline" className="sm:w-auto" title="One row per plugin with chat badge match rule + snippet">
-          <Download className="w-4 h-4 mr-2" /> Export w/ rules
+        <Button onClick={() => setPreview(buildRulesPreview())} disabled={filtered.length === 0 || loading || !!error} variant="outline" className="sm:w-auto" title="One row per plugin with chat badge match rule + snippet">
+          <Eye className="w-4 h-4 mr-2" /> Preview w/ rules
         </Button>
+
 
       </div>
 
