@@ -16,8 +16,8 @@ interface Props {
   onApply: (additions: { native: string[]; third: string[]; custom: string[] }) => void;
 }
 
-const ciIncludes = (list: string[], v: string) => list.some((x) => x.toLowerCase() === v.toLowerCase());
-const matchCanonical = (catalog: string[], v: string) => catalog.find((c) => c.toLowerCase() === v.toLowerCase());
+const ciIncludes = (list: readonly string[], v: string) => list.some((x) => x.toLowerCase() === v.toLowerCase());
+const matchCanonical = (catalog: readonly string[], v: string) => catalog.find((c) => c.toLowerCase() === v.toLowerCase());
 
 export function PluginInventoryImportDialog({ open, onClose, existing, onApply }: Props) {
   const [rows, setRows] = useState<string[][] | null>(null);
