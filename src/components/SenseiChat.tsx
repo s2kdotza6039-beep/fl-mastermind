@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Send, Loader2, Bookmark, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Send, Loader2, Bookmark, Sparkles, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/context/SessionContext";
@@ -9,6 +9,7 @@ import { streamSenseiChat, type ChatMsg } from "@/lib/sensei-api";
 import { SenseiMarkdown } from "./SenseiMarkdown";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { editionToTier, forbiddenPlugins, tierLabel } from "@/lib/fl-plugin-eligibility";
 
 interface SenseiChatProps {
   initialPrompt?: string;
