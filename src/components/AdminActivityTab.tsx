@@ -593,14 +593,42 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
             </PopoverContent>
           </Popover>
 
-          <Button size="sm" className="h-8 text-xs" onClick={exportCsv} disabled={summaryLoading || summary.length === 0} title="Exports every event matching the current filters, sort, and column order">
-            <Download className="w-3 h-3 mr-1" /> Export filtered results
+          <Button
+            ref={exportBtnRef}
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => void runExport()}
+            disabled={exporting || summaryLoading}
+            title="Exports every event matching the current filters, sort, and column order (Shift+E)"
+          >
+            {exporting ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Download className="w-3 h-3 mr-1" />}
+            {exporting ? "Exporting…" : "Export filtered results"}
           </Button>
         </div>
 
+        {exportError && (
+          <div className="flex items-start gap-2 p-2 rounded border border-destructive/40 bg-destructive/10 text-xs text-destructive">
+            <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <div className="font-medium">Export failed</div>
+              <div className="text-[11px] opacity-90">{exportError}</div>
+            </div>
+            <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => void runExport()} disabled={exporting}>
+              {exporting ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />} Retry
+            </Button>
+            <button onClick={() => setExportError(null)} className="text-destructive/60 hover:text-destructive" aria-label="Dismiss"><X className="w-3 h-3" /></button>
+          </div>
+        )}
+
         <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap">
           <Badge variant="outline" className="text-[10px]">{totalCount} total match{totalCount === 1 ? "" : "es"}</Badge>
+          <Badge variant="secondary" className="text-[10px] gap-1" title="Active sort — Shift+S to cycle, Shift+Alt+S reverse">
+            <ArrowUpDown className="w-3 h-3" /> Sort: {sortLabel(sort)}
+          </Badge>
           {freeTextActive && <span className="text-amber-500">Free-text only filters the current page.</span>}
+          <span className="ml-auto inline-flex items-center gap-1 text-muted-foreground/70" title="/ focus search · Shift+S cycle sort · Shift+E export · Shift+R reload · ←/→ pagination">
+            <Keyboard className="w-3 h-3" /> shortcuts
+          </span>
         </div>
 
         {error ? (
