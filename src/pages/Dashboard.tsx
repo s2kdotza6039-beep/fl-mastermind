@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { StudioSetupCard } from "@/components/StudioSetupCard";
 import { SetupChecklistCard } from "@/components/SetupChecklistCard";
+import { PluginInventoryCard } from "@/components/PluginInventoryCard";
 
 const FEATURES = [
   { to: "/chat", icon: MessageCircle, title: "Sensei Chat", desc: "Ask anything about your sound." },
@@ -51,6 +52,7 @@ export default function Dashboard() {
 
       <StudioSetupCard />
       <SetupChecklistCard />
+      <PluginInventoryCard />
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
