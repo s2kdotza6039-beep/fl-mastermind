@@ -61,10 +61,6 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
         : [],
     [inventory, inventoryComplete],
   );
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const sentInitial = useRef(false);
-
-  const [eligibilityOpen, setEligibilityOpen] = useState(false);
 
   const eligibility = useMemo(() => {
     if (!setup?.fl_edition) return null;
