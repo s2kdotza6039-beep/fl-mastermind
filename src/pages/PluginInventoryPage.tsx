@@ -273,6 +273,35 @@ export default function PluginInventoryPage() {
     }
   };
 
+  const onRestoreSnapshot = async (snap: HistorySnapshot) => {
+    // Restore = save current state's prior into the table; trigger captures a new history row.
+    setNative(snap.native_plugins);
+    setThird(snap.third_party_plugins);
+    setCustom(snap.custom_plugins);
+    setSaving(true);
+    const res = await performSave({
+      native_plugins: snap.native_plugins,
+      third_party_plugins: snap.third_party_plugins,
+      custom_plugins: snap.custom_plugins,
+    });
+    setSaving(false);
+    if (res.error) toast.error(`Couldn't restore snapshot: ${res.error}`);
+  };
+
+  const onImportApply = (additions: { native: string[]; third: string[]; custom: string[] }) => {
+    // Merge case-insensitively against current edit state
+    const ciHas = (list: string[], v: string) => list.some((x) => x.toLowerCase() === v.toLowerCase());
+    setNative((prev) => [...prev, ...additions.native.filter((v) => !ciHas(prev, v))]);
+    setThird((prev) => [...prev, ...additions.third.filter((v) => !ciHas(prev, v))]);
+    setCustom((prev) => [...prev, ...additions.custom.filter((v) => !ciHas(prev, v))]);
+  };
+
+  // Inline duplicate detection for the bulk-add popover
+  const draftTrimmed = customDraft.trim().replace(/\s+/g, " ");
+  const draftIsDuplicate = draftTrimmed.length > 0 && isDuplicate(draftTrimmed);
+
+
+
 
 
 
