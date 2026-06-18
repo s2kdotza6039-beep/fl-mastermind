@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Download, Loader2, RefreshCw, ChevronLeft, ChevronRight, X, Columns, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Activity, CheckCircle2, ArrowUpDown } from "lucide-react";
+import { Search, Download, Loader2, RefreshCw, ChevronLeft, ChevronRight, X, Columns, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Activity, CheckCircle2, ArrowUpDown, AlertCircle, Keyboard } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -30,6 +30,23 @@ type EventFilter = "all" | "plugin_inventory_imported" | "plugin_inventory_resto
 const PAGE_SIZE = 25;
 const SUMMARY_CAP = 5000;
 const COLUMN_STORAGE_KEY = "studio-sensei.admin-activity-columns.v1";
+
+const SORT_OPTIONS: { value: string; label: string }[] = [
+  { value: "created_at:desc", label: "Newest first" },
+  { value: "created_at:asc", label: "Oldest first" },
+  { value: "event_type:asc", label: "Event type A→Z" },
+  { value: "event_type:desc", label: "Event type Z→A" },
+  { value: "user_id:asc", label: "User id A→Z" },
+  { value: "metadata->>added:desc", label: "Completion Δ (most added)" },
+  { value: "metadata->>removed:desc", label: "Completion Δ (most removed)" },
+];
+const sortLabel = (v: string) => SORT_OPTIONS.find((s) => s.value === v)?.label ?? v;
+const cycleSort = (current: string, dir: 1 | -1) => {
+  const i = SORT_OPTIONS.findIndex((s) => s.value === current);
+  const next = ((i < 0 ? 0 : i) + dir + SORT_OPTIONS.length) % SORT_OPTIONS.length;
+  return SORT_OPTIONS[next].value;
+};
+
 
 const PRESETS: { label: string; days: number | null }[] = [
   { label: "All time", days: null },
@@ -136,6 +153,14 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
   useEffect(() => {
     try { localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(columnKeys)); } catch { /* ignore */ }
   }, [columnKeys]);
+
+  // Keyboard shortcut targets
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const exportBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  // Export state (declared early so the keyboard-shortcut effect can reference it)
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const userMap = useMemo(() => {
     const m = new Map<string, UserLike>();
@@ -261,6 +286,46 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
+  // Keyboard shortcuts:
+  //   /            → focus free-text search
+  //   Shift+S      → cycle sort forward · Shift+Alt+S → reverse
+  //   Shift+E      → trigger export filtered results
+  //   Shift+R      → reload page + summary
+  //   ← / →        → previous / next page (when not typing)
+  // We bail when the user is typing so we never hijack normal text entry.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tgt = e.target as HTMLElement | null;
+      const tag = tgt?.tagName;
+      const typing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (tgt && (tgt as HTMLElement).isContentEditable);
+      if (e.key === "/" && !typing) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select?.();
+        return;
+      }
+      if (typing) return;
+      if (e.shiftKey && (e.key === "S" || e.key === "s")) {
+        e.preventDefault();
+        setSort(cycleSort(sort, e.altKey ? -1 : 1));
+      } else if (e.shiftKey && (e.key === "E" || e.key === "e")) {
+        e.preventDefault();
+        if (!exporting && !summaryLoading) void runExport();
+      } else if (e.shiftKey && (e.key === "R" || e.key === "r")) {
+        e.preventDefault();
+        if (!loading) { void loadPage(page); void loadSummary(); }
+      } else if (e.key === "ArrowLeft" && !e.metaKey && !e.ctrlKey) {
+        if (page > 0 && !loading) { e.preventDefault(); void loadPage(page - 1); }
+      } else if (e.key === "ArrowRight" && !e.metaKey && !e.ctrlKey) {
+        if (page < totalPages - 1 && !loading) { e.preventDefault(); void loadPage(page + 1); }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [sort, page, totalPages, loading, exporting, summaryLoading]);
+
+
   // Summary aggregates (over the bounded summary set, same filters)
   const stats = useMemo(() => {
     const out = {
@@ -292,44 +357,90 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
 
   const completionRate = stats.saves > 0 ? Math.round((stats.completedSaves / stats.saves) * 100) : null;
 
-  const exportCsv = () => {
-    if (rows.length === 0 && summary.length === 0) return toast.error("No events match these filters.");
+  // Export pipeline with explicit retry + timeout. We re-run the same filtered
+  // query (not the cached `summary`) so the file matches the live server state.
+  const EXPORT_TIMEOUT_MS = 20_000;
+
+  const runExport = async () => {
     const cols = columnKeys.map((k) => ALL_COLUMNS.find((c) => c.key === k)).filter(Boolean) as ColumnDef[];
-    if (cols.length === 0) return toast.error("Pick at least one column to export.");
-    const esc = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    if (cols.length === 0) {
+      toast.error("Pick at least one column to export.");
+      return;
+    }
+    setExporting(true);
+    setExportError(null);
+    try {
+      const queryPromise = applyOrder(buildBase(false)).limit(SUMMARY_CAP);
+      const timeout = new Promise<never>((_, rej) =>
+        setTimeout(() => rej(new Error(`Export timed out after ${EXPORT_TIMEOUT_MS / 1000}s`)), EXPORT_TIMEOUT_MS),
+      );
+      const { data, error } = (await Promise.race([queryPromise, timeout])) as any;
+      if (error) throw error;
+      const source: LogRow[] = (data as LogRow[]) ?? [];
+      if (source.length === 0) {
+        toast.error("No events match these filters.");
+        setExporting(false);
+        return;
+      }
 
-    // Export the FULL filtered set (summary cap), not just the current page.
-    const source = summary;
-    const header = cols.map((c) => c.label).join(",") + "\n";
-    const body = source.map((r) => {
-      const info = r.user_id ? userMap.get(r.user_id) ?? null : null;
-      return cols.map((c) => esc(c.resolve(r, info))).join(",");
-    }).join("\n");
+      const esc = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+      // Prepend a metadata banner describing the export so opened CSVs are self-documenting.
+      const presetLabel = PRESETS[preset]?.label ?? "All time";
+      const dateRange = (from || to)
+        ? `${from || "…"} → ${to || "…"}`
+        : presetLabel;
+      const filterLines = [
+        `# Plugin inventory admin activity export`,
+        `# Generated: ${new Date().toISOString()}`,
+        `# Total rows: ${source.length}${source.length === SUMMARY_CAP ? " (capped — narrow filters for full set)" : ""}`,
+        `# Event filter: ${eventFilter}`,
+        `# Date range: ${dateRange}`,
+        `# Snapshot id: ${snapshotId || "(any)"}`,
+        `# User query: ${userQuery || "(any)"}`,
+        `# Free-text: ${query || "(none)"}`,
+        `# Sort: ${sort}`,
+        `# Columns: ${columnKeys.join(", ")}`,
+        ``,
+      ].map((l) => esc(l)).join("\n") + "\n";
 
-    const blob = new Blob([header + body], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `admin-activity-${eventFilter}-${Date.now()}.csv`;
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
+      const header = cols.map((c) => c.label).join(",") + "\n";
+      const body = source.map((r) => {
+        const info = r.user_id ? userMap.get(r.user_id) ?? null : null;
+        return cols.map((c) => esc(c.resolve(r, info))).join(",");
+      }).join("\n");
 
-    supabase.from("activity_logs").insert({
-      user_id: null,
-      event_type: "admin_activity_exported",
-      metadata: {
-        rows: source.length,
-        columns: columnKeys,
-        event_filter: eventFilter,
-        snapshot_id: snapshotId,
-        user_query: userQuery,
-        preset: PRESETS[preset]?.label,
-        from, to,
-        cap_hit: summaryCapHit,
-      },
-    }).then(() => {}, () => {});
-    toast.success(`Exported ${source.length} event${source.length === 1 ? "" : "s"}.`);
+      const blob = new Blob([filterLines + header + body], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `admin-activity-${eventFilter}-${Date.now()}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+
+      supabase.from("activity_logs").insert({
+        user_id: null,
+        event_type: "admin_activity_exported",
+        metadata: {
+          rows: source.length,
+          columns: columnKeys,
+          event_filter: eventFilter,
+          snapshot_id: snapshotId,
+          user_query: userQuery,
+          preset: presetLabel,
+          from, to, sort,
+          cap_hit: source.length === SUMMARY_CAP,
+        },
+      }).then(() => {}, () => {});
+      toast.success(`Exported ${source.length} event${source.length === 1 ? "" : "s"}.`);
+    } catch (e: any) {
+      const msg = e?.message ?? "Export failed. Please try again.";
+      setExportError(msg);
+      toast.error(msg);
+    } finally {
+      setExporting(false);
+    }
   };
+
 
   const clearAll = () => {
     // Reset every URL-backed filter at once.
@@ -426,7 +537,7 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
 
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Free-text (current page)…" className="pl-9 h-9 text-xs" />
+            <Input ref={searchInputRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Free-text (current page) — press / to focus" className="pl-9 h-9 text-xs" />
           </div>
 
           <div className="relative">
@@ -457,13 +568,7 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
             <Select value={sort} onValueChange={setSort}>
               <SelectTrigger className="h-8 text-xs w-52" aria-label="Sort"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="created_at:desc">Newest first</SelectItem>
-                <SelectItem value="created_at:asc">Oldest first</SelectItem>
-                <SelectItem value="event_type:asc">Event type A→Z</SelectItem>
-                <SelectItem value="event_type:desc">Event type Z→A</SelectItem>
-                <SelectItem value="user_id:asc">User id A→Z</SelectItem>
-                <SelectItem value="metadata->>added:desc">Completion Δ (most added)</SelectItem>
-                <SelectItem value="metadata->>removed:desc">Completion Δ (most removed)</SelectItem>
+                {SORT_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -528,14 +633,42 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
             </PopoverContent>
           </Popover>
 
-          <Button size="sm" className="h-8 text-xs" onClick={exportCsv} disabled={summaryLoading || summary.length === 0} title="Exports every event matching the current filters, sort, and column order">
-            <Download className="w-3 h-3 mr-1" /> Export filtered results
+          <Button
+            ref={exportBtnRef}
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => void runExport()}
+            disabled={exporting || summaryLoading}
+            title="Exports every event matching the current filters, sort, and column order (Shift+E)"
+          >
+            {exporting ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Download className="w-3 h-3 mr-1" />}
+            {exporting ? "Exporting…" : "Export filtered results"}
           </Button>
         </div>
 
+        {exportError && (
+          <div className="flex items-start gap-2 p-2 rounded border border-destructive/40 bg-destructive/10 text-xs text-destructive">
+            <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <div className="font-medium">Export failed</div>
+              <div className="text-[11px] opacity-90">{exportError}</div>
+            </div>
+            <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => void runExport()} disabled={exporting}>
+              {exporting ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />} Retry
+            </Button>
+            <button onClick={() => setExportError(null)} className="text-destructive/60 hover:text-destructive" aria-label="Dismiss"><X className="w-3 h-3" /></button>
+          </div>
+        )}
+
         <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap">
           <Badge variant="outline" className="text-[10px]">{totalCount} total match{totalCount === 1 ? "" : "es"}</Badge>
+          <Badge variant="secondary" className="text-[10px] gap-1" title="Active sort — Shift+S to cycle, Shift+Alt+S reverse">
+            <ArrowUpDown className="w-3 h-3" /> Sort: {sortLabel(sort)}
+          </Badge>
           {freeTextActive && <span className="text-amber-500">Free-text only filters the current page.</span>}
+          <span className="ml-auto inline-flex items-center gap-1 text-muted-foreground/70" title="/ focus search · Shift+S cycle sort · Shift+E export · Shift+R reload · ←/→ pagination">
+            <Keyboard className="w-3 h-3" /> shortcuts
+          </span>
         </div>
 
         {error ? (
