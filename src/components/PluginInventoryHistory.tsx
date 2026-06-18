@@ -391,10 +391,17 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
 
           <AlertDialogFooter>
             <AlertDialogCancel disabled={restoring}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={(e) => { e.preventDefault(); void confirmRestore(); }} disabled={restoring}>
-              {restoring ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Undo2 className="w-4 h-4 mr-2" />}
-              Restore
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                // Hand off to the final safety modal — don't apply yet.
+                if (pendingRestore) { const s = pendingRestore; setPendingRestore(null); openFinalConfirm(s); }
+              }}
+              disabled={restoring}
+            >
+              <Undo2 className="w-4 h-4 mr-2" /> Review &amp; confirm…
             </AlertDialogAction>
+
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
