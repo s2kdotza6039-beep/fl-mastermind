@@ -536,16 +536,34 @@ function SetupsTab({
 const INVENTORIES_PAGE_SIZE = 50;
 
 function InventoriesTab({ users }: { users: UserRow[] }) {
-  const [page, setPage] = useState(0);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialPage = Math.max(0, parseInt(searchParams.get("inv_page") ?? "0", 10) || 0);
+  const initialQuery = searchParams.get("inv_q") ?? "";
+
+  const [page, setPage] = useState(initialPage);
   const [pageRows, setPageRows] = useState<InventoryRow[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState(initialQuery);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // Persist page + query to URL so refresh / tab return restores position
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (page > 0) next.set("inv_page", String(page));
+    else next.delete("inv_page");
+    if (query.trim()) next.set("inv_q", query.trim());
+    else next.delete("inv_q");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, query]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
+      setError(null);
       const from = page * INVENTORIES_PAGE_SIZE;
       const to = from + INVENTORIES_PAGE_SIZE - 1;
       const { data, count, error } = await supabase
@@ -554,13 +572,18 @@ function InventoriesTab({ users }: { users: UserRow[] }) {
         .order("updated_at", { ascending: false })
         .range(from, to);
       if (cancelled) return;
-      if (error) toast.error(error.message);
+      if (error) {
+        setError(error.message);
+        setPageRows([]);
+        setLoading(false);
+        return;
+      }
       setPageRows((data as InventoryRow[]) ?? []);
       setTotalCount(count ?? 0);
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [page]);
+  }, [page, reloadKey]);
 
   const userMap = useMemo(() => {
     const m = new Map<string, UserRow>();
@@ -638,7 +661,7 @@ function InventoriesTab({ users }: { users: UserRow[] }) {
             </button>
           )}
         </div>
-        <Button onClick={exportCsv} disabled={filtered.length === 0} variant="outline" className="sm:w-auto">
+        <Button onClick={exportCsv} disabled={filtered.length === 0 || loading || !!error} variant="outline" className="sm:w-auto">
           <Download className="w-4 h-4 mr-2" /> Export CSV
         </Button>
       </div>
@@ -648,8 +671,28 @@ function InventoriesTab({ users }: { users: UserRow[] }) {
         <span className="italic">Search applies to current page</span>
       </div>
 
-      {loading ? (
-        <Loader2 className="w-5 h-5 animate-spin" />
+      {error ? (
+        <div className="text-center py-8 space-y-3">
+          <div className="flex items-center justify-center gap-2 text-destructive text-sm">
+            <AlertTriangle className="w-4 h-4" />
+            <span>Failed to load page {page + 1}: {error}</span>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => setReloadKey((k) => k + 1)}>
+            Retry
+          </Button>
+        </div>
+      ) : loading ? (
+        <div className="space-y-2" aria-label="Loading inventories">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 py-2 border-b border-border/40">
+              <div className="h-8 flex-1 rounded bg-muted/60 animate-pulse" />
+              <div className="h-4 w-8 rounded bg-muted/60 animate-pulse" />
+              <div className="h-4 w-8 rounded bg-muted/60 animate-pulse" />
+              <div className="h-4 w-8 rounded bg-muted/60 animate-pulse" />
+              <div className="h-4 w-20 rounded bg-muted/60 animate-pulse" />
+            </div>
+          ))}
+        </div>
       ) : filtered.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-6">
           {totalCount === 0
@@ -692,11 +735,12 @@ function InventoriesTab({ users }: { users: UserRow[] }) {
         <Button size="sm" variant="outline" disabled={page === 0 || loading} onClick={() => setPage((p) => Math.max(0, p - 1))}>
           Previous
         </Button>
-        <Button size="sm" variant="outline" disabled={page + 1 >= totalPages || loading} onClick={() => setPage((p) => p + 1)}>
+        <Button size="sm" variant="outline" disabled={page + 1 >= totalPages || loading || !!error} onClick={() => setPage((p) => p + 1)}>
           Next
         </Button>
       </div>
     </Card>
   );
 }
+
 
