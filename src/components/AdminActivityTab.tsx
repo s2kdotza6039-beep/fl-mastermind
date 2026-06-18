@@ -528,8 +528,8 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
             </PopoverContent>
           </Popover>
 
-          <Button size="sm" className="h-8 text-xs" onClick={exportCsv} disabled={summaryLoading || summary.length === 0}>
-            <Download className="w-3 h-3 mr-1" /> Export CSV
+          <Button size="sm" className="h-8 text-xs" onClick={exportCsv} disabled={summaryLoading || summary.length === 0} title="Exports every event matching the current filters, sort, and column order">
+            <Download className="w-3 h-3 mr-1" /> Export filtered results
           </Button>
         </div>
 
