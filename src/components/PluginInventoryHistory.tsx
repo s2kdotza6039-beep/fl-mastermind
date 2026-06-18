@@ -387,6 +387,90 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Sheet open={!!pointDetail} onOpenChange={(o) => { if (!o) setPointDetail(null); }}>
+        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+          {pointDetail && (() => {
+            const s = pointDetail.snap;
+            const prev = pointDetail.prev;
+            const total = s.native_plugins.length + s.third_party_plugins.length + s.custom_plugins.length;
+            const prevTotal = prev
+              ? prev.native_plugins.length + prev.third_party_plugins.length + prev.custom_plugins.length
+              : 0;
+            const dN = prev ? ciDiff(prev.native_plugins, s.native_plugins) : { added: s.native_plugins, removed: [] };
+            const dT = prev ? ciDiff(prev.third_party_plugins, s.third_party_plugins) : { added: s.third_party_plugins, removed: [] };
+            const dC = prev ? ciDiff(prev.custom_plugins, s.custom_plugins) : { added: s.custom_plugins, removed: [] };
+            const isCurrent = s.id === snaps[0]?.id;
+            return (
+              <>
+                <SheetHeader>
+                  <SheetTitle>Snapshot details</SheetTitle>
+                  <SheetDescription>
+                    {new Date(s.created_at).toLocaleString()}
+                  </SheetDescription>
+                </SheetHeader>
+
+                <div className="mt-4 space-y-4 text-xs">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant={s.change_type === "create" ? "default" : "secondary"} className="text-[10px]">{s.change_type}</Badge>
+                    {s.inventory_completed && <Badge variant="outline" className="text-[10px]">complete</Badge>}
+                    {isCurrent && <Badge variant="outline" className="text-[10px]">current</Badge>}
+                    <span className="text-muted-foreground ml-auto font-mono text-[10px]">id {s.id.slice(0, 8)}…</span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 rounded border border-border bg-muted/30">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Previous</div>
+                      <div className="font-medium">{prev ? `${prevTotal} plugins` : "—"}</div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-widest text-muted-foreground">This snapshot</div>
+                      <div className="font-medium">{total} plugins</div>
+                    </div>
+                  </div>
+
+                  {([
+                    ["Native", dN, s.native_plugins.length],
+                    ["Third-party", dT, s.third_party_plugins.length],
+                    ["Custom", dC, s.custom_plugins.length],
+                  ] as const).map(([label, d, count]) => (
+                    <div key={label} className="border border-border rounded p-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</div>
+                        <span className="text-[10px] text-muted-foreground">{count} total</span>
+                      </div>
+                      <div className="text-emerald-500 text-[11px]">
+                        +{d.added.length} added{d.added.length > 0 && `: ${d.added.slice(0, 6).join(", ")}${d.added.length > 6 ? `, +${d.added.length - 6}` : ""}`}
+                      </div>
+                      <div className="text-destructive text-[11px]">
+                        −{d.removed.length} removed{d.removed.length > 0 && `: ${d.removed.slice(0, 6).join(", ")}${d.removed.length > 6 ? `, +${d.removed.length - 6}` : ""}`}
+                      </div>
+                    </div>
+                  ))}
+
+                  {!prev && (
+                    <p className="text-[11px] text-muted-foreground italic">
+                      First snapshot in this view — diff shown against an empty baseline.
+                    </p>
+                  )}
+
+                  {!isCurrent && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => { setPendingRestore(s); setPointDetail(null); }}
+                    >
+                      <Undo2 className="w-3 h-3 mr-1" /> Restore this snapshot
+                    </Button>
+                  )}
+                </div>
+              </>
+            );
+          })()}
+        </SheetContent>
+      </Sheet>
     </Card>
   );
 }
