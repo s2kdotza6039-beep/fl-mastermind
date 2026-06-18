@@ -286,6 +286,32 @@ PLUGIN RECOMMENDATION RULES (MANDATORY):
       system += `\n\nNOTE: The user has not provided a plugin inventory yet. Default to FL Studio stock plugins for their edition and gently mention they can add their plugin inventory at /plugin-inventory for more accurate recommendations.`;
     }
 
+    // ---------- AUDIO ANALYSIS CONTEXT ----------
+    const audio = ctx?.audio;
+    if (audio && typeof audio === "object" && typeof audio.fileName === "string") {
+      const num = (v: unknown, d = 1) => (typeof v === "number" && isFinite(v) ? v.toFixed(d) : "—");
+      const str = (v: unknown, max = 60) => (typeof v === "string" ? v.slice(0, max) : "—");
+      const bands = audio.bands && typeof audio.bands === "object" ? audio.bands as any : null;
+      const issues = Array.isArray(audio.issues) ? audio.issues.slice(0, 12) : [];
+      system += `\n\nUSER AUDIO ANALYSIS (HIGHEST PRIORITY — diagnose these objective measurements first):
+- File: ${str(audio.fileName, 80)} (${str(audio.fileFormat, 10)})
+- Duration: ${num(audio.durationSec)} s | Sample rate: ${num(audio.sampleRate, 0)} Hz | Channels: ${num(audio.channels, 0)} | Bit rate: ${num(audio.bitRate, 0)} kbps
+- Peak: ${num(audio.peakDb)} dBFS | RMS: ${num(audio.rmsDb)} dBFS | LUFS≈ ${num(audio.lufsEstimate)}
+- Dynamic range: ${num(audio.dynamicRangeDb)} dB | Stereo width: ${num(audio.stereoWidth, 2)} (${str(audio.stereoWidthLabel, 20)})
+- BPM: ${audio.bpm ?? "unknown"} | Key: ${str(audio.detectedKey ?? "unknown", 20)}
+${bands ? `- Frequency balance (dB rel total): low ${num(bands.low)} | low-mid ${num(bands.lowMid)} | mid ${num(bands.mid)} | high-mid ${num(bands.highMid)} | high ${num(bands.high)}` : ""}
+
+DETECTED PROBLEMS (address in order of severity):
+${issues.length ? issues.map((i: any) => `- [${str(i.severity, 10).toUpperCase()}] ${str(i.title, 120)} — ${str(i.detail, 240)} | Recommendation: ${str(i.recommendation, 240)}`).join("\n") : "- (no issues flagged by the analyzer)"}
+
+AUDIO COACHING RULES (MANDATORY):
+- Open with one sentence acknowledging the actual measurements (loudness, peak, key, BPM).
+- Prioritise the CRITICAL and WARN findings above before any general advice.
+- Translate every recommendation into FL Studio menu paths the user can follow today.
+- Use the user's owned plugins first; respect their FL Studio edition limits.
+- For every fix give Option 1 (recommended), Option 2 (alternative), Option 3 (creative).`;
+    }
+
     // Tier-gated detail level
     if (!isPaid) {
       system += `\n\nFREE TIER NOTE: Keep responses focused and educational. Mention that advanced multi-stage plug-in chains (Trap, Amapiano, Drill, R&B, Afrobeat full mix templates) are available to paid members and suggest upgrading at /upgrade when relevant.`;
