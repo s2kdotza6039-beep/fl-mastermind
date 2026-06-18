@@ -154,6 +154,10 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
     try { localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(columnKeys)); } catch { /* ignore */ }
   }, [columnKeys]);
 
+  // Keyboard shortcut targets
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const exportBtnRef = useRef<HTMLButtonElement | null>(null);
+
   const userMap = useMemo(() => {
     const m = new Map<string, UserLike>();
     users.forEach((u) => m.set(u.user_id, u));
