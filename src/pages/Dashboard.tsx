@@ -1,16 +1,20 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Wrench, MessageCircle, Disc3, Music2, Sliders, Volume2, Crown, Layers, ListChecks, UploadCloud,
-  Mic, Speaker, Sparkles, TrendingUp, Trash2, KeyRound,
+  Mic, Speaker, Sparkles, TrendingUp, Trash2, KeyRound, AudioLines,
 } from "lucide-react";
 import { useSession } from "@/context/SessionContext";
+import { useAuth } from "@/context/AuthContext";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { StudioSetupCard } from "@/components/StudioSetupCard";
 import { SetupChecklistCard } from "@/components/SetupChecklistCard";
 import { PluginInventoryCard } from "@/components/PluginInventoryCard";
+import { supabase } from "@/integrations/supabase/client";
 
 const FEATURES = [
   { to: "/chat", icon: MessageCircle, title: "Sensei Chat", desc: "Ask anything about your sound." },
