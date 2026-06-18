@@ -143,6 +143,7 @@ export default function AdminPage() {
       <Tabs defaultValue="users">
         <TabsList>
           <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="setups">FL Setups</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="alerts">Alerts {unresolved > 0 && <Badge variant="destructive" className="ml-2">{unresolved}</Badge>}</TabsTrigger>
         </TabsList>
@@ -226,6 +227,17 @@ export default function AdminPage() {
             )}
           </Card>
         </TabsContent>
+
+        <TabsContent value="setups">
+          <SetupsTab
+            setups={setups}
+            users={users}
+            loading={loading}
+            query={setupQuery}
+            setQuery={setSetupQuery}
+          />
+        </TabsContent>
+
 
         <TabsContent value="activity">
           <Card className="studio-card p-4 mt-4 max-h-[60vh] overflow-auto">
