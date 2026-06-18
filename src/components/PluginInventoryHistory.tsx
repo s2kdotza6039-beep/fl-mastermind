@@ -220,6 +220,8 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
             </Button>
           </div>
 
+          <CompletenessChart snaps={filtered} />
+
 
           {loading ? (
             <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-primary" /></div>
