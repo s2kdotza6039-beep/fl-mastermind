@@ -835,8 +835,67 @@ function InventoriesTab({ users }: { users: UserRow[] }) {
           Next
         </Button>
       </div>
+
+      <Dialog open={!!preview} onOpenChange={(o) => { if (!o) setPreview(null); }}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Export preview · {preview?.kind === "rules" ? "with match rules" : "summary"}</DialogTitle>
+            <DialogDescription>
+              {preview && (
+                <>
+                  Filename: <code className="text-foreground">{preview.filename}</code> · {preview.rows.length} row{preview.rows.length === 1 ? "" : "s"} · {preview.columns.length} column{preview.columns.length === 1 ? "" : "s"}
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {preview && (
+            <div className="space-y-3">
+              <div className="rounded border border-border bg-muted/30 p-3 font-mono text-[11px] overflow-x-auto">
+                {preview.headerComments.map((c, i) => (
+                  <div key={i} className="text-muted-foreground">{c}</div>
+                ))}
+              </div>
+              <div className="border border-border rounded overflow-auto max-h-[50vh]">
+                <table className="w-full text-[11px]">
+                  <thead className="bg-muted/40 sticky top-0">
+                    <tr>
+                      {preview.columns.map((c) => (
+                        <th key={c} className="text-left px-2 py-1.5 font-medium border-b border-border whitespace-nowrap">{c}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.rows.slice(0, 20).map((r, ri) => (
+                      <tr key={ri} className="border-b border-border/40">
+                        {r.map((cell, ci) => (
+                          <td key={ci} className="px-2 py-1 align-top max-w-[260px] truncate text-muted-foreground" title={cell}>{cell}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {preview.rows.length > 20 && (
+                  <div className="text-center text-[10px] text-muted-foreground py-2 border-t border-border/40">
+                    Showing first 20 of {preview.rows.length} rows · all rows will be in the downloaded file.
+                  </div>
+                )}
+                {preview.rows.length === 0 && (
+                  <div className="text-center text-xs text-muted-foreground py-6">No rows to export.</div>
+                )}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPreview(null)}>Cancel</Button>
+            <Button onClick={confirmDownload} disabled={!preview || preview.rows.length === 0} className="bg-gradient-gold text-primary-foreground">
+              <Download className="w-4 h-4 mr-2" /> Download CSV
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
+
 
 
