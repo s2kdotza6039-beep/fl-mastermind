@@ -10,7 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/PageHeader";
 import { usePluginInventory } from "@/context/PluginInventoryContext";
-import { NATIVE_PLUGINS, THIRD_PARTY_BRANDS } from "@/lib/plugin-inventory-constants";
+import { NATIVE_PLUGINS, THIRD_PARTY_BRANDS, CUSTOM_PLUGIN_SUGGESTIONS } from "@/lib/plugin-inventory-constants";
+
+const sortKey = (a: string[]) => a.slice().map((x) => x.toLowerCase()).sort().join("|");
 
 export default function PluginInventoryPage() {
   const navigate = useNavigate();
@@ -22,14 +24,38 @@ export default function PluginInventoryPage() {
   const [nativeQuery, setNativeQuery] = useState("");
   const [thirdQuery, setThirdQuery] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [savedSnapshot, setSavedSnapshot] = useState<{ n: string; t: string; c: string } | null>(null);
 
   useEffect(() => {
     if (inventory) {
-      setNative(inventory.native_plugins ?? []);
-      setThird(inventory.third_party_plugins ?? []);
-      setCustom(inventory.custom_plugins ?? []);
+      const n = inventory.native_plugins ?? [];
+      const t = inventory.third_party_plugins ?? [];
+      const c = inventory.custom_plugins ?? [];
+      setNative(n);
+      setThird(t);
+      setCustom(c);
+      setSavedSnapshot({ n: sortKey(n), t: sortKey(t), c: sortKey(c) });
     }
   }, [inventory]);
+
+  const dirty = useMemo(() => {
+    if (!savedSnapshot) return native.length + third.length + custom.length > 0;
+    return (
+      savedSnapshot.n !== sortKey(native) ||
+      savedSnapshot.t !== sortKey(third) ||
+      savedSnapshot.c !== sortKey(custom)
+    );
+  }, [native, third, custom, savedSnapshot]);
+
+  const isDuplicate = (name: string) => {
+    const n = name.trim().toLowerCase();
+    return (
+      native.some((x) => x.toLowerCase() === n) ||
+      third.some((x) => x.toLowerCase() === n) ||
+      custom.some((x) => x.toLowerCase() === n)
+    );
+  };
 
   const toggle = (list: string[], setList: (v: string[]) => void, name: string) => {
     setList(list.includes(name) ? list.filter((n) => n !== name) : [...list, name]);
