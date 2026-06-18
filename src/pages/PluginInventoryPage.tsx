@@ -355,13 +355,23 @@ export default function PluginInventoryPage() {
               <div className="flex gap-2">
                 <Input
                   value={customDraft}
-                  onChange={(e) => { setCustomDraft(e.target.value); setShowSuggestions(true); }}
+                  onChange={(e) => { setCustomDraft(e.target.value); setShowSuggestions(true); setActiveIdx(0); }}
                   onFocus={() => setShowSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }}
-                  placeholder="Plugin name… (suggestions appear as you type)"
+                  onKeyDown={handleCustomKeyDown}
+                  placeholder="Plugin name… (↑↓ navigate, Space toggle, Enter confirm)"
                   maxLength={60}
+                  role="combobox"
+                  aria-expanded={showSuggestions && customSuggestions.length > 0}
+                  aria-controls="custom-plugin-listbox"
+                  aria-activedescendant={
+                    showSuggestions && customSuggestions[activeIdx]
+                      ? `custom-suggestion-${activeIdx}`
+                      : undefined
+                  }
+                  aria-autocomplete="list"
                 />
+
                 <Button type="button" onClick={() => addCustom()} variant="outline"><Plus className="w-4 h-4 mr-1" /> Add</Button>
               </div>
               {showSuggestions && customSuggestions.length > 0 && (
