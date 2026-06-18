@@ -231,13 +231,7 @@ export default function AdminPage() {
         </TabsContent>
 
         <TabsContent value="setups">
-          <SetupsTab
-            setups={setups}
-            users={users}
-            loading={loading}
-            query={setupQuery}
-            setQuery={setSetupQuery}
-          />
+          <SetupsTab setups={setups} users={users} loading={loading} />
         </TabsContent>
 
 
