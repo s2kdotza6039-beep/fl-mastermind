@@ -352,6 +352,7 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
   //   ← / →        → previous / next page (when not typing)
   // We bail when the user is typing so we never hijack normal text entry.
   useEffect(() => {
+    if (!shortcutsEnabled) return;
     const handler = (e: KeyboardEvent) => {
       const tgt = e.target as HTMLElement | null;
       const tag = tgt?.tagName;
