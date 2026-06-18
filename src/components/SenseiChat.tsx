@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/context/SessionContext";
@@ -12,6 +13,24 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { editionToTier, forbiddenPlugins, eligiblePlugins, tierLabel } from "@/lib/fl-plugin-eligibility";
 
+// Detect mentions of owned plugins in assistant text.
+// Short brand names (≤3 chars) use word-boundary to avoid false matches.
+function findPrioritized(text: string, owned: string[]): string[] {
+  if (!text || owned.length === 0) return [];
+  const lower = text.toLowerCase();
+  const hits: string[] = [];
+  for (const name of owned) {
+    const n = name.toLowerCase();
+    if (n.length <= 3) {
+      const re = new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+      if (re.test(text)) hits.push(name);
+    } else if (lower.includes(n)) {
+      hits.push(name);
+    }
+  }
+  return Array.from(new Set(hits));
+}
+
 interface SenseiChatProps {
   initialPrompt?: string;
   compact?: boolean;
@@ -21,10 +40,27 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
   const { genre, stage, projectName, saveAdvice } = useSession();
   const { isPaid } = useAuth();
   const { setup } = useStudioSetup();
-  const { inventory } = usePluginInventory();
+  const { inventory, isComplete: inventoryComplete } = usePluginInventory();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const sentInitial = useRef(false);
+
+  const [eligibilityOpen, setEligibilityOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+
+  const ownedAll = useMemo(
+    () =>
+      inventoryComplete
+        ? [
+            ...(inventory?.native_plugins ?? []),
+            ...(inventory?.third_party_plugins ?? []),
+            ...(inventory?.custom_plugins ?? []),
+          ]
+        : [],
+    [inventory, inventoryComplete],
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentInitial = useRef(false);
 
