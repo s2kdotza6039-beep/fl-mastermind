@@ -190,17 +190,31 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportPhase, setExportPhase] = useState<ExportPhase>("idle");
   const [exportAttempt, setExportAttempt] = useState(0);
+  // Last-failure diagnostics for the error banner
+  const [exportLastFail, setExportLastFail] = useState<{ attempt: number; message: string; nextDelayMs: number | null } | null>(null);
+  // Cooperative cancellation — flipped by the Cancel button; checked at every await boundary.
+  const cancelRef = useRef(false);
 
-  // CSV timestamp timezone — persisted in localStorage. Only affects the banner.
-  const [tz, setTz] = useState<Tz>(() => {
+  // CSV timestamp timezone — URL wins (shareable), then localStorage, then "local".
+  const urlTz = searchParams.get("a_tz");
+  const [tz, setTzLocal] = useState<Tz>(() => {
+    if (urlTz === "utc" || urlTz === "local") return urlTz;
     try {
       const raw = localStorage.getItem(TZ_STORAGE_KEY);
       return raw === "utc" ? "utc" : "local";
     } catch { return "local"; }
   });
+  // Keep state in sync with the URL on back/forward navigation.
   useEffect(() => {
-    try { localStorage.setItem(TZ_STORAGE_KEY, tz); } catch { /* ignore */ }
-  }, [tz]);
+    if ((urlTz === "utc" || urlTz === "local") && urlTz !== tz) setTzLocal(urlTz);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [urlTz]);
+  const setTz = (v: Tz) => {
+    setTzLocal(v);
+    try { localStorage.setItem(TZ_STORAGE_KEY, v); } catch { /* ignore */ }
+    // Drop the URL param when it matches the default to keep links clean.
+    setParam({ a_tz: v === "local" ? null : v });
+  };
 
   // Keyboard shortcuts on/off — URL wins (so it's shareable), else localStorage, else on.
   const urlKbd = searchParams.get("a_kbd");
@@ -421,21 +435,32 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
   // live server state. Retries use exponential backoff and cap at EXPORT_MAX_ATTEMPTS.
   const EXPORT_TIMEOUT_MS = 20_000;
 
+  const cancelExport = () => {
+    if (!exporting) return;
+    cancelRef.current = true;
+  };
+
   const runExport = async () => {
     const cols = columnKeys.map((k) => ALL_COLUMNS.find((c) => c.key === k)).filter(Boolean) as ColumnDef[];
     if (cols.length === 0) {
       toast.error("Pick at least one column to export.");
       return;
     }
+    cancelRef.current = false;
     setExporting(true);
     setExportError(null);
+    setExportLastFail(null);
     setExportPhase("requesting");
     setExportAttempt(1);
 
     // Retry loop with exponential backoff. Surface the final error after the cap.
+    // Cancellation is checked before every attempt and during the backoff wait.
     let data: any = null;
     let lastErr: any = null;
+    let lastAttempt = 0;
     for (let attempt = 1; attempt <= EXPORT_MAX_ATTEMPTS; attempt++) {
+      if (cancelRef.current) break;
+      lastAttempt = attempt;
       setExportAttempt(attempt);
       setExportPhase("requesting");
       try {
@@ -444,22 +469,42 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
           setTimeout(() => rej(new Error(`Export timed out after ${EXPORT_TIMEOUT_MS / 1000}s`)), EXPORT_TIMEOUT_MS),
         );
         const res = (await Promise.race([queryPromise, timeout])) as any;
+        if (cancelRef.current) break;
         if (res?.error) throw res.error;
         data = res?.data ?? [];
         lastErr = null;
         break;
       } catch (e: any) {
         lastErr = e;
-        if (attempt < EXPORT_MAX_ATTEMPTS) {
-          const wait = EXPORT_BACKOFF_BASE_MS * Math.pow(2, attempt - 1);
-          await new Promise((r) => setTimeout(r, wait));
+        const nextDelay = attempt < EXPORT_MAX_ATTEMPTS ? EXPORT_BACKOFF_BASE_MS * Math.pow(2, attempt - 1) : null;
+        setExportLastFail({ attempt, message: e?.message ?? "Request failed", nextDelayMs: nextDelay });
+        if (nextDelay != null) {
+          // Sleep in small ticks so a Cancel click interrupts the backoff quickly.
+          const end = Date.now() + nextDelay;
+          while (Date.now() < end) {
+            if (cancelRef.current) break;
+            await new Promise((r) => setTimeout(r, Math.min(100, end - Date.now())));
+          }
+          if (cancelRef.current) break;
         }
       }
     }
 
+    if (cancelRef.current) {
+      setExportPhase("idle");
+      setExporting(false);
+      setExportLastFail(null);
+      toast("Export cancelled.");
+      cancelRef.current = false;
+      return;
+    }
+
     if (lastErr) {
-      const msg = `${lastErr?.message ?? "Export failed."} (after ${EXPORT_MAX_ATTEMPTS} attempts)`;
+      const baseMsg = lastErr?.message ?? "Export failed.";
+      const msg = `${baseMsg} (failed on attempt ${lastAttempt}/${EXPORT_MAX_ATTEMPTS})`;
       setExportError(msg);
+      // Keep lastFail around (with nextDelayMs=null) so the banner can show details.
+      setExportLastFail({ attempt: lastAttempt, message: baseMsg, nextDelayMs: null });
       toast.error(msg);
       setExportPhase("idle");
       setExporting(false);
@@ -764,14 +809,27 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
 
         {(exporting || exportPhase === "done") && (
           <div className="rounded border border-border bg-muted/30 p-2 text-[11px] space-y-1">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <span className="font-medium">
                 {PHASE_LABEL[exportPhase] || "Working"}
                 {exportPhase === "requesting" && exportAttempt > 1 && (
                   <span className="text-muted-foreground"> · attempt {exportAttempt}/{EXPORT_MAX_ATTEMPTS}</span>
                 )}
               </span>
-              <span className="text-muted-foreground">{PHASE_PERCENT[exportPhase]}%</span>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">{PHASE_PERCENT[exportPhase]}%</span>
+                {exporting && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-[10px]"
+                    onClick={cancelExport}
+                    title="Stop the in-progress export"
+                  >
+                    <X className="w-3 h-3 mr-1" /> Cancel
+                  </Button>
+                )}
+              </div>
             </div>
             <div className="h-1.5 w-full bg-background rounded overflow-hidden">
               <div
@@ -779,22 +837,36 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
                 style={{ width: `${PHASE_PERCENT[exportPhase]}%` }}
               />
             </div>
+            {exporting && exportLastFail && exportLastFail.nextDelayMs != null && (
+              <div className="text-[10px] text-amber-500">
+                Attempt {exportLastFail.attempt} failed: {exportLastFail.message} · retrying in {Math.round(exportLastFail.nextDelayMs / 100) / 10}s…
+              </div>
+            )}
           </div>
         )}
 
         {exportError && (
           <div className="flex items-start gap-2 p-2 rounded border border-destructive/40 bg-destructive/10 text-xs text-destructive">
             <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-            <div className="flex-1">
+            <div className="flex-1 space-y-0.5">
               <div className="font-medium">Export failed</div>
               <div className="text-[11px] opacity-90">{exportError}</div>
+              {exportLastFail && (
+                <div className="text-[10px] opacity-80">
+                  Last error on attempt <strong>{exportLastFail.attempt}/{EXPORT_MAX_ATTEMPTS}</strong>: {exportLastFail.message}
+                  {exportLastFail.nextDelayMs != null && (
+                    <> · would have waited {Math.round(exportLastFail.nextDelayMs / 100) / 10}s before next try</>
+                  )}
+                </div>
+              )}
             </div>
             <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => void runExport()} disabled={exporting}>
               {exporting ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />} Retry
             </Button>
-            <button onClick={() => setExportError(null)} className="text-destructive/60 hover:text-destructive" aria-label="Dismiss"><X className="w-3 h-3" /></button>
+            <button onClick={() => { setExportError(null); setExportLastFail(null); }} className="text-destructive/60 hover:text-destructive" aria-label="Dismiss"><X className="w-3 h-3" /></button>
           </div>
         )}
+
 
         <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap">
           <Badge variant="outline" className="text-[10px]">{totalCount} total match{totalCount === 1 ? "" : "es"}</Badge>
