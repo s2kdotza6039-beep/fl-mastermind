@@ -185,7 +185,13 @@ export default function UploadPage() {
               </Button>
             </div>
 
-            {audioUrl && <audio controls src={audioUrl} className="w-full mt-4" />}
+            {audioUrl && (
+              <WaveformPlayer
+                src={audioUrl}
+                peaks={peaks}
+                durationSec={result?.metrics.durationSec ?? 0}
+              />
+            )}
 
             {!result && !analyzing && (
               <Button
