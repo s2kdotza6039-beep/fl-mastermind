@@ -258,6 +258,34 @@ FL STUDIO ADAPTATION RULES (MANDATORY):
       }
     }
 
+    // ---------- PLUGIN INVENTORY CONTEXT ----------
+    const sanitizeArr = (v: unknown): string[] =>
+      Array.isArray(v) ? v.filter((x) => typeof x === "string").map((x: string) => x.slice(0, 60)).slice(0, 100) : [];
+    const nativeOwned = sanitizeArr(ctx?.nativePlugins);
+    const thirdOwned = sanitizeArr(ctx?.thirdPartyPlugins);
+    const customOwned = sanitizeArr(ctx?.customPlugins);
+    const anyInventory = nativeOwned.length + thirdOwned.length + customOwned.length > 0;
+    if (anyInventory) {
+      system += `\n\nUSER PLUGIN INVENTORY (HARD GATE — recommend the user's own tools first):
+- Native FL Studio plugins owned: ${nativeOwned.length ? nativeOwned.join(", ") : "(none listed)"}
+- Third-party brands owned: ${thirdOwned.length ? thirdOwned.join(", ") : "(none listed)"}
+- Custom plugins owned: ${customOwned.length ? customOwned.join(", ") : "(none listed)"}
+
+PLUGIN RECOMMENDATION RULES (MANDATORY):
+- First, recommend a plugin from the inventory above whenever possible.
+- If the user owns a stronger third-party plugin for the task, recommend it first and briefly explain why it's better — then give the FL Studio stock backup.
+- If the user does NOT own a relevant third-party plugin, recommend the FL Studio native alternative they DO own. Never push a purchase as the only option.
+- Always offer the FL Studio stock equivalent as a backup so the user is never stuck.
+- If the user owns FabFilter → Pro-Q 3 style EQ advice is allowed.
+- If the user owns Waves → Waves vocal-chain/comp/EQ suggestions are allowed.
+- If the user owns iZotope (Ozone/Neutron) → Ozone mastering / Neutron mixing flows are allowed.
+- If the user owns Antares or Pitcher → autotune / pitch correction flows are allowed.
+- If the user owns Valhalla → reverb/delay suggestions from Valhalla are allowed.
+- Never recommend plugins the user does not own without also offering an owned alternative.`;
+    } else {
+      system += `\n\nNOTE: The user has not provided a plugin inventory yet. Default to FL Studio stock plugins for their edition and gently mention they can add their plugin inventory at /plugin-inventory for more accurate recommendations.`;
+    }
+
     // Tier-gated detail level
     if (!isPaid) {
       system += `\n\nFREE TIER NOTE: Keep responses focused and educational. Mention that advanced multi-stage plug-in chains (Trap, Amapiano, Drill, R&B, Afrobeat full mix templates) are available to paid members and suggest upgrading at /upgrade when relevant.`;
