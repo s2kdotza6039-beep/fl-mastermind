@@ -94,14 +94,42 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryCapHit, setSummaryCapHit] = useState(false);
 
-  // Filters
-  const [eventFilter, setEventFilter] = useState<EventFilter>("all");
-  const [query, setQuery] = useState("");
-  const [snapshotId, setSnapshotId] = useState("");
-  const [userQuery, setUserQuery] = useState("");
-  const [preset, setPreset] = useState<number>(0);
-  const [from, setFrom] = useState<string>("");
-  const [to, setTo] = useState<string>("");
+  // URL-backed filter state. Distinct `a_` prefix so we don't collide with SetupsTab params.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const param = (k: string, fallback = "") => searchParams.get(k) ?? fallback;
+
+  const eventFilter = (param("a_event", "all") as EventFilter);
+  const query = param("a_q");
+  const snapshotId = param("a_snap");
+  const userQuery = param("a_user");
+  const preset = (() => {
+    const idx = parseInt(param("a_preset", "0"), 10);
+    return Number.isFinite(idx) && idx >= 0 && idx < PRESETS.length ? idx : 0;
+  })();
+  const from = param("a_from");
+  const to = param("a_to");
+  const sort = param("a_sort", "created_at:desc");
+
+  const setParam = (updates: Record<string, string | null>) => {
+    const next = new URLSearchParams(searchParams);
+    Object.entries(updates).forEach(([k, v]) => {
+      if (v == null || v === "" || v === "all" || (k === "a_preset" && v === "0") || (k === "a_sort" && v === "created_at:desc")) {
+        next.delete(k);
+      } else {
+        next.set(k, v);
+      }
+    });
+    setSearchParams(next, { replace: true });
+  };
+
+  const setEventFilter = (v: EventFilter) => setParam({ a_event: v });
+  const setQuery = (v: string) => setParam({ a_q: v });
+  const setSnapshotId = (v: string) => setParam({ a_snap: v });
+  const setUserQuery = (v: string) => setParam({ a_user: v });
+  const setPreset = (v: number) => setParam({ a_preset: String(v), a_from: null, a_to: null });
+  const setFrom = (v: string) => setParam({ a_from: v, a_preset: "0" });
+  const setTo = (v: string) => setParam({ a_to: v, a_preset: "0" });
+  const setSort = (v: string) => setParam({ a_sort: v });
 
   // Column picker
   const [columnKeys, setColumnKeys] = useState<string[]>(loadStoredColumns);
