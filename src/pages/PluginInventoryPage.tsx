@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Boxes, Save, Loader2, Plus, X, Search, CheckSquare, Square, Undo2 } from "lucide-react";
+import { Boxes, Save, Loader2, Plus, X, Search, CheckSquare, Square, Undo2, Upload, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,9 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/PageHeader";
 import { usePluginInventory } from "@/context/PluginInventoryContext";
 import { NATIVE_PLUGINS, THIRD_PARTY_BRANDS, CUSTOM_PLUGIN_SUGGESTIONS } from "@/lib/plugin-inventory-constants";
+import { PluginInventoryImportDialog } from "@/components/PluginInventoryImportDialog";
+import { PluginInventoryHistory, type HistorySnapshot } from "@/components/PluginInventoryHistory";
+
 
 const sortKey = (a: string[]) => a.slice().map((x) => x.toLowerCase()).sort().join("|");
 
@@ -37,6 +40,9 @@ export default function PluginInventoryPage() {
     inventory_completed: boolean;
   } | null>(null);
   const [undoing, setUndoing] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [historyReloadKey, setHistoryReloadKey] = useState(0);
+
 
   useEffect(() => {
     if (inventory) {
@@ -196,6 +202,8 @@ export default function PluginInventoryPage() {
     } else {
       setUndoSnapshot(priorInventory);
     }
+    setHistoryReloadKey((k) => k + 1);
+
 
     const d = result.diff!;
     const total = d.total;
@@ -265,6 +273,35 @@ export default function PluginInventoryPage() {
     }
   };
 
+  const onRestoreSnapshot = async (snap: HistorySnapshot) => {
+    // Restore = save current state's prior into the table; trigger captures a new history row.
+    setNative(snap.native_plugins);
+    setThird(snap.third_party_plugins);
+    setCustom(snap.custom_plugins);
+    setSaving(true);
+    const res = await performSave({
+      native_plugins: snap.native_plugins,
+      third_party_plugins: snap.third_party_plugins,
+      custom_plugins: snap.custom_plugins,
+    });
+    setSaving(false);
+    if (res.error) toast.error(`Couldn't restore snapshot: ${res.error}`);
+  };
+
+  const onImportApply = (additions: { native: string[]; third: string[]; custom: string[] }) => {
+    // Merge case-insensitively against current edit state
+    const ciHas = (list: string[], v: string) => list.some((x) => x.toLowerCase() === v.toLowerCase());
+    setNative((prev) => [...prev, ...additions.native.filter((v) => !ciHas(prev, v))]);
+    setThird((prev) => [...prev, ...additions.third.filter((v) => !ciHas(prev, v))]);
+    setCustom((prev) => [...prev, ...additions.custom.filter((v) => !ciHas(prev, v))]);
+  };
+
+  // Inline duplicate detection for the bulk-add popover
+  const draftTrimmed = customDraft.trim().replace(/\s+/g, " ");
+  const draftIsDuplicate = draftTrimmed.length > 0 && isDuplicate(draftTrimmed);
+
+
+
 
 
 
@@ -293,6 +330,14 @@ export default function PluginInventoryPage() {
           </div>
         )}
       </div>
+
+      <div className="mt-4 flex justify-end">
+        <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+          <Upload className="w-4 h-4 mr-2" /> Import from CSV
+        </Button>
+      </div>
+
+
 
 
       {loading ? (
@@ -374,69 +419,85 @@ export default function PluginInventoryPage() {
 
                 <Button type="button" onClick={() => addCustom()} variant="outline"><Plus className="w-4 h-4 mr-1" /> Add</Button>
               </div>
-              {showSuggestions && customSuggestions.length > 0 && (
+              {showSuggestions && (customSuggestions.length > 0 || draftIsDuplicate) && (
                 <div
                   className="absolute z-10 left-0 right-0 mt-1 rounded-md border border-border bg-popover shadow-lg overflow-hidden"
                   onMouseDown={(e) => e.preventDefault()}
                 >
-                  <div className="px-3 py-2 text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border/60 flex items-center justify-between">
-                    <span>Suggestions ({customSuggestions.length})</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const all = new Set(customSuggestions);
-                        const allSelected = customSuggestions.every((s) => selectedSuggestions.has(s));
-                        setSelectedSuggestions(allSelected ? new Set() : all);
-                      }}
-                      className="text-primary hover:underline normal-case tracking-normal text-xs"
+                  {draftIsDuplicate && (
+                    <div
+                      role="alert"
+                      className="flex items-start gap-2 px-3 py-2 text-xs bg-destructive/10 text-destructive border-b border-destructive/30"
                     >
-                      {customSuggestions.every((s) => selectedSuggestions.has(s)) ? "Clear all" : "Select all"}
-                    </button>
-                  </div>
-                  <div className="max-h-64 overflow-y-auto" role="listbox" id="custom-plugin-listbox" aria-multiselectable="true">
-                    {customSuggestions.map((s, idx) => {
-                      const checked = selectedSuggestions.has(s);
-                      const active = idx === activeIdx;
-                      return (
-                        <div
-                          key={s}
-                          id={`custom-suggestion-${idx}`}
-                          role="option"
-                          aria-selected={checked}
-                          className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer ${active ? "bg-primary/10 ring-1 ring-inset ring-primary/40" : "hover:bg-muted"}`}
-                          onMouseEnter={() => setActiveIdx(idx)}
-                          onClick={() => toggleSuggestion(s)}
+                      <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                      <div className="flex-1">
+                        <strong>"{draftTrimmed}"</strong> is already in your inventory (case-insensitive). Pick a different name or remove the existing entry first.
+                      </div>
+                    </div>
+                  )}
+                  {customSuggestions.length > 0 && (
+                    <>
+                      <div className="px-3 py-2 text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border/60 flex items-center justify-between">
+                        <span>Suggestions ({customSuggestions.length})</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const all = new Set(customSuggestions);
+                            const allSelected = customSuggestions.every((s) => selectedSuggestions.has(s));
+                            setSelectedSuggestions(allSelected ? new Set() : all);
+                          }}
+                          className="text-primary hover:underline normal-case tracking-normal text-xs"
                         >
-                          {checked ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4 text-muted-foreground" />}
-                          <span className="flex-1">{s}</span>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); addCustom(s); }}
-                            className="text-[10px] text-muted-foreground hover:text-primary"
-                          >
-                            add only
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
+                          {customSuggestions.every((s) => selectedSuggestions.has(s)) ? "Clear all" : "Select all"}
+                        </button>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto" role="listbox" id="custom-plugin-listbox" aria-multiselectable="true">
+                        {customSuggestions.map((s, idx) => {
+                          const checked = selectedSuggestions.has(s);
+                          const active = idx === activeIdx;
+                          return (
+                            <div
+                              key={s}
+                              id={`custom-suggestion-${idx}`}
+                              role="option"
+                              aria-selected={checked}
+                              className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer ${active ? "bg-primary/10 ring-1 ring-inset ring-primary/40" : "hover:bg-muted"}`}
+                              onMouseEnter={() => setActiveIdx(idx)}
+                              onClick={() => toggleSuggestion(s)}
+                            >
+                              {checked ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4 text-muted-foreground" />}
+                              <span className="flex-1">{s}</span>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); addCustom(s); }}
+                                className="text-[10px] text-muted-foreground hover:text-primary"
+                              >
+                                add only
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
 
-                  <div className="px-3 py-2 border-t border-border/60 flex items-center justify-between gap-2">
-                    <span className="text-[10px] text-muted-foreground">
-                      {selectedSuggestions.size} selected
-                    </span>
-                    <Button
-                      size="sm"
-                      type="button"
-                      onClick={addSelectedSuggestions}
-                      disabled={selectedSuggestions.size === 0}
-                      className="h-7 text-xs"
-                    >
-                      <Plus className="w-3 h-3 mr-1" /> Add selected ({selectedSuggestions.size})
-                    </Button>
-                  </div>
+                      <div className="px-3 py-2 border-t border-border/60 flex items-center justify-between gap-2">
+                        <span className="text-[10px] text-muted-foreground">
+                          {selectedSuggestions.size} selected
+                        </span>
+                        <Button
+                          size="sm"
+                          type="button"
+                          onClick={addSelectedSuggestions}
+                          disabled={selectedSuggestions.size === 0}
+                          className="h-7 text-xs"
+                        >
+                          <Plus className="w-3 h-3 mr-1" /> Add selected ({selectedSuggestions.size})
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
+
 
             </div>
             {custom.length > 0 && (
@@ -457,6 +518,10 @@ export default function PluginInventoryPage() {
               </div>
             )}
           </Card>
+
+          <PluginInventoryHistory onRestore={onRestoreSnapshot} reloadKey={historyReloadKey} />
+
+
 
           <div className="flex items-center justify-end gap-3 pt-2 flex-wrap">
             {undoSnapshot && (
@@ -483,6 +548,14 @@ export default function PluginInventoryPage() {
 
         </div>
       )}
+
+      <PluginInventoryImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        existing={{ native, third, custom }}
+        onApply={onImportApply}
+      />
     </div>
   );
 }
+

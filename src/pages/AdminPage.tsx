@@ -9,7 +9,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageHeader } from "@/components/PageHeader";
-import { Shield, Users, Activity, AlertTriangle, Crown, Loader2, Search, X, Sliders, Download } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Shield, Users, Activity, AlertTriangle, Crown, Loader2, Search, X, Sliders, Download, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { editionToTier, tierLabel, eligiblePlugins, forbiddenPlugins, type FlEditionTier } from "@/lib/fl-plugin-eligibility";
 
@@ -535,7 +536,17 @@ function SetupsTab({
 
 const INVENTORIES_PAGE_SIZE = 50;
 
+type ExportKind = "summary" | "rules";
+type ExportPreview = {
+  kind: ExportKind;
+  filename: string;
+  headerComments: string[];
+  columns: string[];
+  rows: string[][];
+};
+
 function InventoriesTab({ users }: { users: UserRow[] }) {
+  const [preview, setPreview] = useState<ExportPreview | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const initialPage = Math.max(0, parseInt(searchParams.get("inv_page") ?? "0", 10) || 0);
   const initialQuery = searchParams.get("inv_q") ?? "";
@@ -608,47 +619,30 @@ function InventoriesTab({ users }: { users: UserRow[] }) {
 
   const totalPages = Math.max(1, Math.ceil(totalCount / INVENTORIES_PAGE_SIZE));
 
-  const exportCsv = () => {
-    const headers = ["user_id", "display_name", "email", "native_count", "third_party_count", "custom_count", "native_plugins", "third_party_plugins", "custom_plugins", "updated_at"];
-    const esc = (v: unknown) => {
-      const s = v == null ? "" : String(v);
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  // Build a CSV payload preview (does NOT trigger download).
+  const buildSummaryPreview = (): ExportPreview => {
+    const columns = ["user_id", "display_name", "email", "native_count", "third_party_count", "custom_count", "native_plugins", "third_party_plugins", "custom_plugins", "updated_at"];
+    const rows = filtered.map((r) => [
+      r.user_id, r.display_name ?? "", r.email ?? "",
+      String(r.native_plugins.length), String(r.third_party_plugins.length), String(r.custom_plugins.length),
+      r.native_plugins.join("; "), r.third_party_plugins.join("; "), r.custom_plugins.join("; "),
+      r.updated_at,
+    ]);
+    return {
+      kind: "summary",
+      filename: `plugin-inventories-p${page + 1}-${new Date().toISOString().slice(0, 10)}.csv`,
+      headerComments: [
+        `# Studio Sensei — Plugin Inventories export`,
+        `# Generated: ${new Date().toISOString()}`,
+        `# Page ${page + 1} of ${totalPages} · ${filtered.length} of ${totalCount} total rows`,
+      ],
+      columns,
+      rows,
     };
-    const data = filtered.map((r) => [
-      esc(r.user_id), esc(r.display_name), esc(r.email),
-      esc(r.native_plugins.length), esc(r.third_party_plugins.length), esc(r.custom_plugins.length),
-      esc(r.native_plugins.join("; ")), esc(r.third_party_plugins.join("; ")), esc(r.custom_plugins.join("; ")),
-      esc(r.updated_at),
-    ].join(","));
-    const csv = [
-      `# Studio Sensei — Plugin Inventories export`,
-      `# Generated: ${new Date().toISOString()}`,
-      `# Page ${page + 1} of ${totalPages} · ${filtered.length} of ${totalCount} total rows`,
-      headers.join(","),
-      ...data,
-    ].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `plugin-inventories-p${page + 1}-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success(`Exported ${filtered.length} inventor${filtered.length === 1 ? "y" : "ies"}.`);
   };
 
-  // Long-form export: one row per (user, plugin) including the chat-side
-  // prioritized-badge match rule and a human-readable snippet explaining it.
-  const exportRulesCsv = () => {
-    const headers = [
-      "user_id", "display_name", "email",
-      "category", "plugin", "match_rule", "match_rule_snippet",
-      "inventory_completed", "updated_at",
-    ];
-    const esc = (v: unknown) => {
-      const s = v == null ? "" : String(v);
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
+  const buildRulesPreview = (): ExportPreview => {
+    const columns = ["user_id", "display_name", "email", "category", "plugin", "match_rule", "match_rule_snippet", "inventory_completed", "updated_at"];
     const ruleFor = (name: string) => (name.trim().length <= 3 ? "word-boundary" : "substring");
     const snippetFor = (name: string) => {
       const len = name.trim().length;
@@ -656,40 +650,83 @@ function InventoriesTab({ users }: { users: UserRow[] }) {
         ? `Whole-word match required because "${name}" is ${len} chars (avoids false positives in assistant text).`
         : `Case-insensitive substring match — flagged whenever "${name}" appears anywhere in the assistant response.`;
     };
-
-    const rows: string[] = [];
+    const rows: string[][] = [];
     filtered.forEach((r) => {
       const emit = (category: "native" | "third_party" | "custom", list: string[]) => {
-        list.forEach((p) => {
-          rows.push([
-            esc(r.user_id), esc(r.display_name), esc(r.email),
-            esc(category), esc(p), esc(ruleFor(p)), esc(snippetFor(p)),
-            esc(r.inventory_completed), esc(r.updated_at),
-          ].join(","));
-        });
+        list.forEach((p) => rows.push([
+          r.user_id, r.display_name ?? "", r.email ?? "",
+          category, p, ruleFor(p), snippetFor(p),
+          String(r.inventory_completed), r.updated_at,
+        ]));
       };
       emit("native", r.native_plugins);
       emit("third_party", r.third_party_plugins);
       emit("custom", r.custom_plugins);
     });
+    return {
+      kind: "rules",
+      filename: `plugin-inventory-rules-p${page + 1}-${new Date().toISOString().slice(0, 10)}.csv`,
+      headerComments: [
+        `# Studio Sensei — Plugin Inventories (with prioritized-badge match rules)`,
+        `# Generated: ${new Date().toISOString()}`,
+        `# Page ${page + 1} of ${totalPages} · ${filtered.length} users · ${rows.length} plugin rows`,
+        `# Rule reference: names ≤3 chars use word-boundary matching, longer names use case-insensitive substring matching.`,
+      ],
+      columns,
+      rows,
+    };
+  };
 
+  const confirmDownload = async () => {
+    if (!preview) return;
+    const esc = (v: unknown) => {
+      const s = v == null ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
     const csv = [
-      `# Studio Sensei — Plugin Inventories (with prioritized-badge match rules)`,
-      `# Generated: ${new Date().toISOString()}`,
-      `# Page ${page + 1} of ${totalPages} · ${filtered.length} users · ${rows.length} plugin rows`,
-      `# Rule reference: names ≤3 chars use word-boundary matching, longer names use case-insensitive substring matching.`,
-      headers.join(","),
-      ...rows,
+      ...preview.headerComments,
+      preview.columns.join(","),
+      ...preview.rows.map((r) => r.map(esc).join(",")),
     ].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `plugin-inventory-rules-p${page + 1}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = preview.filename;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success(`Exported ${rows.length} plugin row${rows.length === 1 ? "" : "s"} with match rules.`);
+
+    // Admin-facing activity log
+    try {
+      const { data: auth } = await supabase.auth.getUser();
+      if (auth.user) {
+        await supabase.from("activity_logs").insert({
+          user_id: auth.user.id,
+          event_type: "plugin_inventory_exported",
+          metadata: {
+            kind: preview.kind,
+            filename: preview.filename,
+            row_count: preview.rows.length,
+            users_in_page: filtered.length,
+            page: page + 1,
+            total_pages: totalPages,
+            total_users: totalCount,
+            search_query: query || null,
+          },
+        });
+      }
+    } catch {
+      // non-fatal
+    }
+
+    toast.success(
+      preview.kind === "rules"
+        ? `Exported ${preview.rows.length} plugin row${preview.rows.length === 1 ? "" : "s"} with match rules.`
+        : `Exported ${preview.rows.length} inventor${preview.rows.length === 1 ? "y" : "ies"}.`,
+    );
+    setPreview(null);
   };
+
 
   return (
     <Card className="studio-card p-4 mt-4">
@@ -715,12 +752,13 @@ function InventoriesTab({ users }: { users: UserRow[] }) {
             </button>
           )}
         </div>
-        <Button onClick={exportCsv} disabled={filtered.length === 0 || loading || !!error} variant="outline" className="sm:w-auto">
-          <Download className="w-4 h-4 mr-2" /> Export CSV
+        <Button onClick={() => setPreview(buildSummaryPreview())} disabled={filtered.length === 0 || loading || !!error} variant="outline" className="sm:w-auto">
+          <Eye className="w-4 h-4 mr-2" /> Preview & export
         </Button>
-        <Button onClick={exportRulesCsv} disabled={filtered.length === 0 || loading || !!error} variant="outline" className="sm:w-auto" title="One row per plugin with chat badge match rule + snippet">
-          <Download className="w-4 h-4 mr-2" /> Export w/ rules
+        <Button onClick={() => setPreview(buildRulesPreview())} disabled={filtered.length === 0 || loading || !!error} variant="outline" className="sm:w-auto" title="One row per plugin with chat badge match rule + snippet">
+          <Eye className="w-4 h-4 mr-2" /> Preview w/ rules
         </Button>
+
 
       </div>
 
@@ -797,8 +835,67 @@ function InventoriesTab({ users }: { users: UserRow[] }) {
           Next
         </Button>
       </div>
+
+      <Dialog open={!!preview} onOpenChange={(o) => { if (!o) setPreview(null); }}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Export preview · {preview?.kind === "rules" ? "with match rules" : "summary"}</DialogTitle>
+            <DialogDescription>
+              {preview && (
+                <>
+                  Filename: <code className="text-foreground">{preview.filename}</code> · {preview.rows.length} row{preview.rows.length === 1 ? "" : "s"} · {preview.columns.length} column{preview.columns.length === 1 ? "" : "s"}
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {preview && (
+            <div className="space-y-3">
+              <div className="rounded border border-border bg-muted/30 p-3 font-mono text-[11px] overflow-x-auto">
+                {preview.headerComments.map((c, i) => (
+                  <div key={i} className="text-muted-foreground">{c}</div>
+                ))}
+              </div>
+              <div className="border border-border rounded overflow-auto max-h-[50vh]">
+                <table className="w-full text-[11px]">
+                  <thead className="bg-muted/40 sticky top-0">
+                    <tr>
+                      {preview.columns.map((c) => (
+                        <th key={c} className="text-left px-2 py-1.5 font-medium border-b border-border whitespace-nowrap">{c}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.rows.slice(0, 20).map((r, ri) => (
+                      <tr key={ri} className="border-b border-border/40">
+                        {r.map((cell, ci) => (
+                          <td key={ci} className="px-2 py-1 align-top max-w-[260px] truncate text-muted-foreground" title={cell}>{cell}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {preview.rows.length > 20 && (
+                  <div className="text-center text-[10px] text-muted-foreground py-2 border-t border-border/40">
+                    Showing first 20 of {preview.rows.length} rows · all rows will be in the downloaded file.
+                  </div>
+                )}
+                {preview.rows.length === 0 && (
+                  <div className="text-center text-xs text-muted-foreground py-6">No rows to export.</div>
+                )}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPreview(null)}>Cancel</Button>
+            <Button onClick={confirmDownload} disabled={!preview || preview.rows.length === 0} className="bg-gradient-gold text-primary-foreground">
+              <Download className="w-4 h-4 mr-2" /> Download CSV
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
+
 
 
