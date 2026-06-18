@@ -519,6 +519,10 @@ export default function PluginInventoryPage() {
             )}
           </Card>
 
+          <PluginInventoryHistory onRestore={onRestoreSnapshot} reloadKey={historyReloadKey} />
+
+
+
           <div className="flex items-center justify-end gap-3 pt-2 flex-wrap">
             {undoSnapshot && (
               <Button
