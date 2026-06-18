@@ -206,11 +206,22 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
     });
   }, [rows, query]);
 
+  // Parse sort: "<column>:<dir>". JSON-path columns use "metadata->>key" — PostgREST
+  // sorts those as text, which is fine for the small integer values we surface here.
+  const applyOrder = (q: any) => {
+    const [colRaw, dirRaw] = sort.split(":");
+    const col = colRaw || "created_at";
+    const ascending = dirRaw === "asc";
+    // Always disambiguate ties with created_at desc for stable pagination.
+    if (col === "created_at") return q.order("created_at", { ascending });
+    return q.order(col, { ascending }).order("created_at", { ascending: false });
+  };
+
   const loadPage = async (targetPage: number) => {
     setLoading(true);
     setError(null);
     try {
-      const q = buildBase(true).order("created_at", { ascending: false })
+      const q = applyOrder(buildBase(true))
         .range(targetPage * PAGE_SIZE, (targetPage + 1) * PAGE_SIZE - 1);
       const { data, error, count } = await q;
       if (error) throw error;
@@ -228,7 +239,7 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
   const loadSummary = async () => {
     setSummaryLoading(true);
     try {
-      const q = buildBase(false).order("created_at", { ascending: false }).limit(SUMMARY_CAP);
+      const q = applyOrder(buildBase(false)).limit(SUMMARY_CAP);
       const { data, error } = await q;
       if (error) throw error;
       const arr = (data as LogRow[]) ?? [];
@@ -246,7 +257,7 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
     void loadPage(0);
     void loadSummary();
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  }, [eventFilter, preset, from, to, snapshotId, userQuery, users.length]);
+  }, [eventFilter, preset, from, to, snapshotId, userQuery, sort, users.length]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
