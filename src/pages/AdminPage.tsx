@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Card } from "@/components/ui/card";
@@ -10,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PageHeader } from "@/components/PageHeader";
 import { Shield, Users, Activity, AlertTriangle, Crown, Loader2, Search, X, Sliders, Download } from "lucide-react";
 import { toast } from "sonner";
-import { editionToTier, tierLabel, type FlEditionTier } from "@/lib/fl-plugin-eligibility";
+import { editionToTier, tierLabel, eligiblePlugins, forbiddenPlugins, type FlEditionTier } from "@/lib/fl-plugin-eligibility";
 
 
 interface UserRow {
@@ -40,7 +41,6 @@ export default function AdminPage() {
   const [setups, setSetups] = useState<SetupRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [userQuery, setUserQuery] = useState("");
-  const [setupQuery, setSetupQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "paid" | "free" | "none">("all");
 
   const filteredUsers = useMemo(() => {
@@ -230,13 +230,7 @@ export default function AdminPage() {
         </TabsContent>
 
         <TabsContent value="setups">
-          <SetupsTab
-            setups={setups}
-            users={users}
-            loading={loading}
-            query={setupQuery}
-            setQuery={setSetupQuery}
-          />
+          <SetupsTab setups={setups} users={users} loading={loading} />
         </TabsContent>
 
 
@@ -289,18 +283,30 @@ function Stat({ label, value, icon, highlight }: { label: string; value: number;
 }
 
 function SetupsTab({
-  setups, users, loading, query, setQuery,
+  setups, users, loading,
 }: {
   setups: SetupRow[];
   users: UserRow[];
   loading: boolean;
-  query: string;
-  setQuery: (v: string) => void;
 }) {
-  const [editionFilter, setEditionFilter] = useState<string>("all");
-  const [tierFilter, setTierFilter] = useState<"all" | "stock" | "advanced">("all");
-  const [genreFilter, setGenreFilter] = useState<string>("all");
-  const [skillFilter, setSkillFilter] = useState<string>("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const query = searchParams.get("q") ?? "";
+  const editionFilter = searchParams.get("edition") ?? "all";
+  const tierFilter = (searchParams.get("tier") as "all" | "stock" | "advanced") ?? "all";
+  const genreFilter = searchParams.get("genre") ?? "all";
+  const skillFilter = searchParams.get("skill") ?? "all";
+
+  const updateParam = (key: string, value: string, defaultValue = "all") => {
+    const next = new URLSearchParams(searchParams);
+    if (!value || value === defaultValue) next.delete(key);
+    else next.set(key, value);
+    setSearchParams(next, { replace: true });
+  };
+  const setQuery = (v: string) => updateParam("q", v, "");
+  const setEditionFilter = (v: string) => updateParam("edition", v);
+  const setTierFilter = (v: "all" | "stock" | "advanced") => updateParam("tier", v);
+  const setGenreFilter = (v: string) => updateParam("genre", v);
+  const setSkillFilter = (v: string) => updateParam("skill", v);
 
   const userMap = useMemo(() => {
     const m = new Map<string, UserRow>();
@@ -352,25 +358,43 @@ function SetupsTab({
   }, [rows, query, editionFilter, tierFilter, genreFilter, skillFilter]);
 
   const clearFilters = () => {
-    setEditionFilter("all");
-    setTierFilter("all");
-    setGenreFilter("all");
-    setSkillFilter("all");
-    setQuery("");
+    setSearchParams(new URLSearchParams(), { replace: true });
   };
   const filtersActive =
     editionFilter !== "all" || tierFilter !== "all" || genreFilter !== "all" || skillFilter !== "all" || !!query;
 
   const exportCsv = () => {
-    const headers = ["user_id", "display_name", "email", "fl_version", "fl_edition", "main_use", "main_genre", "skill_level", "setup_completed", "updated_at"];
+    const headers = ["user_id", "display_name", "email", "fl_version", "fl_edition", "tier", "main_use", "main_genre", "skill_level", "setup_completed", "updated_at", "allowed_plugins", "blocked_plugins"];
     const esc = (v: unknown) => {
       const s = v == null ? "" : String(v);
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const csv = [
-      headers.join(","),
-      ...filtered.map((r) => headers.map((h) => esc((r as any)[h])).join(",")),
-    ].join("\n");
+    const tierLabelFor = (t: FlEditionTier) => tierLabel(t);
+    const dataRows = filtered.map((r) => {
+      const allowed = eligiblePlugins(r.tier).join("; ");
+      const blocked = forbiddenPlugins(r.tier).join("; ");
+      return headers.map((h) => {
+        if (h === "tier") return esc(tierLabelFor(r.tier));
+        if (h === "allowed_plugins") return esc(allowed);
+        if (h === "blocked_plugins") return esc(blocked);
+        return esc((r as any)[h]);
+      }).join(",");
+    });
+
+    // Filter metadata header (CSV comment lines starting with #)
+    const meta = [
+      `# Studio Sensei — FL Setups export`,
+      `# Generated: ${new Date().toISOString()}`,
+      `# Total rows: ${filtered.length} of ${rows.length}`,
+      `# Filter — search: ${query || "(none)"}`,
+      `# Filter — edition: ${editionFilter}`,
+      `# Filter — tier: ${tierFilter}${tierFilter === "stock" ? " (Fruity / Unknown — stock-only)" : tierFilter === "advanced" ? " (Producer / Signature / All Plugins)" : ""}`,
+      `# Filter — genre: ${genreFilter}`,
+      `# Filter — skill: ${skillFilter}`,
+      `# Eligibility columns reflect each user's edition tier (see fl-plugin-eligibility).`,
+    ];
+
+    const csv = [...meta, headers.join(","), ...dataRows].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
