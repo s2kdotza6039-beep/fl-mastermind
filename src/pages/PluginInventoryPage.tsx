@@ -26,8 +26,17 @@ export default function PluginInventoryPage() {
   const [saving, setSaving] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<string>>(new Set());
+  const [activeIdx, setActiveIdx] = useState(0);
   const [savedSnapshot, setSavedSnapshot] = useState<{ n: string; t: string; c: string } | null>(null);
   const [savedCompleted, setSavedCompleted] = useState<boolean>(false);
+  // Snapshot of inventory BEFORE the most recent save (for Undo).
+  const [undoSnapshot, setUndoSnapshot] = useState<{
+    native_plugins: string[];
+    third_party_plugins: string[];
+    custom_plugins: string[];
+    inventory_completed: boolean;
+  } | null>(null);
+  const [undoing, setUndoing] = useState(false);
 
   useEffect(() => {
     if (inventory) {
