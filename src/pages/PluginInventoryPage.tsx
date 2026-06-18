@@ -393,13 +393,18 @@ export default function PluginInventoryPage() {
                       {customSuggestions.every((s) => selectedSuggestions.has(s)) ? "Clear all" : "Select all"}
                     </button>
                   </div>
-                  <div className="max-h-64 overflow-y-auto">
-                    {customSuggestions.map((s) => {
+                  <div className="max-h-64 overflow-y-auto" role="listbox" id="custom-plugin-listbox" aria-multiselectable="true">
+                    {customSuggestions.map((s, idx) => {
                       const checked = selectedSuggestions.has(s);
+                      const active = idx === activeIdx;
                       return (
                         <div
                           key={s}
-                          className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted cursor-pointer"
+                          id={`custom-suggestion-${idx}`}
+                          role="option"
+                          aria-selected={checked}
+                          className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer ${active ? "bg-primary/10 ring-1 ring-inset ring-primary/40" : "hover:bg-muted"}`}
+                          onMouseEnter={() => setActiveIdx(idx)}
                           onClick={() => toggleSuggestion(s)}
                         >
                           {checked ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4 text-muted-foreground" />}
@@ -415,6 +420,7 @@ export default function PluginInventoryPage() {
                       );
                     })}
                   </div>
+
                   <div className="px-3 py-2 border-t border-border/60 flex items-center justify-between gap-2">
                     <span className="text-[10px] text-muted-foreground">
                       {selectedSuggestions.size} selected
