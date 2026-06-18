@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { editionToTier, tierLabel, eligiblePlugins, forbiddenPlugins, type FlEditionTier } from "@/lib/fl-plugin-eligibility";
 import { AdminActivityTab } from "@/components/AdminActivityTab";
 import { SecurityIssuesPanel } from "@/components/SecurityIssuesPanel";
+import { AdminAudioReportsTab } from "@/components/AdminAudioReportsTab";
 
 
 interface UserRow {
