@@ -739,6 +739,16 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
             </PopoverContent>
           </Popover>
 
+          <Select value={tz} onValueChange={(v) => setTz(v as Tz)}>
+            <SelectTrigger className="h-8 text-xs w-36" aria-label="CSV timestamp timezone" title="Timezone written into the CSV banner and created_at column">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="local">Local time</SelectItem>
+              <SelectItem value="utc">UTC</SelectItem>
+            </SelectContent>
+          </Select>
+
           <Button
             ref={exportBtnRef}
             size="sm"
@@ -751,6 +761,26 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
             {exporting ? "Exporting…" : "Export filtered results"}
           </Button>
         </div>
+
+        {(exporting || exportPhase === "done") && (
+          <div className="rounded border border-border bg-muted/30 p-2 text-[11px] space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="font-medium">
+                {PHASE_LABEL[exportPhase] || "Working"}
+                {exportPhase === "requesting" && exportAttempt > 1 && (
+                  <span className="text-muted-foreground"> · attempt {exportAttempt}/{EXPORT_MAX_ATTEMPTS}</span>
+                )}
+              </span>
+              <span className="text-muted-foreground">{PHASE_PERCENT[exportPhase]}%</span>
+            </div>
+            <div className="h-1.5 w-full bg-background rounded overflow-hidden">
+              <div
+                className="h-full bg-primary transition-all duration-300"
+                style={{ width: `${PHASE_PERCENT[exportPhase]}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {exportError && (
           <div className="flex items-start gap-2 p-2 rounded border border-destructive/40 bg-destructive/10 text-xs text-destructive">
@@ -771,11 +801,27 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
           <Badge variant="secondary" className="text-[10px] gap-1" title="Active sort — Shift+S to cycle, Shift+Alt+S reverse">
             <ArrowUpDown className="w-3 h-3" /> Sort: {sortLabel(sort)}
           </Badge>
+          <Badge variant="outline" className="text-[10px]" title="Applied to the CSV banner and created_at column">
+            CSV tz: {tz === "utc" ? "UTC" : "Local"}
+          </Badge>
           {freeTextActive && <span className="text-amber-500">Free-text only filters the current page.</span>}
-          <span className="ml-auto inline-flex items-center gap-1 text-muted-foreground/70" title="/ focus search · Shift+S cycle sort · Shift+E export · Shift+R reload · ←/→ pagination">
-            <Keyboard className="w-3 h-3" /> shortcuts
-          </span>
+          <label
+            className="ml-auto inline-flex items-center gap-1 cursor-pointer select-none"
+            title="Toggle keyboard shortcuts (/ , Shift+S, Shift+E, Shift+R, ←/→). Persisted in URL + localStorage."
+          >
+            <input
+              type="checkbox"
+              className="h-3 w-3 accent-primary"
+              checked={shortcutsEnabled}
+              onChange={(e) => setShortcutsEnabled(e.target.checked)}
+            />
+            <Keyboard className={`w-3 h-3 ${shortcutsEnabled ? "" : "opacity-40"}`} />
+            <span className={shortcutsEnabled ? "" : "opacity-50 line-through"}>
+              shortcuts {shortcutsEnabled ? "on" : "off"}
+            </span>
+          </label>
         </div>
+
 
         {error ? (
           <div className="p-4 text-xs text-destructive border border-destructive/30 bg-destructive/10 rounded">
