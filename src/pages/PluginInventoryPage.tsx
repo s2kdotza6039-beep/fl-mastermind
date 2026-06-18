@@ -548,6 +548,14 @@ export default function PluginInventoryPage() {
 
         </div>
       )}
+
+      <PluginInventoryImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        existing={{ native, third, custom }}
+        onApply={onImportApply}
+      />
     </div>
   );
 }
+
