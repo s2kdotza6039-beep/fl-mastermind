@@ -26,6 +26,24 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentInitial = useRef(false);
 
+  const eligibility = useMemo(() => {
+    if (!setup?.fl_edition) return null;
+    const tier = editionToTier(setup.fl_edition);
+    const blocked = forbiddenPlugins(tier);
+    if (blocked.length === 0) return null; // full bundle — no gating to explain
+    const preview = blocked.slice(0, 4).join(", ");
+    const more = blocked.length > 4 ? ` +${blocked.length - 4} more` : "";
+    return {
+      label: tierLabel(tier),
+      reason:
+        tier === "fruity"
+          ? `Stock-only workflow — Sensei will skip ${preview}${more} and suggest Fruity Edition alternatives.`
+          : tier === "unknown"
+            ? `Edition not set — Sensei defaults to safe stock plugins until you confirm your edition.`
+            : `Recommendations limited to plugins in your edition. Blocked: ${preview}${more}.`,
+    };
+  }, [setup?.fl_edition]);
+
   useEffect(() => {
     if (initialPrompt && !sentInitial.current) {
       sentInitial.current = true;
