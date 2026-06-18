@@ -452,6 +452,22 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
           <span className="text-muted-foreground">→</span>
           <Input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPreset(0); }} className="h-8 text-xs w-36" />
 
+          <div className="flex items-center gap-1">
+            <ArrowUpDown className="w-3 h-3 text-muted-foreground" />
+            <Select value={sort} onValueChange={setSort}>
+              <SelectTrigger className="h-8 text-xs w-52" aria-label="Sort"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="created_at:desc">Newest first</SelectItem>
+                <SelectItem value="created_at:asc">Oldest first</SelectItem>
+                <SelectItem value="event_type:asc">Event type A→Z</SelectItem>
+                <SelectItem value="event_type:desc">Event type Z→A</SelectItem>
+                <SelectItem value="user_id:asc">User id A→Z</SelectItem>
+                <SelectItem value="metadata->>added:desc">Completion Δ (most added)</SelectItem>
+                <SelectItem value="metadata->>removed:desc">Completion Δ (most removed)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <Button size="sm" variant="ghost" className="h-8 text-xs ml-auto" onClick={clearAll}>
             <X className="w-3 h-3 mr-1" /> Clear
           </Button>
