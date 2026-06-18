@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PageHeader } from "@/components/PageHeader";
 import { Shield, Users, Activity, AlertTriangle, Crown, Loader2, Search, X, Sliders, Download } from "lucide-react";
 import { toast } from "sonner";
+import { editionToTier, tierLabel, type FlEditionTier } from "@/lib/fl-plugin-eligibility";
 
 
 interface UserRow {
