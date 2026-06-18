@@ -82,8 +82,8 @@ export default function UploadPage() {
           band_mid_db: res.metrics.bands.mid,
           band_highmid_db: res.metrics.bands.highMid,
           band_high_db: res.metrics.bands.high,
-          detected_issues: res.issues,
-          recommendations: res.recommendations,
+          detected_issues: res.issues as unknown as any,
+          recommendations: res.recommendations as unknown as any,
         });
         if (error) console.warn("Failed to save analysis report:", error.message);
       }
