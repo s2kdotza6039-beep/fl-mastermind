@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Shield, Users, Activity, AlertTriangle, Crown, Loader2, Search, X, Sliders, Download, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { editionToTier, tierLabel, eligiblePlugins, forbiddenPlugins, type FlEditionTier } from "@/lib/fl-plugin-eligibility";
+import { AdminActivityTab } from "@/components/AdminActivityTab";
 
 
 interface UserRow {
@@ -252,16 +253,7 @@ export default function AdminPage() {
 
 
         <TabsContent value="activity">
-          <Card className="studio-card p-4 mt-4 max-h-[60vh] overflow-auto">
-            {logs.map((l) => (
-              <div key={l.id} className="text-xs border-b border-border/40 py-2 grid grid-cols-12 gap-2">
-                <span className="col-span-3 text-muted-foreground">{new Date(l.created_at).toLocaleString()}</span>
-                <span className="col-span-2 font-mono">{l.event_type}</span>
-                <span className="col-span-3 truncate text-muted-foreground">{l.user_id?.slice(0, 8) || "—"}</span>
-                <span className="col-span-4 truncate">{JSON.stringify(l.metadata)}</span>
-              </div>
-            ))}
-          </Card>
+          <AdminActivityTab users={users} />
         </TabsContent>
 
         <TabsContent value="alerts">
