@@ -68,7 +68,7 @@ export default function StudioSetupPage() {
   }, [user, setup]);
 
   const revertTo = async (h: HistoryRow) => {
-    setSaving(true);
+    setRevertingId(h.id);
     const { error } = await save({
       fl_version: h.fl_version,
       fl_edition: h.fl_edition,
@@ -76,7 +76,8 @@ export default function StudioSetupPage() {
       main_genre: h.main_genre,
       skill_level: h.skill_level,
     });
-    setSaving(false);
+    setRevertingId(null);
+    setPendingRevert(null);
     if (error) return toast.error(error);
     toast.success("Reverted to previous setup.");
     refresh();
