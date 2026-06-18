@@ -7,7 +7,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SessionProvider } from "@/context/SessionContext";
 import { AuthProvider } from "@/context/AuthContext";
 import { StudioSetupProvider } from "@/context/StudioSetupContext";
+import { PluginInventoryProvider } from "@/context/PluginInventoryContext";
 import StudioSetupPage from "./pages/StudioSetupPage";
+import PluginInventoryPage from "./pages/PluginInventoryPage";
 import { StudioLayout } from "@/components/StudioLayout";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -65,6 +67,7 @@ function AppShell() {
       <Route path="/upload" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
       <Route path="/upgrade" element={<ProtectedRoute><UpgradePage /></ProtectedRoute>} />
       <Route path="/studio-setup" element={<ProtectedRoute><StudioSetupPage /></ProtectedRoute>} />
+      <Route path="/plugin-inventory" element={<ProtectedRoute><PluginInventoryPage /></ProtectedRoute>} />
 
       {/* Paid only */}
       <Route path="/chains" element={<ProtectedRoute requirePaid><ChainBuilderPage /></ProtectedRoute>} />
@@ -91,10 +94,12 @@ const App = () => {
         <BrowserRouter>
           <AuthProvider>
             <StudioSetupProvider>
-              <SessionProvider>
-                <ScrollToTop />
-                <AppShell />
-              </SessionProvider>
+              <PluginInventoryProvider>
+                <SessionProvider>
+                  <ScrollToTop />
+                  <AppShell />
+                </SessionProvider>
+              </PluginInventoryProvider>
             </StudioSetupProvider>
           </AuthProvider>
         </BrowserRouter>

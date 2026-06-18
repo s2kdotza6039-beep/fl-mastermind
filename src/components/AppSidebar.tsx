@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, MessageCircle, Wrench, Disc3, Music2,
-  Sliders, Volume2, Layers, ListChecks, UploadCloud, Crown, KeyRound, Shield, Lock, Settings2,
+  Sliders, Volume2, Layers, ListChecks, UploadCloud, Crown, KeyRound, Shield, Lock, Settings2, Boxes,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
@@ -33,6 +33,7 @@ const NAV: NavItem[] = [
   { title: "Session Checklist", url: "/checklist", icon: ListChecks, group: "Tools" },
   { title: "Upload Audio", url: "/upload", icon: UploadCloud, group: "Tools" },
   { title: "FL Studio Setup", url: "/studio-setup", icon: Settings2, group: "Tools" },
+  { title: "Plugin Inventory", url: "/plugin-inventory", icon: Boxes, group: "Tools" },
   { title: "Admin", url: "/admin", icon: Shield, group: "Admin", adminOnly: true },
 ];
 

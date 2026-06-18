@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/context/SessionContext";
 import { useAuth } from "@/context/AuthContext";
 import { useStudioSetup } from "@/context/StudioSetupContext";
+import { usePluginInventory } from "@/context/PluginInventoryContext";
 import { streamSenseiChat, type ChatMsg } from "@/lib/sensei-api";
 import { SenseiMarkdown } from "./SenseiMarkdown";
 import { toast } from "sonner";
@@ -20,6 +21,7 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
   const { genre, stage, projectName, saveAdvice } = useSession();
   const { isPaid } = useAuth();
   const { setup } = useStudioSetup();
+  const { inventory } = usePluginInventory();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -91,6 +93,9 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
         mainUse: setup?.main_use ?? undefined,
         mainGenre: setup?.main_genre ?? undefined,
         skillLevel: setup?.skill_level ?? undefined,
+        nativePlugins: inventory?.native_plugins ?? undefined,
+        thirdPartyPlugins: inventory?.third_party_plugins ?? undefined,
+        customPlugins: inventory?.custom_plugins ?? undefined,
       },
       onDelta: upsert,
       onDone: () => setLoading(false),

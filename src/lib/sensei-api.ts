@@ -12,6 +12,9 @@ export interface ChatContext {
   mainUse?: string;
   mainGenre?: string;
   skillLevel?: string;
+  nativePlugins?: string[];
+  thirdPartyPlugins?: string[];
+  customPlugins?: string[];
 }
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sensei-chat`;
