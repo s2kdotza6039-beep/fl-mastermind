@@ -26,6 +26,8 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentInitial = useRef(false);
 
+  const [eligibilityOpen, setEligibilityOpen] = useState(false);
+
   const eligibility = useMemo(() => {
     if (!setup?.fl_edition) return null;
     const tier = editionToTier(setup.fl_edition);
@@ -34,7 +36,10 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
     const preview = blocked.slice(0, 4).join(", ");
     const more = blocked.length > 4 ? ` +${blocked.length - 4} more` : "";
     return {
+      tier,
       label: tierLabel(tier),
+      blocked,
+      allowed: eligiblePlugins(tier),
       reason:
         tier === "fruity"
           ? `Stock-only workflow — Sensei will skip ${preview}${more} and suggest Fruity Edition alternatives.`
