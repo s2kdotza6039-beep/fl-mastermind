@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PageHeader } from "@/components/PageHeader";
 import { Shield, Users, Activity, AlertTriangle, Crown, Loader2, Search, X, Sliders, Download } from "lucide-react";
 import { toast } from "sonner";
+import { editionToTier, tierLabel, type FlEditionTier } from "@/lib/fl-plugin-eligibility";
 
 
 interface UserRow {
@@ -296,6 +297,11 @@ function SetupsTab({
   query: string;
   setQuery: (v: string) => void;
 }) {
+  const [editionFilter, setEditionFilter] = useState<string>("all");
+  const [tierFilter, setTierFilter] = useState<"all" | "stock" | "advanced">("all");
+  const [genreFilter, setGenreFilter] = useState<string>("all");
+  const [skillFilter, setSkillFilter] = useState<string>("all");
+
   const userMap = useMemo(() => {
     const m = new Map<string, UserRow>();
     users.forEach((u) => m.set(u.user_id, u));
@@ -305,23 +311,55 @@ function SetupsTab({
   const rows = useMemo(() => {
     return setups.map((s) => {
       const u = userMap.get(s.user_id);
+      const tier: FlEditionTier = editionToTier(s.fl_edition);
       return {
         ...s,
         display_name: u?.display_name ?? null,
         email: u?.email ?? null,
+        tier,
       };
     });
   }, [setups, userMap]);
 
+  const editionOptions = useMemo(
+    () => Array.from(new Set(rows.map((r) => r.fl_edition).filter(Boolean))) as string[],
+    [rows],
+  );
+  const genreOptions = useMemo(
+    () => Array.from(new Set(rows.map((r) => r.main_genre).filter(Boolean))) as string[],
+    [rows],
+  );
+  const skillOptions = useMemo(
+    () => Array.from(new Set(rows.map((r) => r.skill_level).filter(Boolean))) as string[],
+    [rows],
+  );
+
+  const isStockOnly = (t: FlEditionTier) => t === "fruity" || t === "unknown";
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) =>
-      [r.display_name, r.email, r.user_id, r.fl_version, r.fl_edition, r.main_use, r.main_genre, r.skill_level]
+    return rows.filter((r) => {
+      if (editionFilter !== "all" && r.fl_edition !== editionFilter) return false;
+      if (tierFilter === "stock" && !isStockOnly(r.tier)) return false;
+      if (tierFilter === "advanced" && isStockOnly(r.tier)) return false;
+      if (genreFilter !== "all" && r.main_genre !== genreFilter) return false;
+      if (skillFilter !== "all" && r.skill_level !== skillFilter) return false;
+      if (!q) return true;
+      return [r.display_name, r.email, r.user_id, r.fl_version, r.fl_edition, r.main_use, r.main_genre, r.skill_level]
         .filter(Boolean)
-        .some((v) => String(v).toLowerCase().includes(q))
-    );
-  }, [rows, query]);
+        .some((v) => String(v).toLowerCase().includes(q));
+    });
+  }, [rows, query, editionFilter, tierFilter, genreFilter, skillFilter]);
+
+  const clearFilters = () => {
+    setEditionFilter("all");
+    setTierFilter("all");
+    setGenreFilter("all");
+    setSkillFilter("all");
+    setQuery("");
+  };
+  const filtersActive =
+    editionFilter !== "all" || tierFilter !== "all" || genreFilter !== "all" || skillFilter !== "all" || !!query;
 
   const exportCsv = () => {
     const headers = ["user_id", "display_name", "email", "fl_version", "fl_edition", "main_use", "main_genre", "skill_level", "setup_completed", "updated_at"];
@@ -371,6 +409,45 @@ function SetupsTab({
           <Download className="w-4 h-4 mr-2" /> Export CSV
         </Button>
       </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+        <Select value={editionFilter} onValueChange={setEditionFilter}>
+          <SelectTrigger aria-label="Filter by edition"><SelectValue placeholder="Edition" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All editions</SelectItem>
+            {editionOptions.map((e) => <SelectItem key={e} value={e}>{e}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={tierFilter} onValueChange={(v) => setTierFilter(v as typeof tierFilter)}>
+          <SelectTrigger aria-label="Filter by edition tier"><SelectValue placeholder="Tier" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All tiers</SelectItem>
+            <SelectItem value="stock">Stock-only (Fruity / Unknown)</SelectItem>
+            <SelectItem value="advanced">Advanced (Producer+)</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={genreFilter} onValueChange={setGenreFilter}>
+          <SelectTrigger aria-label="Filter by genre"><SelectValue placeholder="Genre" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All genres</SelectItem>
+            {genreOptions.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={skillFilter} onValueChange={setSkillFilter}>
+          <SelectTrigger aria-label="Filter by skill"><SelectValue placeholder="Skill" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All skills</SelectItem>
+            {skillOptions.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {filtersActive && (
+        <div className="flex items-center justify-between mb-3 text-xs text-muted-foreground">
+          <span>Showing {filtered.length} of {rows.length}</span>
+          <button onClick={clearFilters} className="underline hover:text-foreground">Clear filters</button>
+        </div>
+      )}
 
       {loading ? (
         <Loader2 className="w-5 h-5 animate-spin" />

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Send, Loader2, Bookmark, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Send, Loader2, Bookmark, Sparkles, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/context/SessionContext";
@@ -9,6 +9,7 @@ import { streamSenseiChat, type ChatMsg } from "@/lib/sensei-api";
 import { SenseiMarkdown } from "./SenseiMarkdown";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { editionToTier, forbiddenPlugins, tierLabel } from "@/lib/fl-plugin-eligibility";
 
 interface SenseiChatProps {
   initialPrompt?: string;
@@ -24,6 +25,24 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentInitial = useRef(false);
+
+  const eligibility = useMemo(() => {
+    if (!setup?.fl_edition) return null;
+    const tier = editionToTier(setup.fl_edition);
+    const blocked = forbiddenPlugins(tier);
+    if (blocked.length === 0) return null; // full bundle — no gating to explain
+    const preview = blocked.slice(0, 4).join(", ");
+    const more = blocked.length > 4 ? ` +${blocked.length - 4} more` : "";
+    return {
+      label: tierLabel(tier),
+      reason:
+        tier === "fruity"
+          ? `Stock-only workflow — Sensei will skip ${preview}${more} and suggest Fruity Edition alternatives.`
+          : tier === "unknown"
+            ? `Edition not set — Sensei defaults to safe stock plugins until you confirm your edition.`
+            : `Recommendations limited to plugins in your edition. Blocked: ${preview}${more}.`,
+    };
+  }, [setup?.fl_edition]);
 
   useEffect(() => {
     if (initialPrompt && !sentInitial.current) {
@@ -84,6 +103,15 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
 
   return (
     <div className={cn("flex flex-col h-full", compact && "max-h-[600px]")}>
+      {eligibility && (
+        <div className="border-b border-border bg-muted/30 px-4 py-2 flex items-start gap-2 text-xs">
+          <Info className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
+          <div className="min-w-0">
+            <span className="font-semibold text-foreground">{eligibility.label}.</span>{" "}
+            <span className="text-muted-foreground">{eligibility.reason}</span>
+          </div>
+        </div>
+      )}
       <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-4 py-6 space-y-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center py-12 animate-fade-in-up">

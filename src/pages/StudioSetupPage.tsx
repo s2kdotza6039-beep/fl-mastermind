@@ -6,6 +6,10 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { PageHeader } from "@/components/PageHeader";
 import { useStudioSetup } from "@/context/StudioSetupContext";
 import { useAuth } from "@/context/AuthContext";
@@ -39,6 +43,8 @@ export default function StudioSetupPage() {
   const [skillLevel, setSkillLevel] = useState("");
   const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [pendingRevert, setPendingRevert] = useState<HistoryRow | null>(null);
+  const [revertingId, setRevertingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (setup) {
@@ -62,7 +68,7 @@ export default function StudioSetupPage() {
   }, [user, setup]);
 
   const revertTo = async (h: HistoryRow) => {
-    setSaving(true);
+    setRevertingId(h.id);
     const { error } = await save({
       fl_version: h.fl_version,
       fl_edition: h.fl_edition,
@@ -70,7 +76,8 @@ export default function StudioSetupPage() {
       main_genre: h.main_genre,
       skill_level: h.skill_level,
     });
-    setSaving(false);
+    setRevertingId(null);
+    setPendingRevert(null);
     if (error) return toast.error(error);
     toast.success("Reverted to previous setup.");
     refresh();
@@ -181,8 +188,18 @@ export default function StudioSetupPage() {
                   </div>
                 </div>
                 {i > 0 && (
-                  <Button size="sm" variant="outline" disabled={saving} onClick={() => revertTo(h)}>
-                    <Undo2 className="w-3 h-3 mr-1" /> Revert
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={revertingId !== null || saving}
+                    onClick={() => setPendingRevert(h)}
+                  >
+                    {revertingId === h.id ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : (
+                      <Undo2 className="w-3 h-3 mr-1" />
+                    )}
+                    {revertingId === h.id ? "Reverting…" : "Revert"}
                   </Button>
                 )}
               </li>
@@ -190,6 +207,42 @@ export default function StudioSetupPage() {
           </ul>
         </Card>
       )}
+
+      <AlertDialog open={!!pendingRevert} onOpenChange={(o) => !o && revertingId === null && setPendingRevert(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revert FL Studio setup?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will overwrite your current setup with the snapshot from{" "}
+              {pendingRevert && new Date(pendingRevert.changed_at).toLocaleString()}.
+              <br />
+              <span className="block mt-2 text-foreground">
+                {pendingRevert &&
+                  [pendingRevert.fl_version, pendingRevert.fl_edition, pendingRevert.main_use, pendingRevert.main_genre, pendingRevert.skill_level]
+                    .filter(Boolean)
+                    .join(" · ")}
+              </span>
+              <span className="block mt-2 text-xs">Your current setup is saved in history — you can revert back any time.</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={revertingId !== null}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={revertingId !== null}
+              onClick={(e) => {
+                e.preventDefault();
+                if (pendingRevert) revertTo(pendingRevert);
+              }}
+            >
+              {revertingId !== null ? (
+                <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Reverting…</>
+              ) : (
+                "Yes, revert"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
