@@ -331,6 +331,14 @@ export default function PluginInventoryPage() {
         )}
       </div>
 
+      <div className="mt-4 flex justify-end">
+        <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+          <Upload className="w-4 h-4 mr-2" /> Import from CSV
+        </Button>
+      </div>
+
+
+
 
       {loading ? (
         <Card className="studio-card p-10 flex justify-center">
