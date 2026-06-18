@@ -1,0 +1,4 @@
+{
+  "_comment": "Allowed high/critical findings (treated as accepted risk). Add 'scanner::id::target' keys with justification in security-memory.",
+  "allowed": []
+}
