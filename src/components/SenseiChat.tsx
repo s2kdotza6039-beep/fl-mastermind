@@ -50,9 +50,10 @@ function findPrioritized(text: string, owned: string[]): PriorityHit[] {
 interface SenseiChatProps {
   initialPrompt?: string;
   compact?: boolean;
+  audioContext?: import("@/lib/sensei-api").ChatContext["audio"];
 }
 
-export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
+export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatProps) => {
   const { genre, stage, projectName, saveAdvice } = useSession();
   const { isPaid } = useAuth();
   const { setup } = useStudioSetup();
