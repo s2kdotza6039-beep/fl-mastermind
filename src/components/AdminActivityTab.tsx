@@ -359,8 +359,6 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
 
   // Export pipeline with explicit retry + timeout. We re-run the same filtered
   // query (not the cached `summary`) so the file matches the live server state.
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
   const EXPORT_TIMEOUT_MS = 20_000;
 
   const runExport = async () => {
