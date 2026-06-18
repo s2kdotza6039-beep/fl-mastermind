@@ -382,7 +382,7 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  }, [sort, page, totalPages, loading, exporting, summaryLoading]);
+  }, [sort, page, totalPages, loading, exporting, summaryLoading, shortcutsEnabled]);
 
 
   // Summary aggregates (over the bounded summary set, same filters)
