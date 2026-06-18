@@ -1,6 +1,16 @@
 // Audio Analysis Engine MVP
-// Pure-browser DSP using AudioContext.decodeAudioData. No external deps.
-// Returns objective metrics + diagnostic findings.
+// Pure-browser DSP using AudioContext.decodeAudioData for decode,
+// with the heavy DSP step (FFT / BPM / chroma) split out so it can
+// run inside a Web Worker via runDspAnalysis() to keep the UI responsive.
+
+export interface ConfidenceScore {
+  /** 0..1 — how trustworthy the detection is. */
+  value: number;
+  /** Human-friendly bucket: high / medium / low / unreliable. */
+  label: "high" | "medium" | "low" | "unreliable";
+  /** Short reason for the confidence rating (esp. when low). */
+  note?: string;
+}
 
 export interface AudioMetrics {
   fileName: string;
@@ -8,23 +18,25 @@ export interface AudioMetrics {
   fileSizeBytes: number;
   durationSec: number;
   sampleRate: number;
-  bitRate: number;        // approx kbps
+  bitRate: number;
   channels: number;
   isStereo: boolean;
   peakDb: number;
   rmsDb: number;
-  lufsEstimate: number;   // very rough perceptual loudness (K-weighted approx)
-  dynamicRangeDb: number; // PSR-ish: peak - short-term loudness median
-  stereoWidth: number;    // 0 (mono) .. 1 (wide)
+  lufsEstimate: number;
+  dynamicRangeDb: number;
+  stereoWidth: number;
   stereoWidthLabel: "Mono" | "Narrow" | "Moderate" | "Wide";
   bpm: number | null;
+  bpmConfidence: ConfidenceScore;
   detectedKey: string | null;
+  keyConfidence: ConfidenceScore;
   bands: {
-    low: number;     // 20–120 Hz
-    lowMid: number;  // 120–500 Hz
-    mid: number;     // 500–2k Hz
-    highMid: number; // 2k–6k Hz
-    high: number;    // 6k–20k Hz
+    low: number;
+    lowMid: number;
+    mid: number;
+    highMid: number;
+    high: number;
   };
 }
 
@@ -40,6 +52,19 @@ export interface AudioAnalysisResult {
   metrics: AudioMetrics;
   issues: AudioIssue[];
   recommendations: string[];
+}
+
+export interface DecodedAudio {
+  channelData: Float32Array[];
+  sampleRate: number;
+  duration: number;
+  numberOfChannels: number;
+}
+
+export interface FileMeta {
+  name: string;
+  format: string;
+  sizeBytes: number;
 }
 
 const KRUMHANSL_MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
@@ -68,19 +93,15 @@ function rotate(arr: number[], n: number): number[] {
   return arr.slice(k).concat(arr.slice(0, k));
 }
 
-/** Build 12-bin chroma vector via Goertzel-style band energies across octaves 2–6. */
 function computeChroma(samples: Float32Array, sampleRate: number): number[] {
   const chroma = new Array(12).fill(0);
   const baseFreqs: number[] = [];
-  // C2 = 65.41 Hz
   for (let pc = 0; pc < 12; pc++) baseFreqs.push(65.41 * Math.pow(2, pc / 12));
-  // 5 octaves
   const N = Math.min(samples.length, sampleRate * 20);
   for (let oct = 0; oct < 5; oct++) {
     for (let pc = 0; pc < 12; pc++) {
       const f = baseFreqs[pc] * Math.pow(2, oct);
       if (f >= sampleRate / 2) continue;
-      // Goertzel
       const k = (2 * Math.PI * f) / sampleRate;
       const cosK = Math.cos(k);
       const coeff = 2 * cosK;
@@ -94,31 +115,75 @@ function computeChroma(samples: Float32Array, sampleRate: number): number[] {
       chroma[pc] += mag;
     }
   }
-  // Normalize
   const sum = chroma.reduce((a, b) => a + b, 0) || 1;
   return chroma.map((v) => v / sum);
 }
 
-function detectKeyFromChroma(chroma: number[]): string {
-  let bestScore = -Infinity;
-  let best = "C Major";
+interface KeyDetection {
+  key: string | null;
+  confidence: ConfidenceScore;
+}
+
+function detectKeyFromChroma(chroma: number[]): KeyDetection {
+  const scores: { key: string; score: number }[] = [];
   for (let pc = 0; pc < 12; pc++) {
     const majProfile = rotate(KRUMHANSL_MAJOR, -pc);
     const minProfile = rotate(KRUMHANSL_MINOR, -pc);
-    const sMaj = correlate(chroma, majProfile);
-    const sMin = correlate(chroma, minProfile);
-    if (sMaj > bestScore) { bestScore = sMaj; best = `${NOTE_NAMES[pc]} Major`; }
-    if (sMin > bestScore) { bestScore = sMin; best = `${NOTE_NAMES[pc]} Minor`; }
+    scores.push({ key: `${NOTE_NAMES[pc]} Major`, score: correlate(chroma, majProfile) });
+    scores.push({ key: `${NOTE_NAMES[pc]} Minor`, score: correlate(chroma, minProfile) });
   }
-  return best;
+  scores.sort((a, b) => b.score - a.score);
+  const best = scores[0];
+  const second = scores[1];
+
+  // Chroma flatness — drum-heavy tracks return near-uniform chroma vectors.
+  const mean = chroma.reduce((a, b) => a + b, 0) / chroma.length;
+  let variance = 0;
+  for (const v of chroma) variance += (v - mean) * (v - mean);
+  variance /= chroma.length;
+  const flatness = variance < 1e-5; // basically no tonal information
+
+  // Confidence: how much best beats second-best, weighted by chroma variance.
+  const gap = best.score > 0 ? Math.max(0, (best.score - second.score) / best.score) : 0;
+  const tonalStrength = Math.min(1, variance / 0.0008);
+  const conf = Math.max(0, Math.min(1, gap * 3 * tonalStrength));
+
+  let label: ConfidenceScore["label"];
+  let note: string | undefined;
+  if (flatness || conf < 0.1) {
+    label = "unreliable";
+    note = "Track appears mostly percussive — key detection requires sustained tonal content.";
+  } else if (conf < 0.3) {
+    label = "low";
+    note = "Chroma profile is ambiguous between several keys.";
+  } else if (conf < 0.6) {
+    label = "medium";
+  } else {
+    label = "high";
+  }
+
+  return {
+    key: label === "unreliable" ? null : best.key,
+    confidence: { value: Math.round(conf * 100) / 100, label, note },
+  };
 }
 
-/** Onset-envelope autocorrelation BPM in 60–180 range. */
-function detectBPM(samples: Float32Array, sampleRate: number): number | null {
+interface BpmDetection {
+  bpm: number | null;
+  confidence: ConfidenceScore;
+}
+
+/**
+ * Onset-envelope autocorrelation BPM with half/double-time disambiguation
+ * and a confidence score (peak prominence vs. mean autocorrelation).
+ */
+function detectBPM(samples: Float32Array, sampleRate: number): BpmDetection {
   const hop = 512;
   const win = 1024;
   const frames = Math.floor((samples.length - win) / hop);
-  if (frames < 30) return null;
+  if (frames < 30) {
+    return { bpm: null, confidence: { value: 0, label: "unreliable", note: "Audio too short for tempo detection." } };
+  }
   const env = new Float32Array(frames);
   let prev = 0;
   for (let i = 0; i < frames; i++) {
@@ -133,27 +198,72 @@ function detectBPM(samples: Float32Array, sampleRate: number): number | null {
     prev = e;
   }
   const fps = sampleRate / hop;
-  const minLag = Math.floor(fps * 60 / 180); // 180 bpm
-  const maxLag = Math.floor(fps * 60 / 60);  // 60 bpm
-  let bestLag = -1, bestVal = -Infinity;
+  // Scan a wide tempo range (50–220 BPM) so we can disambiguate half/double-time.
+  const minLag = Math.max(2, Math.floor((fps * 60) / 220));
+  const maxLag = Math.floor((fps * 60) / 50);
+  const acf = new Float32Array(maxLag - minLag + 1);
+  let sumAcf = 0;
+  let bestLag = -1;
+  let bestVal = -Infinity;
   for (let lag = minLag; lag <= maxLag; lag++) {
     let acc = 0;
     for (let i = 0; i + lag < frames; i++) acc += env[i] * env[i + lag];
+    acf[lag - minLag] = acc;
+    sumAcf += acc;
     if (acc > bestVal) { bestVal = acc; bestLag = lag; }
   }
-  if (bestLag < 0) return null;
-  const bpm = (fps * 60) / bestLag;
-  return Math.round(bpm * 10) / 10;
+  if (bestLag < 0 || bestVal <= 0) {
+    return { bpm: null, confidence: { value: 0, label: "unreliable", note: "Could not extract a stable onset envelope." } };
+  }
+  let bpm = (fps * 60) / bestLag;
+
+  // Half/double-time correction: musical sweet-spot is 80–160 BPM. If our pick
+  // sits outside that band but a 2x/0.5x candidate has comparable energy, prefer it.
+  const candidateAt = (targetBpm: number): number => {
+    const lag = Math.round((fps * 60) / targetBpm);
+    if (lag < minLag || lag > maxLag) return -1;
+    return acf[lag - minLag];
+  };
+  if (bpm < 80) {
+    const doubled = candidateAt(bpm * 2);
+    if (doubled > 0 && doubled / bestVal > 0.6) bpm *= 2;
+  } else if (bpm > 170) {
+    const halved = candidateAt(bpm / 2);
+    if (halved > 0 && halved / bestVal > 0.6) bpm /= 2;
+  }
+
+  // Confidence: peak prominence above the mean autocorrelation.
+  const meanAcf = sumAcf / acf.length || 1;
+  const prominence = (bestVal - meanAcf) / bestVal;
+  const conf = Math.max(0, Math.min(1, prominence * 1.4));
+
+  let label: ConfidenceScore["label"];
+  let note: string | undefined;
+  if (conf < 0.15) {
+    label = "unreliable";
+    note = "No clear periodic pulse — track may be ambient, rubato, or have shifting tempo.";
+  } else if (conf < 0.35) {
+    label = "low";
+    note = "Pulse is weak — common with drum-heavy or polyrhythmic material; verify manually.";
+  } else if (conf < 0.6) {
+    label = "medium";
+    note = bpm < 80 || bpm > 170 ? "Possible half/double-time ambiguity." : undefined;
+  } else {
+    label = "high";
+  }
+
+  return {
+    bpm: label === "unreliable" ? null : Math.round(bpm * 10) / 10,
+    confidence: { value: Math.round(conf * 100) / 100, label, note },
+  };
 }
 
-/** Simple radix-2 FFT (magnitude only). */
 function fftMag(samples: Float32Array): Float32Array {
   let n = 1;
   while (n < samples.length) n <<= 1;
   const re = new Float32Array(n);
   const im = new Float32Array(n);
   for (let i = 0; i < samples.length; i++) re[i] = samples[i];
-  // Bit-reverse
   for (let i = 1, j = 0; i < n; i++) {
     let bit = n >> 1;
     for (; j & bit; bit >>= 1) j ^= bit;
@@ -205,14 +315,11 @@ function detectFormat(file: File): string {
   return (m?.[1] || file.type.split("/").pop() || "audio").toLowerCase();
 }
 
-export async function analyzeAudioFile(
-  file: File,
-  onProgress?: (pct: number, label: string) => void,
-): Promise<AudioAnalysisResult> {
-  onProgress?.(5, "Decoding audio…");
+/** Decode any browser-supported audio file. Must run on main thread (AudioContext). */
+export async function decodeAudioToChannels(file: File): Promise<DecodedAudio> {
   const arrayBuf = await file.arrayBuffer();
   const AC: typeof AudioContext =
-    window.AudioContext || (window as any).webkitAudioContext;
+    window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   if (!AC) throw new Error("Your browser cannot decode audio. Try Chrome or Firefox.");
   const ctx = new AC();
   let audioBuf: AudioBuffer;
@@ -224,19 +331,54 @@ export async function analyzeAudioFile(
   }
   ctx.close().catch(() => {});
 
-  const sampleRate = audioBuf.sampleRate;
-  const channels = audioBuf.numberOfChannels;
-  const durationSec = audioBuf.duration;
-  const left = audioBuf.getChannelData(0);
-  const right = channels > 1 ? audioBuf.getChannelData(1) : left;
+  const channelData: Float32Array[] = [];
+  for (let c = 0; c < audioBuf.numberOfChannels; c++) {
+    // Copy because AudioBuffer-backed Float32Arrays cannot be transferred.
+    channelData.push(new Float32Array(audioBuf.getChannelData(c)));
+  }
+  return {
+    channelData,
+    sampleRate: audioBuf.sampleRate,
+    duration: audioBuf.duration,
+    numberOfChannels: audioBuf.numberOfChannels,
+  };
+}
 
-  // --- Peak + RMS + mono mix ---
+/** Downsample a channel to N peak buckets for waveform display. */
+export function computeWaveformPeaks(channel: Float32Array, buckets: number): Float32Array {
+  const out = new Float32Array(buckets);
+  const samplesPerBucket = Math.max(1, Math.floor(channel.length / buckets));
+  for (let b = 0; b < buckets; b++) {
+    const start = b * samplesPerBucket;
+    const end = Math.min(channel.length, start + samplesPerBucket);
+    let peak = 0;
+    for (let i = start; i < end; i++) {
+      const v = Math.abs(channel[i]);
+      if (v > peak) peak = v;
+    }
+    out[b] = peak;
+  }
+  return out;
+}
+
+/**
+ * Pure-DSP analysis stage. Safe to call inside a Web Worker.
+ * Takes already-decoded channel data and produces the full report.
+ */
+export function runDspAnalysis(
+  channelData: Float32Array[],
+  sampleRate: number,
+  fileMeta: FileMeta,
+  onProgress?: (pct: number, label: string) => void,
+): AudioAnalysisResult {
+  const channels = channelData.length;
+  const left = channelData[0];
+  const right = channels > 1 ? channelData[1] : left;
+  const durationSec = left.length / sampleRate;
+
   onProgress?.(25, "Measuring levels…");
   const mono = new Float32Array(left.length);
-  let peak = 0;
-  let sumSq = 0;
-  let diffSq = 0;
-  let sideSq = 0;
+  let peak = 0, sumSq = 0, sideSq = 0;
   for (let i = 0; i < left.length; i++) {
     const l = left[i], r = right[i];
     const m = (l + r) * 0.5;
@@ -244,19 +386,15 @@ export async function analyzeAudioFile(
     const ap = Math.max(Math.abs(l), Math.abs(r));
     if (ap > peak) peak = ap;
     sumSq += m * m;
-    diffSq += (l - r) * (l - r);
     sideSq += ((l - r) * 0.5) * ((l - r) * 0.5);
   }
   const rms = Math.sqrt(sumSq / left.length);
   const peakDb = toDb(peak);
   const rmsDb = toDb(rms);
-
-  // Stereo width = side/mid RMS ratio (clamped 0..1)
   const sideRms = Math.sqrt(sideSq / left.length);
   const widthRaw = rms > 0 ? sideRms / rms : 0;
   const stereoWidth = channels === 1 ? 0 : Math.max(0, Math.min(1, widthRaw));
 
-  // --- Short-term loudness blocks (400ms) for LUFS + dynamic range ---
   onProgress?.(40, "Estimating loudness…");
   const block = Math.floor(sampleRate * 0.4);
   const blockEnergies: number[] = [];
@@ -266,25 +404,18 @@ export async function analyzeAudioFile(
     blockEnergies.push(s / block);
   }
   blockEnergies.sort((a, b) => b - a);
-  // Top 30% mean as integrated-ish loudness
   const top = blockEnergies.slice(0, Math.max(1, Math.floor(blockEnergies.length * 0.3)));
   const topMean = top.reduce((a, b) => a + b, 0) / top.length;
-  // Rough LUFS calibration: -0.691 + 10*log10(meanSquare) is the BS.1770 base for K-weighting (we skip K filter)
-  const lufsEstimate = blockEnergies.length
-    ? -0.691 + 10 * Math.log10(topMean || 1e-12)
-    : -Infinity;
-  // Crest factor / dynamic range: peak vs short-term loudness median
+  const lufsEstimate = blockEnergies.length ? -0.691 + 10 * Math.log10(topMean || 1e-12) : -Infinity;
   const medIdx = Math.floor(blockEnergies.length * 0.5);
   const medE = blockEnergies[medIdx] || 1e-12;
-  const dynamicRangeDb = toDb(peak) - (10 * Math.log10(medE));
+  const dynamicRangeDb = toDb(peak) - 10 * Math.log10(medE);
 
-  // --- Spectrum bands via FFT on a centred window ---
   onProgress?.(60, "Analyzing frequency bands…");
-  const winLen = Math.min(mono.length, 1 << 15); // 32768
+  const winLen = Math.min(mono.length, 1 << 15);
   const start = Math.floor((mono.length - winLen) / 2);
   const slice = new Float32Array(winLen);
   for (let i = 0; i < winLen; i++) {
-    // Hann window
     const w = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (winLen - 1));
     slice[i] = mono[start + i] * w;
   }
@@ -303,31 +434,24 @@ export async function analyzeAudioFile(
     high: 10 * Math.log10(eHigh / eTotal + 1e-12),
   };
 
-  // --- BPM ---
   onProgress?.(75, "Detecting tempo…");
-  const bpm = detectBPM(mono, sampleRate);
+  const bpmResult = detectBPM(mono, sampleRate);
 
-  // --- Key ---
   onProgress?.(88, "Detecting key…");
-  // Downsample for chroma efficiency
   const targetRate = 8000;
   const ratio = sampleRate / targetRate;
   const dsLen = Math.floor(Math.min(mono.length, sampleRate * 20) / ratio);
   const ds = new Float32Array(dsLen);
-  for (let i = 0; i < dsLen; i++) {
-    const idx = Math.floor(i * ratio);
-    ds[i] = mono[idx];
-  }
+  for (let i = 0; i < dsLen; i++) ds[i] = mono[Math.floor(i * ratio)];
   const chroma = computeChroma(ds, targetRate);
-  const detectedKey = detectKeyFromChroma(chroma);
+  const keyResult = detectKeyFromChroma(chroma);
 
-  // --- Bit rate (approx) ---
-  const bitRate = Math.round(((file.size * 8) / Math.max(1, durationSec)) / 1000);
+  const bitRate = Math.round(((fileMeta.sizeBytes * 8) / Math.max(1, durationSec)) / 1000);
 
   const metrics: AudioMetrics = {
-    fileName: file.name,
-    fileFormat: detectFormat(file),
-    fileSizeBytes: file.size,
+    fileName: fileMeta.name,
+    fileFormat: fileMeta.format,
+    fileSizeBytes: fileMeta.sizeBytes,
     durationSec: Math.round(durationSec * 10) / 10,
     sampleRate,
     bitRate,
@@ -339,8 +463,10 @@ export async function analyzeAudioFile(
     dynamicRangeDb: Math.round(dynamicRangeDb * 10) / 10,
     stereoWidth: Math.round(stereoWidth * 100) / 100,
     stereoWidthLabel: widthLabel(stereoWidth),
-    bpm,
-    detectedKey,
+    bpm: bpmResult.bpm,
+    bpmConfidence: bpmResult.confidence,
+    detectedKey: keyResult.key,
+    keyConfidence: keyResult.confidence,
     bands: {
       low: Math.round(bands.low * 10) / 10,
       lowMid: Math.round(bands.lowMid * 10) / 10,
@@ -356,6 +482,65 @@ export async function analyzeAudioFile(
 
   onProgress?.(100, "Done");
   return { metrics, issues, recommendations };
+}
+
+/** Convenience: decode + analyse on the main thread. Kept for back-compat / fallback. */
+export async function analyzeAudioFile(
+  file: File,
+  onProgress?: (pct: number, label: string) => void,
+): Promise<AudioAnalysisResult> {
+  onProgress?.(5, "Decoding audio…");
+  const decoded = await decodeAudioToChannels(file);
+  return runDspAnalysis(
+    decoded.channelData,
+    decoded.sampleRate,
+    { name: file.name, format: detectFormat(file), sizeBytes: file.size },
+    onProgress,
+  );
+}
+
+/**
+ * Worker-backed analysis: decodes on the main thread (AudioContext is only
+ * available here) then offloads all DSP to a Web Worker so the UI stays
+ * responsive on large files. Returns the decoded channel data too, so the
+ * caller can render a waveform without decoding twice.
+ *
+ * If anything goes wrong spinning up the worker we silently fall back to
+ * the main-thread implementation.
+ */
+export async function analyzeAudioFileInWorker(
+  file: File,
+  onProgress?: (pct: number, label: string) => void,
+): Promise<{ result: AudioAnalysisResult; decoded: DecodedAudio }> {
+  onProgress?.(5, "Decoding audio…");
+  const decoded = await decodeAudioToChannels(file);
+  const fileMeta: FileMeta = { name: file.name, format: detectFormat(file), sizeBytes: file.size };
+
+  try {
+    const worker = new Worker(new URL("../workers/audio-analysis.worker.ts", import.meta.url), {
+      type: "module",
+    });
+    const result = await new Promise<AudioAnalysisResult>((resolve, reject) => {
+      worker.onmessage = (e: MessageEvent) => {
+        const msg = e.data;
+        if (msg?.type === "progress") onProgress?.(msg.pct, msg.label);
+        else if (msg?.type === "result") resolve(msg.result as AudioAnalysisResult);
+        else if (msg?.type === "error") reject(new Error(msg.message || "Analysis worker failed"));
+      };
+      worker.onerror = (e) => reject(new Error(e.message || "Analysis worker crashed"));
+      // Clone channel buffers for transfer (decoded copy stays with the caller for waveform display).
+      const transfer = decoded.channelData.map((c) => new Float32Array(c));
+      worker.postMessage(
+        { type: "analyze", channels: transfer, sampleRate: decoded.sampleRate, fileMeta },
+        transfer.map((c) => c.buffer),
+      );
+    }).finally(() => worker.terminate());
+    return { result, decoded };
+  } catch (err) {
+    console.warn("[audio-analysis] Worker unavailable, falling back to main thread:", err);
+    const result = runDspAnalysis(decoded.channelData, decoded.sampleRate, fileMeta, onProgress);
+    return { result, decoded };
+  }
 }
 
 function diagnose(m: AudioMetrics): AudioIssue[] {
@@ -482,7 +667,8 @@ export function formatMetricsForPrompt(m: AudioMetrics, issues: AudioIssue[]): s
   lines.push(`Sample rate: ${m.sampleRate} Hz | Channels: ${m.channels} (${m.isStereo ? "stereo" : "mono"}) | Bit rate ≈ ${m.bitRate} kbps`);
   lines.push(`Peak: ${m.peakDb.toFixed(1)} dBFS | RMS: ${m.rmsDb.toFixed(1)} dBFS | LUFS≈ ${m.lufsEstimate.toFixed(1)}`);
   lines.push(`Dynamic range: ${m.dynamicRangeDb.toFixed(1)} dB | Stereo width: ${m.stereoWidth.toFixed(2)} (${m.stereoWidthLabel})`);
-  lines.push(`BPM: ${m.bpm ?? "unknown"} | Key: ${m.detectedKey ?? "unknown"}`);
+  lines.push(`BPM: ${m.bpm ?? "unknown"} (confidence: ${m.bpmConfidence.label}${m.bpmConfidence.note ? ` — ${m.bpmConfidence.note}` : ""})`);
+  lines.push(`Key: ${m.detectedKey ?? "unknown"} (confidence: ${m.keyConfidence.label}${m.keyConfidence.note ? ` — ${m.keyConfidence.note}` : ""})`);
   lines.push(`Band balance (dB rel total): low ${m.bands.low.toFixed(1)} | low-mid ${m.bands.lowMid.toFixed(1)} | mid ${m.bands.mid.toFixed(1)} | high-mid ${m.bands.highMid.toFixed(1)} | high ${m.bands.high.toFixed(1)}`);
   if (issues.length) {
     lines.push("Detected issues:");

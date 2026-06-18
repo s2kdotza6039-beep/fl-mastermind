@@ -6,7 +6,13 @@ import { Progress } from "@/components/ui/progress";
 import { UploadCloud, FileAudio, X, Sparkles, Loader2, MessageCircle, RefreshCcw } from "lucide-react";
 import { SenseiChat } from "@/components/SenseiChat";
 import { AudioReportCard } from "@/components/AudioReportCard";
-import { analyzeAudioFile, type AudioAnalysisResult, formatMetricsForPrompt } from "@/lib/audio-analysis";
+import { WaveformPlayer } from "@/components/WaveformPlayer";
+import {
+  analyzeAudioFileInWorker,
+  computeWaveformPeaks,
+  type AudioAnalysisResult,
+  formatMetricsForPrompt,
+} from "@/lib/audio-analysis";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
@@ -18,6 +24,7 @@ export default function UploadPage() {
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState("");
   const [result, setResult] = useState<AudioAnalysisResult | null>(null);
+  const [peaks, setPeaks] = useState<Float32Array | null>(null);
   const [askSensei, setAskSensei] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -27,6 +34,7 @@ export default function UploadPage() {
   const reset = () => {
     setFile(null);
     setResult(null);
+    setPeaks(null);
     setAskSensei(false);
     setProgress(0);
     setProgressLabel("");
@@ -54,11 +62,17 @@ export default function UploadPage() {
     setProgress(0);
     setProgressLabel("Starting…");
     try {
-      const res = await analyzeAudioFile(file, (p, label) => {
+      const { result: res, decoded } = await analyzeAudioFileInWorker(file, (p, label) => {
         setProgress(p);
         setProgressLabel(label);
       });
       setResult(res);
+      // Build waveform peaks from the already-decoded channel data.
+      try {
+        setPeaks(computeWaveformPeaks(decoded.channelData[0], 600));
+      } catch (e) {
+        console.warn("Waveform peaks failed:", e);
+      }
       // Persist (best-effort)
       if (user) {
         const { error } = await supabase.from("audio_analysis_reports").insert({
@@ -171,7 +185,13 @@ export default function UploadPage() {
               </Button>
             </div>
 
-            {audioUrl && <audio controls src={audioUrl} className="w-full mt-4" />}
+            {audioUrl && (
+              <WaveformPlayer
+                src={audioUrl}
+                peaks={peaks}
+                durationSec={result?.metrics.durationSec ?? 0}
+              />
+            )}
 
             {!result && !analyzing && (
               <Button
