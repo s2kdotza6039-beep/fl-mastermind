@@ -190,17 +190,31 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportPhase, setExportPhase] = useState<ExportPhase>("idle");
   const [exportAttempt, setExportAttempt] = useState(0);
+  // Last-failure diagnostics for the error banner
+  const [exportLastFail, setExportLastFail] = useState<{ attempt: number; message: string; nextDelayMs: number | null } | null>(null);
+  // Cooperative cancellation — flipped by the Cancel button; checked at every await boundary.
+  const cancelRef = useRef(false);
 
-  // CSV timestamp timezone — persisted in localStorage. Only affects the banner.
-  const [tz, setTz] = useState<Tz>(() => {
+  // CSV timestamp timezone — URL wins (shareable), then localStorage, then "local".
+  const urlTz = searchParams.get("a_tz");
+  const [tz, setTzLocal] = useState<Tz>(() => {
+    if (urlTz === "utc" || urlTz === "local") return urlTz;
     try {
       const raw = localStorage.getItem(TZ_STORAGE_KEY);
       return raw === "utc" ? "utc" : "local";
     } catch { return "local"; }
   });
+  // Keep state in sync with the URL on back/forward navigation.
   useEffect(() => {
-    try { localStorage.setItem(TZ_STORAGE_KEY, tz); } catch { /* ignore */ }
-  }, [tz]);
+    if ((urlTz === "utc" || urlTz === "local") && urlTz !== tz) setTzLocal(urlTz);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [urlTz]);
+  const setTz = (v: Tz) => {
+    setTzLocal(v);
+    try { localStorage.setItem(TZ_STORAGE_KEY, v); } catch { /* ignore */ }
+    // Drop the URL param when it matches the default to keep links clean.
+    setParam({ a_tz: v === "local" ? null : v });
+  };
 
   // Keyboard shortcuts on/off — URL wins (so it's shareable), else localStorage, else on.
   const urlKbd = searchParams.get("a_kbd");
