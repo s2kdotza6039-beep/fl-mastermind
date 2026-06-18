@@ -79,6 +79,28 @@ export default function PluginInventoryPage() {
     setShowSuggestions(false);
   };
 
+  const addSelectedSuggestions = () => {
+    const additions = Array.from(selectedSuggestions).filter((s) => !isDuplicate(s));
+    if (additions.length === 0) {
+      toast.error("Select at least one suggestion to add.");
+      return;
+    }
+    setCustom([...custom, ...additions]);
+    setSelectedSuggestions(new Set());
+    setCustomDraft("");
+    setShowSuggestions(false);
+    toast.success(`Added ${additions.length} custom plugin${additions.length === 1 ? "" : "s"}.`);
+  };
+
+  const toggleSuggestion = (s: string) => {
+    setSelectedSuggestions((prev) => {
+      const next = new Set(prev);
+      if (next.has(s)) next.delete(s);
+      else next.add(s);
+      return next;
+    });
+  };
+
   const filteredNative = useMemo(
     () => NATIVE_PLUGINS.filter((p) => p.toLowerCase().includes(nativeQuery.toLowerCase())),
     [nativeQuery],
@@ -93,21 +115,52 @@ export default function PluginInventoryPage() {
     if (!q) return [];
     return CUSTOM_PLUGIN_SUGGESTIONS
       .filter((p) => p.toLowerCase().includes(q) && !isDuplicate(p))
-      .slice(0, 6);
+      .slice(0, 8);
   }, [customDraft, native, third, custom]);
 
   const onSave = async () => {
     setSaving(true);
+    // Diff before/after for the toast summary
+    const prevN = new Set((inventory?.native_plugins ?? []).map((x) => x.toLowerCase()));
+    const prevT = new Set((inventory?.third_party_plugins ?? []).map((x) => x.toLowerCase()));
+    const prevC = new Set((inventory?.custom_plugins ?? []).map((x) => x.toLowerCase()));
+    const curN = new Set(native.map((x) => x.toLowerCase()));
+    const curT = new Set(third.map((x) => x.toLowerCase()));
+    const curC = new Set(custom.map((x) => x.toLowerCase()));
+    const added =
+      [...curN].filter((x) => !prevN.has(x)).length +
+      [...curT].filter((x) => !prevT.has(x)).length +
+      [...curC].filter((x) => !prevC.has(x)).length;
+    const removed =
+      [...prevN].filter((x) => !curN.has(x)).length +
+      [...prevT].filter((x) => !curT.has(x)).length +
+      [...prevC].filter((x) => !curC.has(x)).length;
+    const wasCompleted = savedCompleted;
+
     const { error } = await save({
       native_plugins: native,
       third_party_plugins: third,
       custom_plugins: custom,
     });
     setSaving(false);
-    if (error) return toast.error(error);
-    toast.success("Plugin inventory saved. Sensei will now recommend tools you actually own.");
+    if (error) return toast.error(`Couldn't save inventory: ${error}`);
+
+    const total = native.length + third.length + custom.length;
+    const parts: string[] = [];
+    if (added) parts.push(`+${added} added`);
+    if (removed) parts.push(`−${removed} removed`);
+    if (parts.length === 0) parts.push("no plugin changes");
+    const completedNote = !wasCompleted
+      ? "Inventory marked complete — Sensei will now tailor recommendations."
+      : "Inventory still complete.";
+
+    toast.success("Plugin inventory saved", {
+      description: `${parts.join(" · ")} · ${total} total (${native.length} native · ${third.length} third-party · ${custom.length} custom). ${completedNote}`,
+      duration: 6000,
+    });
     navigate("/");
   };
+
 
   return (
     <div className="container max-w-4xl py-10 px-4 md:px-8">
