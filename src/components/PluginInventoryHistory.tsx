@@ -386,3 +386,76 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
     </Card>
   );
 }
+
+function CompletenessChart({ snaps }: { snaps: HistorySnapshot[] }) {
+  // Snapshots arrive newest-first; reverse so time runs left → right.
+  const ordered = [...snaps].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
+  if (ordered.length < 2) {
+    return (
+      <p className="text-[10px] text-muted-foreground italic">
+        Inventory trend chart appears once you have 2+ snapshots.
+      </p>
+    );
+  }
+
+  const W = 600, H = 90, P = 8;
+  const totals = ordered.map(
+    (s) => s.native_plugins.length + s.third_party_plugins.length + s.custom_plugins.length,
+  );
+  const maxTotal = Math.max(1, ...totals);
+  const stepX = (W - P * 2) / Math.max(1, ordered.length - 1);
+  const yFor = (v: number) => H - P - (v / maxTotal) * (H - P * 2);
+
+  const pathD = ordered
+    .map((_, i) => `${i === 0 ? "M" : "L"} ${P + i * stepX} ${yFor(totals[i])}`)
+    .join(" ");
+  const areaD = `${pathD} L ${P + (ordered.length - 1) * stepX} ${H - P} L ${P} ${H - P} Z`;
+
+  const first = ordered[0], last = ordered[ordered.length - 1];
+  const firstTotal = totals[0], lastTotal = totals[totals.length - 1];
+  const delta = lastTotal - firstTotal;
+
+  return (
+    <div className="border border-border rounded-md p-3 bg-muted/10">
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
+        <span className="uppercase tracking-widest">Plugin count over time</span>
+        <span>
+          {firstTotal} → {lastTotal}{" "}
+          <span className={delta > 0 ? "text-emerald-500" : delta < 0 ? "text-destructive" : ""}>
+            ({delta >= 0 ? "+" : ""}{delta})
+          </span>
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-20" preserveAspectRatio="none" role="img" aria-label="Plugin count over time">
+        <path d={areaD} fill="hsl(var(--primary) / 0.15)" />
+        <path d={pathD} fill="none" stroke="hsl(var(--primary))" strokeWidth={1.5} />
+        {ordered.map((s, i) => (
+          <circle
+            key={s.id}
+            cx={P + i * stepX}
+            cy={yFor(totals[i])}
+            r={s.inventory_completed ? 2.5 : 1.5}
+            fill={s.inventory_completed ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))"}
+          >
+            <title>
+              {new Date(s.created_at).toLocaleString()} — {totals[i]} plugins
+              {s.inventory_completed ? " (complete)" : " (incomplete)"}
+            </title>
+          </circle>
+        ))}
+      </svg>
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-1">
+        <span>{new Date(first.created_at).toLocaleDateString()}</span>
+        <span className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary" /> complete
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-muted-foreground" /> draft
+          </span>
+        </span>
+        <span>{new Date(last.created_at).toLocaleDateString()}</span>
+      </div>
+    </div>
+  );
+}
