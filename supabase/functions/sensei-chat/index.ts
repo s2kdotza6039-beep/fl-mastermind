@@ -226,6 +226,28 @@ Deno.serve(async (req) => {
       if (typeof ctx.projectName === "string") parts.push(`Project: ${ctx.projectName.slice(0, 60)}`);
       if (typeof ctx.key === "string") parts.push(`Detected key: ${ctx.key.slice(0, 30)}`);
       if (parts.length) system += `\n\nSESSION CONTEXT:\n${parts.join("\n")}`;
+
+      const studioParts: string[] = [];
+      if (typeof ctx.flVersion === "string") studioParts.push(`FL Studio version: ${ctx.flVersion.slice(0, 40)}`);
+      if (typeof ctx.flEdition === "string") studioParts.push(`FL Studio edition: ${ctx.flEdition.slice(0, 40)}`);
+      if (typeof ctx.mainUse === "string") studioParts.push(`Main use: ${ctx.mainUse.slice(0, 40)}`);
+      if (typeof ctx.mainGenre === "string") studioParts.push(`Preferred genre: ${ctx.mainGenre.slice(0, 40)}`);
+      if (typeof ctx.skillLevel === "string") studioParts.push(`Skill level: ${ctx.skillLevel.slice(0, 30)}`);
+      if (studioParts.length) {
+        system += `\n\nUSER FL STUDIO PROFILE:\n${studioParts.join("\n")}
+
+FL STUDIO ADAPTATION RULES (MANDATORY):
+- Never assume the user owns plugins not included in their edition.
+- If unsure, suggest FL Studio stock alternatives first (Fruity Parametric EQ 2, Fruity Limiter, Fruity Compressor, Fruity Reeverb 2, Fruity Delay, Edison, Soundgoodizer).
+- Fruity Edition: stock-only workflow, no Patcher/Maximus/Pitcher/Newtone. Suggest workarounds.
+- Producer Edition: prioritize common stock tools, recording, audio editing, basic Patcher.
+- Signature Bundle or All Plugins Edition: enable advanced suggestions (Maximus, Pitcher, Newtone, advanced Patcher chains, Gross Beat, Harmor, Sytrus).
+- FL Studio 25: mention newer workflow options (updated Patcher, modern stock UI) when relevant.
+- Beginner: explain steps simply, define every term, fewer numbers, one recommended path.
+- Intermediate: balance clarity and depth.
+- Advanced: deeper engineering terminology, gain staging, frequency ranges, routing, bus processing, mid/side concepts.
+- Always give practical FL Studio steps with exact menu paths.`;
+      }
     }
 
     // Tier-gated detail level

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/context/SessionContext";
 import { useAuth } from "@/context/AuthContext";
+import { useStudioSetup } from "@/context/StudioSetupContext";
 import { streamSenseiChat, type ChatMsg } from "@/lib/sensei-api";
 import { SenseiMarkdown } from "./SenseiMarkdown";
 import { toast } from "sonner";
@@ -17,6 +18,7 @@ interface SenseiChatProps {
 export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
   const { genre, stage, projectName, saveAdvice } = useSession();
   const { isPaid } = useAuth();
+  const { setup } = useStudioSetup();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -58,7 +60,14 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
 
     await streamSenseiChat({
       messages: next,
-      context: { genre, stage, projectName },
+      context: {
+        genre, stage, projectName,
+        flVersion: setup?.fl_version ?? undefined,
+        flEdition: setup?.fl_edition ?? undefined,
+        mainUse: setup?.main_use ?? undefined,
+        mainGenre: setup?.main_genre ?? undefined,
+        skillLevel: setup?.skill_level ?? undefined,
+      },
       onDelta: upsert,
       onDone: () => setLoading(false),
       onError: (msg) => {

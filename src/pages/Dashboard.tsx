@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
+import { StudioSetupCard } from "@/components/StudioSetupCard";
 
 const FEATURES = [
   { to: "/chat", icon: MessageCircle, title: "Sensei Chat", desc: "Ask anything about your sound." },
@@ -46,6 +47,8 @@ export default function Dashboard() {
           </Button>
         }
       />
+
+      <StudioSetupCard />
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
