@@ -557,21 +557,36 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
                                         </span>
                                       </span>
                                     </div>
+                                    {/* Category-level rationale: why this category moves the score */}
+                                    <div className="text-muted-foreground italic">
+                                      {catDelta > 0
+                                        ? `${label} grows by ${catDelta} — each new ${label.toLowerCase()} plugin counts once toward your completion total.`
+                                        : catDelta < 0
+                                          ? `${label} shrinks by ${Math.abs(catDelta)} — removing plugins from this category lowers your completion total.`
+                                          : `${label} count stays at ${afterCount} — IDs swap one-for-one, so the score is unaffected by this category.`}
+                                    </div>
                                     {d.added.length > 0 && (
                                       <div className="text-emerald-500">
                                         + adds ({d.added.length}): {d.added.slice(0, 5).join(", ")}
                                         {d.added.length > 5 ? `, +${d.added.length - 5} more` : ""}
+                                        <span className="block text-[9px] text-emerald-500/70 not-italic">
+                                          Why: not in your current {label.toLowerCase()} list → each addition raises completion by 1.
+                                        </span>
                                       </div>
                                     )}
                                     {d.removed.length > 0 && (
                                       <div className="text-destructive">
                                         − removes ({d.removed.length}): {d.removed.slice(0, 5).join(", ")}
                                         {d.removed.length > 5 ? `, +${d.removed.length - 5} more` : ""}
+                                        <span className="block text-[9px] text-destructive/70 not-italic">
+                                          Why: present today but missing from this snapshot → each removal drops completion by 1.
+                                        </span>
                                       </div>
                                     )}
                                   </div>
                                 );
                               })}
+
                             </div>
 
                             {/* Plain-language summary of which IDs actually move the completion score. */}
