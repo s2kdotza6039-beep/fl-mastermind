@@ -31,6 +31,23 @@ const PAGE_SIZE = 25;
 const SUMMARY_CAP = 5000;
 const COLUMN_STORAGE_KEY = "studio-sensei.admin-activity-columns.v1";
 
+const SORT_OPTIONS: { value: string; label: string }[] = [
+  { value: "created_at:desc", label: "Newest first" },
+  { value: "created_at:asc", label: "Oldest first" },
+  { value: "event_type:asc", label: "Event type A→Z" },
+  { value: "event_type:desc", label: "Event type Z→A" },
+  { value: "user_id:asc", label: "User id A→Z" },
+  { value: "metadata->>added:desc", label: "Completion Δ (most added)" },
+  { value: "metadata->>removed:desc", label: "Completion Δ (most removed)" },
+];
+const sortLabel = (v: string) => SORT_OPTIONS.find((s) => s.value === v)?.label ?? v;
+const cycleSort = (current: string, dir: 1 | -1) => {
+  const i = SORT_OPTIONS.findIndex((s) => s.value === current);
+  const next = ((i < 0 ? 0 : i) + dir + SORT_OPTIONS.length) % SORT_OPTIONS.length;
+  return SORT_OPTIONS[next].value;
+};
+
+
 const PRESETS: { label: string; days: number | null }[] = [
   { label: "All time", days: null },
   { label: "Last 24h", days: 1 },
