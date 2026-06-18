@@ -7,6 +7,11 @@ export interface ChatContext {
   genre?: string;
   stage?: string;
   projectName?: string;
+  flVersion?: string;
+  flEdition?: string;
+  mainUse?: string;
+  mainGenre?: string;
+  skillLevel?: string;
 }
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sensei-chat`;
