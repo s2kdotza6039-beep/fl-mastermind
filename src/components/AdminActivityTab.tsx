@@ -491,7 +491,7 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
 
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Free-text (current page)…" className="pl-9 h-9 text-xs" />
+            <Input ref={searchInputRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Free-text (current page) — press / to focus" className="pl-9 h-9 text-xs" />
           </div>
 
           <div className="relative">
