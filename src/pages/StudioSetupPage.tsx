@@ -160,6 +160,36 @@ export default function StudioSetupPage() {
           </>
         )}
       </Card>
+
+      {history.length > 1 && (
+        <Card className="studio-card p-6 mt-6">
+          <h3 className="font-display text-base font-bold flex items-center gap-2 mb-1">
+            <History className="w-4 h-4 text-primary" /> Setup History
+          </h3>
+          <p className="text-xs text-muted-foreground mb-4">
+            Every change to your FL Studio setup is recorded. Revert to any earlier snapshot if a recent change made Sensei's advice worse.
+          </p>
+          <ul className="space-y-2">
+            {history.map((h, i) => (
+              <li key={h.id} className="flex items-center justify-between gap-3 p-3 rounded border border-border text-xs">
+                <div className="min-w-0">
+                  <div className="text-muted-foreground">
+                    {new Date(h.changed_at).toLocaleString()} · <span className="uppercase tracking-wider">{h.change_type}</span>
+                  </div>
+                  <div className="truncate text-foreground">
+                    {[h.fl_version, h.fl_edition, h.main_use, h.main_genre, h.skill_level].filter(Boolean).join(" · ") || "(empty)"}
+                  </div>
+                </div>
+                {i > 0 && (
+                  <Button size="sm" variant="outline" disabled={saving} onClick={() => revertTo(h)}>
+                    <Undo2 className="w-3 h-3 mr-1" /> Revert
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
     </div>
   );
 }
