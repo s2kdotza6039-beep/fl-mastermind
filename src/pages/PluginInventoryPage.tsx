@@ -13,6 +13,7 @@ import { usePluginInventory } from "@/context/PluginInventoryContext";
 import { NATIVE_PLUGINS, THIRD_PARTY_BRANDS, CUSTOM_PLUGIN_SUGGESTIONS } from "@/lib/plugin-inventory-constants";
 import { PluginInventoryImportDialog } from "@/components/PluginInventoryImportDialog";
 import { PluginInventoryHistory, type HistorySnapshot } from "@/components/PluginInventoryHistory";
+import { supabase } from "@/integrations/supabase/client";
 
 
 const sortKey = (a: string[]) => a.slice().map((x) => x.toLowerCase()).sort().join("|");
