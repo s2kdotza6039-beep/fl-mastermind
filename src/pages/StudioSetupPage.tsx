@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Sliders, Save, Loader2 } from "lucide-react";
+import { Sliders, Save, Loader2, History, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,19 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageHeader } from "@/components/PageHeader";
 import { useStudioSetup } from "@/context/StudioSetupContext";
+import { useAuth } from "@/context/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+
+interface HistoryRow {
+  id: string;
+  fl_version: string | null;
+  fl_edition: string | null;
+  main_use: string | null;
+  main_genre: string | null;
+  skill_level: string | null;
+  change_type: string;
+  changed_at: string;
+}
 
 const FL_VERSIONS = ["FL Studio 20", "FL Studio 21", "FL Studio 24", "FL Studio 25", "Other / Not sure"];
 const FL_EDITIONS = ["Fruity Edition", "Producer Edition", "Signature Bundle", "All Plugins Edition", "Trial Version", "Not sure"];
