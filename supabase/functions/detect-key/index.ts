@@ -1,4 +1,6 @@
 // Detect musical key from uploaded audio using Krumhansl-Schmuckler algorithm
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -11,9 +13,27 @@ const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const MAJOR_PROFILE = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
 const MINOR_PROFILE = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
 
+// In-memory rate limiter (per edge instance — resets on cold start)
+const buckets = new Map<string, { count: number; reset: number }>();
+const RATE_FREE = 6;
+const RATE_PAID = 30;
+const RATE_ADMIN = 100;
+const WINDOW_MS = 60_000;
+
+function rateLimit(key: string, limit: number) {
+  const now = Date.now();
+  const b = buckets.get(key);
+  if (!b || b.reset < now) {
+    buckets.set(key, { count: 1, reset: now + WINDOW_MS });
+    return { ok: true };
+  }
+  b.count++;
+  if (b.count > limit) return { ok: false, retryAfter: Math.ceil((b.reset - now) / 1000) };
+  return { ok: true };
+}
+
 function decodeWavToMono(buf: ArrayBuffer): { samples: Float32Array; sampleRate: number } | null {
   const view = new DataView(buf);
-  // RIFF/WAVE check
   const riff = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
   const wave = String.fromCharCode(view.getUint8(8), view.getUint8(9), view.getUint8(10), view.getUint8(11));
   if (riff !== "RIFF" || wave !== "WAVE") return null;
@@ -76,7 +96,6 @@ function decodeWavToMono(buf: ArrayBuffer): { samples: Float32Array; sampleRate:
   return { samples, sampleRate };
 }
 
-// Goertzel algorithm — efficient for single-frequency magnitude
 function goertzel(samples: Float32Array, sampleRate: number, freq: number): number {
   const N = samples.length;
   const k = Math.round(0.5 + (N * freq) / sampleRate);
@@ -94,10 +113,8 @@ function goertzel(samples: Float32Array, sampleRate: number, freq: number): numb
 
 function pitchClassProfile(samples: Float32Array, sampleRate: number): number[] {
   const pcp = new Array(12).fill(0);
-  // 4 octaves: C3 (~130.81 Hz) up
   const baseFreq = 130.81;
   const octaves = 4;
-  // Window the signal — take up to 30 sec for performance
   const maxLen = Math.min(samples.length, sampleRate * 30);
   const seg = samples.subarray(0, maxLen);
 
@@ -108,7 +125,6 @@ function pitchClassProfile(samples: Float32Array, sampleRate: number): number[] 
       pcp[n] += mag;
     }
   }
-  // Normalize
   const max = Math.max(...pcp);
   if (max > 0) for (let i = 0; i < 12; i++) pcp[i] /= max;
   return pcp;
@@ -144,6 +160,49 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    // ---------- AUTH ----------
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const SUPABASE_SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    if (!token) {
+      return new Response(JSON.stringify({ error: "Authentication required." }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const supaUser = createClient(SUPABASE_URL, SUPABASE_ANON, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    });
+    const { data: userData, error: userErr } = await supaUser.auth.getUser(token);
+    if (userErr || !userData?.user) {
+      return new Response(JSON.stringify({ error: "Invalid session." }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const user = userData.user;
+
+    const supaAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE);
+    const { data: roleRows } = await supaAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id);
+    const roles = (roleRows || []).map((r: { role: string }) => r.role);
+    const isAdmin = roles.includes("admin");
+    const isPaid = roles.includes("paid") || isAdmin;
+
+    // ---------- RATE LIMIT ----------
+    const limit = isAdmin ? RATE_ADMIN : isPaid ? RATE_PAID : RATE_FREE;
+    const rl = rateLimit(user.id, limit);
+    if (!rl.ok) {
+      return new Response(JSON.stringify({ error: `Slow down — limit ${limit}/min. Retry in ${rl.retryAfter}s.` }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": String(rl.retryAfter) },
+      });
+    }
+
     const contentType = req.headers.get("content-type") ?? "";
     let buf: ArrayBuffer;
     let filename = "audio";
@@ -163,8 +222,9 @@ Deno.serve(async (req) => {
       buf = await req.arrayBuffer();
     }
 
-    if (buf.byteLength > 30 * 1024 * 1024) {
-      return new Response(JSON.stringify({ error: "File too large. Max 30MB." }), {
+    const sizeCap = isPaid ? 30 * 1024 * 1024 : 10 * 1024 * 1024;
+    if (buf.byteLength > sizeCap) {
+      return new Response(JSON.stringify({ error: `File too large. Max ${sizeCap / 1024 / 1024}MB.` }), {
         status: 413,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -205,7 +265,7 @@ Deno.serve(async (req) => {
   } catch (e) {
     console.error("detect-key error:", e);
     return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Detection failed" }),
+      JSON.stringify({ error: "Key detection failed. Ensure the file is a valid WAV." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
