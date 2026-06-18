@@ -47,7 +47,7 @@ export default function AdminPage() {
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
   const [setups, setSetups] = useState<SetupRow[]>([]);
-  const [inventories, setInventories] = useState<InventoryRow[]>([]);
+  
   const [loading, setLoading] = useState(true);
   const [userQuery, setUserQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "paid" | "free" | "none">("all");
@@ -244,7 +244,7 @@ export default function AdminPage() {
         </TabsContent>
 
         <TabsContent value="inventories">
-          <InventoriesTab inventories={inventories} users={users} loading={loading} />
+          <InventoriesTab users={users} />
         </TabsContent>
 
 
