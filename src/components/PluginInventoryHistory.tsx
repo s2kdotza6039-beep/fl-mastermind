@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { History, Loader2, Undo2, ChevronDown, ChevronUp, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { History, Loader2, Undo2, ChevronDown, ChevronUp, Search, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
+import { toast } from "sonner";
 
 export interface HistorySnapshot {
   id: string;
@@ -121,6 +122,62 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
     setPendingRestore(null);
   };
 
+  const exportHistory = () => {
+    const source = filtered;
+    if (source.length === 0) {
+      toast.error("No snapshots to export.");
+      return;
+    }
+    const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const header = [
+      "snapshot_id","created_at","change_type","inventory_completed",
+      "native_count","third_party_count","custom_count","total_count",
+      "added_vs_previous","removed_vs_previous",
+      "native_plugins","third_party_plugins","custom_plugins",
+    ].join(",") + "\n";
+    // Snapshots are newest-first; compare each row against the next (older) one for added/removed.
+    const ordered = [...source].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
+    const body = ordered.map((s, i) => {
+      const prev = i > 0 ? ordered[i - 1] : null;
+      const ciSetDiff = (cur: string[], tgt: string[]) => {
+        const c = new Set(cur.map((x) => x.toLowerCase()));
+        const t = new Set(tgt.map((x) => x.toLowerCase()));
+        return {
+          added: tgt.filter((x) => !c.has(x.toLowerCase())).length,
+          removed: cur.filter((x) => !t.has(x.toLowerCase())).length,
+        };
+      };
+      const dN = prev ? ciSetDiff(prev.native_plugins, s.native_plugins) : { added: s.native_plugins.length, removed: 0 };
+      const dT = prev ? ciSetDiff(prev.third_party_plugins, s.third_party_plugins) : { added: s.third_party_plugins.length, removed: 0 };
+      const dC = prev ? ciSetDiff(prev.custom_plugins, s.custom_plugins) : { added: s.custom_plugins.length, removed: 0 };
+      const total = s.native_plugins.length + s.third_party_plugins.length + s.custom_plugins.length;
+      return [
+        s.id,
+        s.created_at,
+        s.change_type,
+        s.inventory_completed,
+        s.native_plugins.length,
+        s.third_party_plugins.length,
+        s.custom_plugins.length,
+        total,
+        dN.added + dT.added + dC.added,
+        dN.removed + dT.removed + dC.removed,
+        esc(s.native_plugins.join("; ")),
+        esc(s.third_party_plugins.join("; ")),
+        esc(s.custom_plugins.join("; ")),
+      ].join(",");
+    }).join("\n");
+
+    const blob = new Blob([header + body], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `plugin-inventory-history-${Date.now()}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${source.length} snapshot${source.length === 1 ? "" : "s"}.`);
+  };
+
   return (
     <Card className="studio-card p-6">
       <button
@@ -141,15 +198,28 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
 
       {open && (
         <div className="mt-4 space-y-3">
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-            <Input
-              value={query}
-              onChange={(e) => { setQuery(e.target.value); setPage(0); }}
-              placeholder="Search by date, plugin name, 'create', 'update', 'complete'…"
-              className="pl-9 h-8 text-xs"
-            />
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <Input
+                value={query}
+                onChange={(e) => { setQuery(e.target.value); setPage(0); }}
+                placeholder="Search by date, plugin name, 'create', 'update', 'complete'…"
+                className="pl-9 h-8 text-xs"
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs"
+              onClick={exportHistory}
+              disabled={loading || filtered.length === 0}
+              title="Download a CSV of these snapshots with per-row added/removed counts"
+            >
+              <Download className="w-3.5 h-3.5 mr-1.5" /> Export history
+            </Button>
           </div>
+
 
           {loading ? (
             <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-primary" /></div>
