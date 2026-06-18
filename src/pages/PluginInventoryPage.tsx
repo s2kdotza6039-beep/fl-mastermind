@@ -259,19 +259,63 @@ export default function PluginInventoryPage() {
                 <Button type="button" onClick={() => addCustom()} variant="outline"><Plus className="w-4 h-4 mr-1" /> Add</Button>
               </div>
               {showSuggestions && customSuggestions.length > 0 && (
-                <div className="absolute z-10 left-0 right-[88px] mt-1 rounded-md border border-border bg-popover shadow-lg overflow-hidden">
-                  {customSuggestions.map((s) => (
+                <div
+                  className="absolute z-10 left-0 right-0 mt-1 rounded-md border border-border bg-popover shadow-lg overflow-hidden"
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  <div className="px-3 py-2 text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border/60 flex items-center justify-between">
+                    <span>Suggestions ({customSuggestions.length})</span>
                     <button
-                      key={s}
                       type="button"
-                      onMouseDown={(e) => { e.preventDefault(); addCustom(s); }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
+                      onClick={() => {
+                        const all = new Set(customSuggestions);
+                        const allSelected = customSuggestions.every((s) => selectedSuggestions.has(s));
+                        setSelectedSuggestions(allSelected ? new Set() : all);
+                      }}
+                      className="text-primary hover:underline normal-case tracking-normal text-xs"
                     >
-                      {s}
+                      {customSuggestions.every((s) => selectedSuggestions.has(s)) ? "Clear all" : "Select all"}
                     </button>
-                  ))}
+                  </div>
+                  <div className="max-h-64 overflow-y-auto">
+                    {customSuggestions.map((s) => {
+                      const checked = selectedSuggestions.has(s);
+                      return (
+                        <div
+                          key={s}
+                          className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted cursor-pointer"
+                          onClick={() => toggleSuggestion(s)}
+                        >
+                          {checked ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4 text-muted-foreground" />}
+                          <span className="flex-1">{s}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); addCustom(s); }}
+                            className="text-[10px] text-muted-foreground hover:text-primary"
+                          >
+                            add only
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="px-3 py-2 border-t border-border/60 flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-muted-foreground">
+                      {selectedSuggestions.size} selected
+                    </span>
+                    <Button
+                      size="sm"
+                      type="button"
+                      onClick={addSelectedSuggestions}
+                      disabled={selectedSuggestions.size === 0}
+                      className="h-7 text-xs"
+                    >
+                      <Plus className="w-3 h-3 mr-1" /> Add selected ({selectedSuggestions.size})
+                    </Button>
+                  </div>
                 </div>
               )}
+
             </div>
             {custom.length > 0 && (
               <div className="flex flex-wrap gap-2">
