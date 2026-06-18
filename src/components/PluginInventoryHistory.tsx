@@ -632,18 +632,18 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
                             size="sm"
                             variant={isRegression ? "destructive" : "default"}
                             className="flex-1 h-7 text-xs"
-                            onClick={async () => {
-                              setSheetRestoring(true);
-                              await onRestore(s);
-                              setSheetRestoring(false);
+                            onClick={() => {
+                              // Hand off to the final safety modal — apply happens there.
                               setSheetConfirming(false);
                               setPointDetail(null);
+                              openFinalConfirm(s);
                             }}
                             disabled={sheetRestoring}
                           >
-                            {sheetRestoring ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Undo2 className="w-3 h-3 mr-1" />}
-                            {isRegression ? "Restore anyway" : "Confirm restore"}
+                            <Undo2 className="w-3 h-3 mr-1" />
+                            {isRegression ? "Review &amp; confirm restore" : "Review &amp; confirm restore"}
                           </Button>
+
                         </div>
                       </div>
                     );
