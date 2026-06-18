@@ -8,7 +8,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageHeader } from "@/components/PageHeader";
-import { Shield, Users, Activity, AlertTriangle, Crown, Loader2, Search, X } from "lucide-react";
+import { Shield, Users, Activity, AlertTriangle, Crown, Loader2, Search, X, Sliders, Download } from "lucide-react";
 import { toast } from "sonner";
 
 
@@ -20,14 +20,26 @@ interface UserRow {
 }
 interface LogRow { id: string; user_id: string | null; event_type: string; metadata: any; created_at: string; }
 interface AlertRow { id: string; user_id: string | null; severity: string; alert_type: string; message: string; resolved: boolean; created_at: string; }
+interface SetupRow {
+  user_id: string;
+  fl_version: string | null;
+  fl_edition: string | null;
+  main_use: string | null;
+  main_genre: string | null;
+  skill_level: string | null;
+  setup_completed: boolean;
+  updated_at: string;
+}
 
 export default function AdminPage() {
   const { user } = useAuth();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
+  const [setups, setSetups] = useState<SetupRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [userQuery, setUserQuery] = useState("");
+  const [setupQuery, setSetupQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "paid" | "free" | "none">("all");
 
   const filteredUsers = useMemo(() => {
@@ -51,12 +63,13 @@ export default function AdminPage() {
 
   async function load() {
     setLoading(true);
-    const [profilesQ, rolesQ, logsQ, alertsQ, emailsQ] = await Promise.all([
+    const [profilesQ, rolesQ, logsQ, alertsQ, emailsQ, setupsQ] = await Promise.all([
       supabase.from("profiles").select("user_id, display_name").limit(500),
       supabase.from("user_roles").select("user_id, role"),
       supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(100),
       supabase.from("security_alerts").select("*").order("created_at", { ascending: false }).limit(100),
       supabase.rpc("admin_list_user_emails"),
+      supabase.from("user_studio_setup").select("user_id, fl_version, fl_edition, main_use, main_genre, skill_level, setup_completed, updated_at").limit(500),
     ]);
     if (profilesQ.data && rolesQ.data) {
       const emailMap = new Map<string, string>();
@@ -86,6 +99,7 @@ export default function AdminPage() {
     }
     if (logsQ.data) setLogs(logsQ.data as LogRow[]);
     if (alertsQ.data) setAlerts(alertsQ.data as AlertRow[]);
+    if (setupsQ.data) setSetups(setupsQ.data as SetupRow[]);
     setLoading(false);
   }
 
