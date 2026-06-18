@@ -57,6 +57,14 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
   const [sheetConfirming, setSheetConfirming] = useState(false);
   const [sheetRestoring, setSheetRestoring] = useState(false);
 
+  // Final safety modal — last stop before a restore is actually applied. Both the
+  // timeline "Restore" button and the snapshot-detail Sheet route through here so
+  // there's exactly one place that calls onRestore().
+  const [finalConfirm, setFinalConfirm] = useState<HistorySnapshot | null>(null);
+  const [finalAck, setFinalAck] = useState(false);
+  const [finalRestoring, setFinalRestoring] = useState(false);
+  const openFinalConfirm = (s: HistorySnapshot) => { setFinalAck(false); setFinalConfirm(s); };
+
   useEffect(() => {
     if (!user) return;
     (async () => {
