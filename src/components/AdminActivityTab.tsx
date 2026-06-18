@@ -332,8 +332,11 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
   };
 
   const clearAll = () => {
-    setEventFilter("all"); setQuery(""); setSnapshotId(""); setUserQuery("");
-    setPreset(0); setFrom(""); setTo("");
+    // Reset every URL-backed filter at once.
+    setParam({
+      a_event: null, a_q: null, a_snap: null, a_user: null,
+      a_preset: null, a_from: null, a_to: null, a_sort: null,
+    });
   };
 
   const renderMeta = (r: LogRow) => {
