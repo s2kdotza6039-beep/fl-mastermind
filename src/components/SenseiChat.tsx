@@ -15,21 +15,37 @@ import { editionToTier, forbiddenPlugins, eligiblePlugins, tierLabel } from "@/l
 
 // Detect mentions of owned plugins in assistant text.
 // Short brand names (≤3 chars) use word-boundary to avoid false matches.
-function findPrioritized(text: string, owned: string[]): string[] {
+type PriorityHit = { name: string; rule: "word-boundary" | "substring"; snippet: string };
+function findPrioritized(text: string, owned: string[]): PriorityHit[] {
   if (!text || owned.length === 0) return [];
-  const lower = text.toLowerCase();
-  const hits: string[] = [];
+  const hits: PriorityHit[] = [];
+  const seen = new Set<string>();
   for (const name of owned) {
+    if (seen.has(name.toLowerCase())) continue;
     const n = name.toLowerCase();
+    const esc = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    let match: RegExpExecArray | null = null;
+    let rule: PriorityHit["rule"];
     if (n.length <= 3) {
-      const re = new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-      if (re.test(text)) hits.push(name);
-    } else if (lower.includes(n)) {
-      hits.push(name);
+      const re = new RegExp(`\\b${esc}\\b`, "i");
+      match = re.exec(text);
+      rule = "word-boundary";
+    } else {
+      const re = new RegExp(esc, "i");
+      match = re.exec(text);
+      rule = "substring";
+    }
+    if (match) {
+      const start = Math.max(0, match.index - 25);
+      const end = Math.min(text.length, match.index + match[0].length + 25);
+      const snippet = (start > 0 ? "…" : "") + text.slice(start, end).replace(/\s+/g, " ").trim() + (end < text.length ? "…" : "");
+      hits.push({ name, rule, snippet });
+      seen.add(n);
     }
   }
-  return Array.from(new Set(hits));
+  return hits;
 }
+
 
 interface SenseiChatProps {
   initialPrompt?: string;
