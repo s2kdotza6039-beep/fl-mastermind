@@ -175,11 +175,30 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
   const setTo = (v: string) => setParam({ a_to: v, a_preset: "0" });
   const setSort = (v: string) => setParam({ a_sort: v });
 
-  // Column picker
-  const [columnKeys, setColumnKeys] = useState<string[]>(loadStoredColumns);
+  // Column picker — URL ↔ localStorage. The URL wins on initial load so a shared
+  // link reproduces the exact export shape (column set + order).
+  const urlCols = searchParams.get("a_cols");
+  const parseCols = (raw: string | null): string[] | null => {
+    if (!raw) return null;
+    const keys = raw.split(",").map((k) => k.trim()).filter(Boolean);
+    const valid = keys.filter((k) => ALL_COLUMNS.some((c) => c.key === k));
+    return valid.length > 0 ? valid : null;
+  };
+  const [columnKeys, setColumnKeys] = useState<string[]>(() => parseCols(urlCols) ?? loadStoredColumns());
   useEffect(() => {
     try { localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(columnKeys)); } catch { /* ignore */ }
+    const joined = columnKeys.join(",");
+    const defaultJoined = DEFAULT_COLUMN_KEYS.join(",");
+    // Only write the URL when it differs from default, to keep links clean.
+    setParam({ a_cols: joined === defaultJoined ? null : joined });
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [columnKeys]);
+  // Adopt URL changes on back/forward navigation.
+  useEffect(() => {
+    const fromUrl = parseCols(urlCols);
+    if (fromUrl && fromUrl.join(",") !== columnKeys.join(",")) setColumnKeys(fromUrl);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [urlCols]);
 
   // Keyboard shortcut targets
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -192,8 +211,31 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
   const [exportAttempt, setExportAttempt] = useState(0);
   // Last-failure diagnostics for the error banner
   const [exportLastFail, setExportLastFail] = useState<{ attempt: number; message: string; nextDelayMs: number | null } | null>(null);
-  // Cooperative cancellation — flipped by the Cancel button; checked at every await boundary.
+  // Robust cancellation via AbortController — aborts the in-flight Supabase request
+  // immediately and breaks the retry loop. We also flip a ref so backoff sleeps wake.
+  const abortRef = useRef<AbortController | null>(null);
   const cancelRef = useRef(false);
+
+  // Per-run diagnostics — captured for every export attempt and downloadable as JSON.
+  interface ExportDiag {
+    started_at: string;
+    ended_at: string;
+    duration_ms: number;
+    outcome: "success" | "error" | "cancelled" | "empty";
+    attempts: { attempt: number; ok: boolean; duration_ms: number; error?: string }[];
+    last_error: string | null;
+    tz: Tz;
+    rows: number;
+    filters: Record<string, unknown>;
+    columns: string[];
+    sort: string;
+  }
+  const [exportDiag, setExportDiag] = useState<ExportDiag | null>(null);
+  // Snapshot of filters at the time of the last failed run — drives the "Retry failed export" button.
+  const [lastFailedSnapshot, setLastFailedSnapshot] = useState<{
+    eventFilter: EventFilter; query: string; snapshotId: string; userQuery: string;
+    preset: number; from: string; to: string; sort: string; tz: Tz; columnKeys: string[];
+  } | null>(null);
 
   // CSV timestamp timezone — URL wins (shareable), then localStorage, then "local".
   const urlTz = searchParams.get("a_tz");
