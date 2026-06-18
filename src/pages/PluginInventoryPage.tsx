@@ -519,7 +519,11 @@ export default function PluginInventoryPage() {
             )}
           </Card>
 
-          <PluginInventoryHistory onRestore={onRestoreSnapshot} reloadKey={historyReloadKey} />
+          <PluginInventoryHistory
+            onRestore={onRestoreSnapshot}
+            reloadKey={historyReloadKey}
+            current={{ native, third, custom }}
+          />
 
 
 
