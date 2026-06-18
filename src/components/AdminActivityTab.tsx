@@ -458,7 +458,7 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
     }
 
     if (lastErr) {
-      const msg = `${lastErr?.message ?? "Export failed."} (after ${EXPORT_MAX_ATTEMPTS} attempt${EXPORT_MAX_ATTEMPTS === 1 ? "" : "s"})`;
+      const msg = `${lastErr?.message ?? "Export failed."} (after ${EXPORT_MAX_ATTEMPTS} attempts)`;
       setExportError(msg);
       toast.error(msg);
       setExportPhase("idle");
