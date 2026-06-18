@@ -127,6 +127,52 @@ export default function PluginInventoryPage() {
       .slice(0, 8);
   }, [customDraft, native, third, custom]);
 
+  // Reset/clamp active highlight when the suggestion list changes
+  useEffect(() => {
+    if (customSuggestions.length === 0) setActiveIdx(0);
+    else if (activeIdx >= customSuggestions.length) setActiveIdx(customSuggestions.length - 1);
+  }, [customSuggestions, activeIdx]);
+
+  const handleCustomKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const open = showSuggestions && customSuggestions.length > 0;
+    if (e.key === "ArrowDown") {
+      if (!open) return;
+      e.preventDefault();
+      setActiveIdx((i) => (i + 1) % customSuggestions.length);
+    } else if (e.key === "ArrowUp") {
+      if (!open) return;
+      e.preventDefault();
+      setActiveIdx((i) => (i - 1 + customSuggestions.length) % customSuggestions.length);
+    } else if (e.key === " " && open) {
+      // Toggle highlighted suggestion (Space is consumed, so name typing uses arrows first)
+      e.preventDefault();
+      const s = customSuggestions[activeIdx];
+      if (s) toggleSuggestion(s);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (open && selectedSuggestions.size > 0) {
+        addSelectedSuggestions();
+      } else if (open && customSuggestions[activeIdx]) {
+        addCustom(customSuggestions[activeIdx]);
+      } else {
+        addCustom();
+      }
+    } else if (e.key === "Escape") {
+      if (open) {
+        e.preventDefault();
+        setShowSuggestions(false);
+      }
+    } else if (e.key === "Home" && open) {
+      e.preventDefault();
+      setActiveIdx(0);
+    } else if (e.key === "End" && open) {
+      e.preventDefault();
+      setActiveIdx(customSuggestions.length - 1);
+    }
+  };
+
+
+
   const performSave = async (
     payload: { native_plugins: string[]; third_party_plugins: string[]; custom_plugins: string[] },
     opts: { isUndo?: boolean } = {},
