@@ -274,7 +274,19 @@ export default function PluginInventoryPage() {
   };
 
   const onRestoreSnapshot = async (snap: HistorySnapshot) => {
-    // Restore = save current state's prior into the table; trigger captures a new history row.
+    // Compute diff vs current edit state for the audit log BEFORE we mutate state.
+    const ciDiff = (cur: string[], tgt: string[]) => {
+      const c = new Set(cur.map((x) => x.toLowerCase()));
+      const t = new Set(tgt.map((x) => x.toLowerCase()));
+      return {
+        added: tgt.filter((x) => !c.has(x.toLowerCase())).length,
+        removed: cur.filter((x) => !t.has(x.toLowerCase())).length,
+      };
+    };
+    const dN = ciDiff(native, snap.native_plugins);
+    const dT = ciDiff(third, snap.third_party_plugins);
+    const dC = ciDiff(custom, snap.custom_plugins);
+
     setNative(snap.native_plugins);
     setThird(snap.third_party_plugins);
     setCustom(snap.custom_plugins);
@@ -285,16 +297,72 @@ export default function PluginInventoryPage() {
       custom_plugins: snap.custom_plugins,
     });
     setSaving(false);
-    if (res.error) toast.error(`Couldn't restore snapshot: ${res.error}`);
+    if (res.error) {
+      toast.error(`Couldn't restore snapshot: ${res.error}`);
+      return;
+    }
+
+    // Best-effort admin-facing audit log for restores.
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from("activity_logs").insert({
+          user_id: user.id,
+          event_type: "plugin_inventory_restored",
+          metadata: {
+            snapshot_id: snap.id,
+            snapshot_created_at: snap.created_at,
+            snapshot_change_type: snap.change_type,
+            snapshot_inventory_completed: snap.inventory_completed,
+            added: dN.added + dT.added + dC.added,
+            removed: dN.removed + dT.removed + dC.removed,
+            native: dN,
+            third_party: dT,
+            custom: dC,
+            total_after: snap.native_plugins.length + snap.third_party_plugins.length + snap.custom_plugins.length,
+          },
+        });
+      }
+    } catch {
+      // non-fatal
+    }
   };
 
-  const onImportApply = (additions: { native: string[]; third: string[]; custom: string[] }) => {
+  const onImportApply = async (
+    additions: { native: string[]; third: string[]; custom: string[] },
+    stats?: { source: string | null; rows: number; added: number; skipped: number; duplicate: number; invalid: number },
+  ) => {
     // Merge case-insensitively against current edit state
     const ciHas = (list: string[], v: string) => list.some((x) => x.toLowerCase() === v.toLowerCase());
     setNative((prev) => [...prev, ...additions.native.filter((v) => !ciHas(prev, v))]);
     setThird((prev) => [...prev, ...additions.third.filter((v) => !ciHas(prev, v))]);
     setCustom((prev) => [...prev, ...additions.custom.filter((v) => !ciHas(prev, v))]);
+
+    // Best-effort admin-facing audit log for imports.
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from("activity_logs").insert({
+          user_id: user.id,
+          event_type: "plugin_inventory_imported",
+          metadata: {
+            source_file: stats?.source ?? null,
+            rows_processed: stats?.rows ?? 0,
+            added: stats?.added ?? additions.native.length + additions.third.length + additions.custom.length,
+            skipped: stats?.skipped ?? 0,
+            duplicate: stats?.duplicate ?? 0,
+            invalid: stats?.invalid ?? 0,
+            staged_native: additions.native.length,
+            staged_third_party: additions.third.length,
+            staged_custom: additions.custom.length,
+          },
+        });
+      }
+    } catch {
+      // non-fatal
+    }
   };
+
 
   // Inline duplicate detection for the bulk-add popover
   const draftTrimmed = customDraft.trim().replace(/\s+/g, " ");
