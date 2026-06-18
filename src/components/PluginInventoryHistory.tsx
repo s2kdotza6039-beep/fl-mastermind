@@ -391,7 +391,7 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
         </AlertDialogContent>
       </AlertDialog>
 
-      <Sheet open={!!pointDetail} onOpenChange={(o) => { if (!o) setPointDetail(null); }}>
+      <Sheet open={!!pointDetail} onOpenChange={(o) => { if (!o) { setPointDetail(null); setSheetConfirming(false); } }}>
         <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
           {pointDetail && (() => {
             const s = pointDetail.snap;
