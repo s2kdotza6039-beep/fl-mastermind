@@ -109,12 +109,52 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
   return (
     <div className={cn("flex flex-col h-full", compact && "max-h-[600px]")}>
       {eligibility && (
-        <div className="border-b border-border bg-muted/30 px-4 py-2 flex items-start gap-2 text-xs">
-          <Info className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
-          <div className="min-w-0">
-            <span className="font-semibold text-foreground">{eligibility.label}.</span>{" "}
-            <span className="text-muted-foreground">{eligibility.reason}</span>
-          </div>
+        <div className="border-b border-border bg-muted/30 text-xs">
+          <button
+            type="button"
+            onClick={() => setEligibilityOpen((o) => !o)}
+            aria-expanded={eligibilityOpen}
+            title={`${eligibility.blocked.length} plugin${eligibility.blocked.length === 1 ? "" : "s"} blocked on ${eligibility.label}. Click to view full list.`}
+            className="w-full px-4 py-2 flex items-start gap-2 text-left hover:bg-muted/50 transition-colors"
+          >
+            <Info className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
+            <div className="min-w-0 flex-1">
+              <span className="font-semibold text-foreground">{eligibility.label}.</span>{" "}
+              <span className="text-muted-foreground">{eligibility.reason}</span>
+            </div>
+            {eligibilityOpen ? (
+              <ChevronUp className="w-3.5 h-3.5 mt-0.5 text-muted-foreground shrink-0" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5 mt-0.5 text-muted-foreground shrink-0" />
+            )}
+          </button>
+          {eligibilityOpen && (
+            <div className="px-4 pb-3 pt-1 grid sm:grid-cols-2 gap-3 border-t border-border/60">
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-destructive/80 mb-1">
+                  Blocked ({eligibility.blocked.length})
+                </div>
+                <ul className="space-y-0.5 text-muted-foreground">
+                  {eligibility.blocked.map((p) => (
+                    <li key={p} className="truncate">· {p}</li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-[10px] text-muted-foreground/80">
+                  Sensei substitutes these with the closest allowed stock plugin and notes the upgrade path.
+                </p>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-primary/80 mb-1">
+                  Allowed ({eligibility.allowed.length})
+                </div>
+                <ul className="space-y-0.5 text-muted-foreground max-h-40 overflow-y-auto scrollbar-thin pr-1">
+                  {eligibility.allowed.map((p) => (
+                    <li key={p} className="truncate">· {p}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
         </div>
       )}
       <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-4 py-6 space-y-4">
