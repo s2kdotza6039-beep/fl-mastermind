@@ -1,0 +1,75 @@
+{
+  "scanned_at": "2026-06-18T10:12:50Z",
+  "scanners": {
+    "supabase": {
+      "status": "success",
+      "findings": [
+        {
+          "id": "SUPA_authenticated_security_definer_function_executable",
+          "level": "warn",
+          "name": "Signed-In Users Can Execute SECURITY DEFINER Function",
+          "target": "public.has_role(uuid, app_role)",
+          "target_type": "function",
+          "status": "accepted",
+          "note": "Required for RLS policy evaluation. Documented in @security-memory.",
+          "doc": "https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable"
+        },
+        {
+          "id": "SUPA_authenticated_security_definer_function_executable",
+          "level": "warn",
+          "name": "Signed-In Users Can Execute SECURITY DEFINER Function",
+          "target": "public.admin_list_user_emails()",
+          "target_type": "function",
+          "status": "accepted",
+          "note": "Function self-gates with has_role(auth.uid(),'admin'). Non-admins receive empty result.",
+          "doc": "https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable"
+        }
+      ]
+    },
+    "supabase_lov": {
+      "status": "success",
+      "findings": [
+        {
+          "id": "CLIENT_INSERT_ACTIVITY_LOGS",
+          "level": "warn",
+          "name": "Users can self-report IP addresses and user agents in activity logs",
+          "target": "public.activity_logs",
+          "target_type": "table",
+          "status": "fixed",
+          "note": "INSERT policy tightened: ip_address and user_agent must be NULL from client."
+        },
+        {
+          "id": "CLIENT_INSERT_SETUP_HISTORY",
+          "level": "warn",
+          "name": "Users can directly insert rows into studio setup history",
+          "target": "public.user_studio_setup_history",
+          "target_type": "table",
+          "status": "fixed",
+          "note": "Client INSERT policy dropped and INSERT grant revoked. Trigger-only writes."
+        }
+      ]
+    },
+    "connector_security_scan": {
+      "status": "success",
+      "findings": []
+    },
+    "trust_surface": {
+      "status": "success",
+      "findings": [
+        {
+          "id": "missing_trust_surface_page",
+          "level": "info",
+          "name": "Add a trust page",
+          "target": "/trust",
+          "target_type": "route",
+          "status": "open",
+          "note": "Privacy & Terms pages exist; dedicated /trust landing page recommended."
+        }
+      ]
+    },
+    "agent_security": {
+      "status": "success",
+      "findings": []
+    }
+  }
+}

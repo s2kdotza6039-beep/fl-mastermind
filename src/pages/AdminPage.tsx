@@ -14,6 +14,7 @@ import { Shield, Users, Activity, AlertTriangle, Crown, Loader2, Search, X, Slid
 import { toast } from "sonner";
 import { editionToTier, tierLabel, eligiblePlugins, forbiddenPlugins, type FlEditionTier } from "@/lib/fl-plugin-eligibility";
 import { AdminActivityTab } from "@/components/AdminActivityTab";
+import { SecurityIssuesPanel } from "@/components/SecurityIssuesPanel";
 
 
 interface UserRow {
@@ -159,6 +160,7 @@ export default function AdminPage() {
           <TabsTrigger value="inventories">Plugin Inventories</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="alerts">Alerts {unresolved > 0 && <Badge variant="destructive" className="ml-2">{unresolved}</Badge>}</TabsTrigger>
+          <TabsTrigger value="security">Security</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users">
@@ -273,6 +275,12 @@ export default function AdminPage() {
             ))}
             {alerts.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">No alerts. All quiet.</p>}
           </Card>
+        </TabsContent>
+
+        <TabsContent value="security">
+          <div className="mt-4">
+            <SecurityIssuesPanel />
+          </div>
         </TabsContent>
       </Tabs>
     </div>
