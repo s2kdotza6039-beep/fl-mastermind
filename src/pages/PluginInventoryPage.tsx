@@ -419,69 +419,85 @@ export default function PluginInventoryPage() {
 
                 <Button type="button" onClick={() => addCustom()} variant="outline"><Plus className="w-4 h-4 mr-1" /> Add</Button>
               </div>
-              {showSuggestions && customSuggestions.length > 0 && (
+              {showSuggestions && (customSuggestions.length > 0 || draftIsDuplicate) && (
                 <div
                   className="absolute z-10 left-0 right-0 mt-1 rounded-md border border-border bg-popover shadow-lg overflow-hidden"
                   onMouseDown={(e) => e.preventDefault()}
                 >
-                  <div className="px-3 py-2 text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border/60 flex items-center justify-between">
-                    <span>Suggestions ({customSuggestions.length})</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const all = new Set(customSuggestions);
-                        const allSelected = customSuggestions.every((s) => selectedSuggestions.has(s));
-                        setSelectedSuggestions(allSelected ? new Set() : all);
-                      }}
-                      className="text-primary hover:underline normal-case tracking-normal text-xs"
+                  {draftIsDuplicate && (
+                    <div
+                      role="alert"
+                      className="flex items-start gap-2 px-3 py-2 text-xs bg-destructive/10 text-destructive border-b border-destructive/30"
                     >
-                      {customSuggestions.every((s) => selectedSuggestions.has(s)) ? "Clear all" : "Select all"}
-                    </button>
-                  </div>
-                  <div className="max-h-64 overflow-y-auto" role="listbox" id="custom-plugin-listbox" aria-multiselectable="true">
-                    {customSuggestions.map((s, idx) => {
-                      const checked = selectedSuggestions.has(s);
-                      const active = idx === activeIdx;
-                      return (
-                        <div
-                          key={s}
-                          id={`custom-suggestion-${idx}`}
-                          role="option"
-                          aria-selected={checked}
-                          className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer ${active ? "bg-primary/10 ring-1 ring-inset ring-primary/40" : "hover:bg-muted"}`}
-                          onMouseEnter={() => setActiveIdx(idx)}
-                          onClick={() => toggleSuggestion(s)}
+                      <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                      <div className="flex-1">
+                        <strong>"{draftTrimmed}"</strong> is already in your inventory (case-insensitive). Pick a different name or remove the existing entry first.
+                      </div>
+                    </div>
+                  )}
+                  {customSuggestions.length > 0 && (
+                    <>
+                      <div className="px-3 py-2 text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border/60 flex items-center justify-between">
+                        <span>Suggestions ({customSuggestions.length})</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const all = new Set(customSuggestions);
+                            const allSelected = customSuggestions.every((s) => selectedSuggestions.has(s));
+                            setSelectedSuggestions(allSelected ? new Set() : all);
+                          }}
+                          className="text-primary hover:underline normal-case tracking-normal text-xs"
                         >
-                          {checked ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4 text-muted-foreground" />}
-                          <span className="flex-1">{s}</span>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); addCustom(s); }}
-                            className="text-[10px] text-muted-foreground hover:text-primary"
-                          >
-                            add only
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
+                          {customSuggestions.every((s) => selectedSuggestions.has(s)) ? "Clear all" : "Select all"}
+                        </button>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto" role="listbox" id="custom-plugin-listbox" aria-multiselectable="true">
+                        {customSuggestions.map((s, idx) => {
+                          const checked = selectedSuggestions.has(s);
+                          const active = idx === activeIdx;
+                          return (
+                            <div
+                              key={s}
+                              id={`custom-suggestion-${idx}`}
+                              role="option"
+                              aria-selected={checked}
+                              className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer ${active ? "bg-primary/10 ring-1 ring-inset ring-primary/40" : "hover:bg-muted"}`}
+                              onMouseEnter={() => setActiveIdx(idx)}
+                              onClick={() => toggleSuggestion(s)}
+                            >
+                              {checked ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4 text-muted-foreground" />}
+                              <span className="flex-1">{s}</span>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); addCustom(s); }}
+                                className="text-[10px] text-muted-foreground hover:text-primary"
+                              >
+                                add only
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
 
-                  <div className="px-3 py-2 border-t border-border/60 flex items-center justify-between gap-2">
-                    <span className="text-[10px] text-muted-foreground">
-                      {selectedSuggestions.size} selected
-                    </span>
-                    <Button
-                      size="sm"
-                      type="button"
-                      onClick={addSelectedSuggestions}
-                      disabled={selectedSuggestions.size === 0}
-                      className="h-7 text-xs"
-                    >
-                      <Plus className="w-3 h-3 mr-1" /> Add selected ({selectedSuggestions.size})
-                    </Button>
-                  </div>
+                      <div className="px-3 py-2 border-t border-border/60 flex items-center justify-between gap-2">
+                        <span className="text-[10px] text-muted-foreground">
+                          {selectedSuggestions.size} selected
+                        </span>
+                        <Button
+                          size="sm"
+                          type="button"
+                          onClick={addSelectedSuggestions}
+                          disabled={selectedSuggestions.size === 0}
+                          className="h-7 text-xs"
+                        >
+                          <Plus className="w-3 h-3 mr-1" /> Add selected ({selectedSuggestions.size})
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
+
 
             </div>
             {custom.length > 0 && (
