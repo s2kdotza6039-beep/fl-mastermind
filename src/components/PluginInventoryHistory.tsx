@@ -387,7 +387,13 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
   );
 }
 
-function CompletenessChart({ snaps }: { snaps: HistorySnapshot[] }) {
+function CompletenessChart({
+  snaps,
+  onPointClick,
+}: {
+  snaps: HistorySnapshot[];
+  onPointClick?: (s: HistorySnapshot, prev: HistorySnapshot | null) => void;
+}) {
   // Snapshots arrive newest-first; reverse so time runs left → right.
   const ordered = [...snaps].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
   if (ordered.length < 2) {
@@ -418,7 +424,7 @@ function CompletenessChart({ snaps }: { snaps: HistorySnapshot[] }) {
   return (
     <div className="border border-border rounded-md p-3 bg-muted/10">
       <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
-        <span className="uppercase tracking-widest">Plugin count over time</span>
+        <span className="uppercase tracking-widest">Plugin count over time {onPointClick && <span className="normal-case tracking-normal">· click a point for details</span>}</span>
         <span>
           {firstTotal} → {lastTotal}{" "}
           <span className={delta > 0 ? "text-emerald-500" : delta < 0 ? "text-destructive" : ""}>
@@ -430,18 +436,29 @@ function CompletenessChart({ snaps }: { snaps: HistorySnapshot[] }) {
         <path d={areaD} fill="hsl(var(--primary) / 0.15)" />
         <path d={pathD} fill="none" stroke="hsl(var(--primary))" strokeWidth={1.5} />
         {ordered.map((s, i) => (
-          <circle
-            key={s.id}
-            cx={P + i * stepX}
-            cy={yFor(totals[i])}
-            r={s.inventory_completed ? 2.5 : 1.5}
-            fill={s.inventory_completed ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))"}
-          >
-            <title>
-              {new Date(s.created_at).toLocaleString()} — {totals[i]} plugins
-              {s.inventory_completed ? " (complete)" : " (incomplete)"}
-            </title>
-          </circle>
+          <g key={s.id}>
+            {/* Invisible larger hit target for easier clicking */}
+            <circle
+              cx={P + i * stepX}
+              cy={yFor(totals[i])}
+              r={8}
+              fill="transparent"
+              className={onPointClick ? "cursor-pointer" : undefined}
+              onClick={onPointClick ? () => onPointClick(s, i > 0 ? ordered[i - 1] : null) : undefined}
+            />
+            <circle
+              cx={P + i * stepX}
+              cy={yFor(totals[i])}
+              r={s.inventory_completed ? 2.5 : 1.5}
+              fill={s.inventory_completed ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))"}
+              pointerEvents="none"
+            >
+              <title>
+                {new Date(s.created_at).toLocaleString()} — {totals[i]} plugins
+                {s.inventory_completed ? " (complete)" : " (incomplete)"}
+              </title>
+            </circle>
+          </g>
         ))}
       </svg>
       <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-1">
@@ -459,3 +476,4 @@ function CompletenessChart({ snaps }: { snaps: HistorySnapshot[] }) {
     </div>
   );
 }
+
