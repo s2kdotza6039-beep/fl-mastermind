@@ -188,6 +188,37 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
   // Export state (declared early so the keyboard-shortcut effect can reference it)
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [exportPhase, setExportPhase] = useState<ExportPhase>("idle");
+  const [exportAttempt, setExportAttempt] = useState(0);
+
+  // CSV timestamp timezone — persisted in localStorage. Only affects the banner.
+  const [tz, setTz] = useState<Tz>(() => {
+    try {
+      const raw = localStorage.getItem(TZ_STORAGE_KEY);
+      return raw === "utc" ? "utc" : "local";
+    } catch { return "local"; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(TZ_STORAGE_KEY, tz); } catch { /* ignore */ }
+  }, [tz]);
+
+  // Keyboard shortcuts on/off — URL wins (so it's shareable), else localStorage, else on.
+  const urlKbd = searchParams.get("a_kbd");
+  const [shortcutsEnabled, setShortcutsEnabledLocal] = useState<boolean>(() => {
+    if (urlKbd === "0") return false;
+    if (urlKbd === "1") return true;
+    try { return localStorage.getItem(SHORTCUTS_STORAGE_KEY) !== "0"; } catch { return true; }
+  });
+  useEffect(() => {
+    if (urlKbd === "0" && shortcutsEnabled) setShortcutsEnabledLocal(false);
+    else if (urlKbd === "1" && !shortcutsEnabled) setShortcutsEnabledLocal(true);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [urlKbd]);
+  const setShortcutsEnabled = (v: boolean) => {
+    setShortcutsEnabledLocal(v);
+    try { localStorage.setItem(SHORTCUTS_STORAGE_KEY, v ? "1" : "0"); } catch { /* ignore */ }
+    setParam({ a_kbd: v ? null : "0" });
+  };
 
   const userMap = useMemo(() => {
     const m = new Map<string, UserLike>();
