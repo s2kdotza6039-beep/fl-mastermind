@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { editionToTier, tierLabel, eligiblePlugins, forbiddenPlugins, type FlEditionTier } from "@/lib/fl-plugin-eligibility";
 import { AdminActivityTab } from "@/components/AdminActivityTab";
 import { SecurityIssuesPanel } from "@/components/SecurityIssuesPanel";
+import { AdminAudioReportsTab } from "@/components/AdminAudioReportsTab";
 
 
 interface UserRow {
@@ -161,6 +162,7 @@ export default function AdminPage() {
           <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="alerts">Alerts {unresolved > 0 && <Badge variant="destructive" className="ml-2">{unresolved}</Badge>}</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
+          <TabsTrigger value="audio">Audio Reports</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users">
@@ -281,6 +283,10 @@ export default function AdminPage() {
           <div className="mt-4">
             <SecurityIssuesPanel />
           </div>
+        </TabsContent>
+
+        <TabsContent value="audio">
+          <AdminAudioReportsTab />
         </TabsContent>
       </Tabs>
     </div>

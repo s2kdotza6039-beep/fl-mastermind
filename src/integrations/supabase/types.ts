@@ -44,6 +44,90 @@ export type Database = {
         }
         Relationships: []
       }
+      audio_analysis_reports: {
+        Row: {
+          band_high_db: number | null
+          band_highmid_db: number | null
+          band_low_db: number | null
+          band_lowmid_db: number | null
+          band_mid_db: number | null
+          bit_rate: number | null
+          bpm: number | null
+          channels: number | null
+          created_at: string
+          detected_issues: Json
+          detected_key: string | null
+          duration_sec: number | null
+          dynamic_range_db: number | null
+          file_format: string | null
+          file_name: string
+          file_size_bytes: number | null
+          id: string
+          lufs_estimate: number | null
+          peak_db: number | null
+          recommendations: Json
+          rms_db: number | null
+          sample_rate: number | null
+          stereo_width: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          band_high_db?: number | null
+          band_highmid_db?: number | null
+          band_low_db?: number | null
+          band_lowmid_db?: number | null
+          band_mid_db?: number | null
+          bit_rate?: number | null
+          bpm?: number | null
+          channels?: number | null
+          created_at?: string
+          detected_issues?: Json
+          detected_key?: string | null
+          duration_sec?: number | null
+          dynamic_range_db?: number | null
+          file_format?: string | null
+          file_name: string
+          file_size_bytes?: number | null
+          id?: string
+          lufs_estimate?: number | null
+          peak_db?: number | null
+          recommendations?: Json
+          rms_db?: number | null
+          sample_rate?: number | null
+          stereo_width?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          band_high_db?: number | null
+          band_highmid_db?: number | null
+          band_low_db?: number | null
+          band_lowmid_db?: number | null
+          band_mid_db?: number | null
+          bit_rate?: number | null
+          bpm?: number | null
+          channels?: number | null
+          created_at?: string
+          detected_issues?: Json
+          detected_key?: string | null
+          duration_sec?: number | null
+          dynamic_range_db?: number | null
+          file_format?: string | null
+          file_name?: string
+          file_size_bytes?: number | null
+          id?: string
+          lufs_estimate?: number | null
+          peak_db?: number | null
+          recommendations?: Json
+          rms_db?: number | null
+          sample_rate?: number | null
+          stereo_width?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
