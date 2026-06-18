@@ -38,6 +38,7 @@ export default function PluginInventoryPage() {
       setThird(t);
       setCustom(c);
       setSavedSnapshot({ n: sortKey(n), t: sortKey(t), c: sortKey(c) });
+      setSavedCompleted(!!inventory.inventory_completed);
     }
   }, [inventory]);
 
