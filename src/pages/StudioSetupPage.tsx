@@ -43,6 +43,8 @@ export default function StudioSetupPage() {
   const [skillLevel, setSkillLevel] = useState("");
   const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [pendingRevert, setPendingRevert] = useState<HistoryRow | null>(null);
+  const [revertingId, setRevertingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (setup) {
