@@ -30,6 +30,33 @@ type EventFilter = "all" | "plugin_inventory_imported" | "plugin_inventory_resto
 const PAGE_SIZE = 25;
 const SUMMARY_CAP = 5000;
 const COLUMN_STORAGE_KEY = "studio-sensei.admin-activity-columns.v1";
+const TZ_STORAGE_KEY = "studio-sensei.admin-activity-tz.v1";
+const SHORTCUTS_STORAGE_KEY = "studio-sensei.admin-activity-shortcuts.v1";
+
+// Export retry tuning. Keep this small — exports run interactively, so 4 attempts
+// with exponential backoff (0.5s, 1s, 2s) gives ~3.5s of grace before surfacing.
+const EXPORT_MAX_ATTEMPTS = 4;
+const EXPORT_BACKOFF_BASE_MS = 500;
+
+type ExportPhase = "idle" | "requesting" | "generating" | "downloading" | "done";
+const PHASE_LABEL: Record<ExportPhase, string> = {
+  idle: "",
+  requesting: "Requesting data",
+  generating: "Generating CSV",
+  downloading: "Downloading",
+  done: "Done",
+};
+const PHASE_PERCENT: Record<ExportPhase, number> = {
+  idle: 0, requesting: 25, generating: 70, downloading: 90, done: 100,
+};
+
+type Tz = "local" | "utc";
+const formatTs = (iso: string, tz: Tz) =>
+  tz === "utc" ? new Date(iso).toISOString() : new Date(iso).toLocaleString();
+const tzLabel = (tz: Tz) =>
+  tz === "utc"
+    ? "UTC"
+    : `Local (${Intl.DateTimeFormat().resolvedOptions().timeZone || "browser"})`;
 
 const SORT_OPTIONS: { value: string; label: string }[] = [
   { value: "created_at:desc", label: "Newest first" },
@@ -161,6 +188,37 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
   // Export state (declared early so the keyboard-shortcut effect can reference it)
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [exportPhase, setExportPhase] = useState<ExportPhase>("idle");
+  const [exportAttempt, setExportAttempt] = useState(0);
+
+  // CSV timestamp timezone — persisted in localStorage. Only affects the banner.
+  const [tz, setTz] = useState<Tz>(() => {
+    try {
+      const raw = localStorage.getItem(TZ_STORAGE_KEY);
+      return raw === "utc" ? "utc" : "local";
+    } catch { return "local"; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(TZ_STORAGE_KEY, tz); } catch { /* ignore */ }
+  }, [tz]);
+
+  // Keyboard shortcuts on/off — URL wins (so it's shareable), else localStorage, else on.
+  const urlKbd = searchParams.get("a_kbd");
+  const [shortcutsEnabled, setShortcutsEnabledLocal] = useState<boolean>(() => {
+    if (urlKbd === "0") return false;
+    if (urlKbd === "1") return true;
+    try { return localStorage.getItem(SHORTCUTS_STORAGE_KEY) !== "0"; } catch { return true; }
+  });
+  useEffect(() => {
+    if (urlKbd === "0" && shortcutsEnabled) setShortcutsEnabledLocal(false);
+    else if (urlKbd === "1" && !shortcutsEnabled) setShortcutsEnabledLocal(true);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [urlKbd]);
+  const setShortcutsEnabled = (v: boolean) => {
+    setShortcutsEnabledLocal(v);
+    try { localStorage.setItem(SHORTCUTS_STORAGE_KEY, v ? "1" : "0"); } catch { /* ignore */ }
+    setParam({ a_kbd: v ? null : "0" });
+  };
 
   const userMap = useMemo(() => {
     const m = new Map<string, UserLike>();
@@ -294,6 +352,7 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
   //   ← / →        → previous / next page (when not typing)
   // We bail when the user is typing so we never hijack normal text entry.
   useEffect(() => {
+    if (!shortcutsEnabled) return;
     const handler = (e: KeyboardEvent) => {
       const tgt = e.target as HTMLElement | null;
       const tag = tgt?.tagName;
@@ -323,7 +382,7 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  }, [sort, page, totalPages, loading, exporting, summaryLoading]);
+  }, [sort, page, totalPages, loading, exporting, summaryLoading, shortcutsEnabled]);
 
 
   // Summary aggregates (over the bounded summary set, same filters)
@@ -357,8 +416,9 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
 
   const completionRate = stats.saves > 0 ? Math.round((stats.completedSaves / stats.saves) * 100) : null;
 
-  // Export pipeline with explicit retry + timeout. We re-run the same filtered
-  // query (not the cached `summary`) so the file matches the live server state.
+  // Export pipeline with explicit retry + timeout + phased progress. We re-run
+  // the same filtered query (not the cached `summary`) so the file matches the
+  // live server state. Retries use exponential backoff and cap at EXPORT_MAX_ATTEMPTS.
   const EXPORT_TIMEOUT_MS = 20_000;
 
   const runExport = async () => {
@@ -369,17 +429,50 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
     }
     setExporting(true);
     setExportError(null);
+    setExportPhase("requesting");
+    setExportAttempt(1);
+
+    // Retry loop with exponential backoff. Surface the final error after the cap.
+    let data: any = null;
+    let lastErr: any = null;
+    for (let attempt = 1; attempt <= EXPORT_MAX_ATTEMPTS; attempt++) {
+      setExportAttempt(attempt);
+      setExportPhase("requesting");
+      try {
+        const queryPromise = applyOrder(buildBase(false)).limit(SUMMARY_CAP);
+        const timeout = new Promise<never>((_, rej) =>
+          setTimeout(() => rej(new Error(`Export timed out after ${EXPORT_TIMEOUT_MS / 1000}s`)), EXPORT_TIMEOUT_MS),
+        );
+        const res = (await Promise.race([queryPromise, timeout])) as any;
+        if (res?.error) throw res.error;
+        data = res?.data ?? [];
+        lastErr = null;
+        break;
+      } catch (e: any) {
+        lastErr = e;
+        if (attempt < EXPORT_MAX_ATTEMPTS) {
+          const wait = EXPORT_BACKOFF_BASE_MS * Math.pow(2, attempt - 1);
+          await new Promise((r) => setTimeout(r, wait));
+        }
+      }
+    }
+
+    if (lastErr) {
+      const msg = `${lastErr?.message ?? "Export failed."} (after ${EXPORT_MAX_ATTEMPTS} attempts)`;
+      setExportError(msg);
+      toast.error(msg);
+      setExportPhase("idle");
+      setExporting(false);
+      return;
+    }
+
     try {
-      const queryPromise = applyOrder(buildBase(false)).limit(SUMMARY_CAP);
-      const timeout = new Promise<never>((_, rej) =>
-        setTimeout(() => rej(new Error(`Export timed out after ${EXPORT_TIMEOUT_MS / 1000}s`)), EXPORT_TIMEOUT_MS),
-      );
-      const { data, error } = (await Promise.race([queryPromise, timeout])) as any;
-      if (error) throw error;
+      setExportPhase("generating");
       const source: LogRow[] = (data as LogRow[]) ?? [];
       if (source.length === 0) {
         toast.error("No events match these filters.");
         setExporting(false);
+        setExportPhase("idle");
         return;
       }
 
@@ -389,9 +482,12 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
       const dateRange = (from || to)
         ? `${from || "…"} → ${to || "…"}`
         : presetLabel;
+      const now = new Date();
+      const generatedTs = tz === "utc" ? now.toISOString() : now.toLocaleString();
       const filterLines = [
         `# Plugin inventory admin activity export`,
-        `# Generated: ${new Date().toISOString()}`,
+        `# Generated: ${generatedTs}`,
+        `# Timezone: ${tzLabel(tz)}`,
         `# Total rows: ${source.length}${source.length === SUMMARY_CAP ? " (capped — narrow filters for full set)" : ""}`,
         `# Event filter: ${eventFilter}`,
         `# Date range: ${dateRange}`,
@@ -406,9 +502,14 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
       const header = cols.map((c) => c.label).join(",") + "\n";
       const body = source.map((r) => {
         const info = r.user_id ? userMap.get(r.user_id) ?? null : null;
-        return cols.map((c) => esc(c.resolve(r, info))).join(",");
+        // Apply the timezone to created_at if that column is included
+        return cols.map((c) => {
+          if (c.key === "created_at") return esc(formatTs(r.created_at, tz));
+          return esc(c.resolve(r, info));
+        }).join(",");
       }).join("\n");
 
+      setExportPhase("downloading");
       const blob = new Blob([filterLines + header + body], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -427,15 +528,20 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
           snapshot_id: snapshotId,
           user_query: userQuery,
           preset: presetLabel,
-          from, to, sort,
+          from, to, sort, tz,
           cap_hit: source.length === SUMMARY_CAP,
+          attempts: exportAttempt,
         },
       }).then(() => {}, () => {});
+      setExportPhase("done");
       toast.success(`Exported ${source.length} event${source.length === 1 ? "" : "s"}.`);
+      // Fade the "Done" indicator after a beat.
+      setTimeout(() => setExportPhase((p) => (p === "done" ? "idle" : p)), 1500);
     } catch (e: any) {
-      const msg = e?.message ?? "Export failed. Please try again.";
+      const msg = e?.message ?? "Export failed during CSV generation.";
       setExportError(msg);
       toast.error(msg);
+      setExportPhase("idle");
     } finally {
       setExporting(false);
     }
@@ -633,6 +739,16 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
             </PopoverContent>
           </Popover>
 
+          <Select value={tz} onValueChange={(v) => setTz(v as Tz)}>
+            <SelectTrigger className="h-8 text-xs w-36" aria-label="CSV timestamp timezone" title="Timezone written into the CSV banner and created_at column">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="local">Local time</SelectItem>
+              <SelectItem value="utc">UTC</SelectItem>
+            </SelectContent>
+          </Select>
+
           <Button
             ref={exportBtnRef}
             size="sm"
@@ -645,6 +761,26 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
             {exporting ? "Exporting…" : "Export filtered results"}
           </Button>
         </div>
+
+        {(exporting || exportPhase === "done") && (
+          <div className="rounded border border-border bg-muted/30 p-2 text-[11px] space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="font-medium">
+                {PHASE_LABEL[exportPhase] || "Working"}
+                {exportPhase === "requesting" && exportAttempt > 1 && (
+                  <span className="text-muted-foreground"> · attempt {exportAttempt}/{EXPORT_MAX_ATTEMPTS}</span>
+                )}
+              </span>
+              <span className="text-muted-foreground">{PHASE_PERCENT[exportPhase]}%</span>
+            </div>
+            <div className="h-1.5 w-full bg-background rounded overflow-hidden">
+              <div
+                className="h-full bg-primary transition-all duration-300"
+                style={{ width: `${PHASE_PERCENT[exportPhase]}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {exportError && (
           <div className="flex items-start gap-2 p-2 rounded border border-destructive/40 bg-destructive/10 text-xs text-destructive">
@@ -665,11 +801,27 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
           <Badge variant="secondary" className="text-[10px] gap-1" title="Active sort — Shift+S to cycle, Shift+Alt+S reverse">
             <ArrowUpDown className="w-3 h-3" /> Sort: {sortLabel(sort)}
           </Badge>
+          <Badge variant="outline" className="text-[10px]" title="Applied to the CSV banner and created_at column">
+            CSV tz: {tz === "utc" ? "UTC" : "Local"}
+          </Badge>
           {freeTextActive && <span className="text-amber-500">Free-text only filters the current page.</span>}
-          <span className="ml-auto inline-flex items-center gap-1 text-muted-foreground/70" title="/ focus search · Shift+S cycle sort · Shift+E export · Shift+R reload · ←/→ pagination">
-            <Keyboard className="w-3 h-3" /> shortcuts
-          </span>
+          <label
+            className="ml-auto inline-flex items-center gap-1 cursor-pointer select-none"
+            title="Toggle keyboard shortcuts (/ , Shift+S, Shift+E, Shift+R, ←/→). Persisted in URL + localStorage."
+          >
+            <input
+              type="checkbox"
+              className="h-3 w-3 accent-primary"
+              checked={shortcutsEnabled}
+              onChange={(e) => setShortcutsEnabled(e.target.checked)}
+            />
+            <Keyboard className={`w-3 h-3 ${shortcutsEnabled ? "" : "opacity-40"}`} />
+            <span className={shortcutsEnabled ? "" : "opacity-50 line-through"}>
+              shortcuts {shortcutsEnabled ? "on" : "off"}
+            </span>
+          </label>
         </div>
+
 
         {error ? (
           <div className="p-4 text-xs text-destructive border border-destructive/30 bg-destructive/10 rounded">
