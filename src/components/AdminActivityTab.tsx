@@ -282,6 +282,46 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
+  // Keyboard shortcuts:
+  //   /            → focus free-text search
+  //   Shift+S      → cycle sort forward · Shift+Alt+S → reverse
+  //   Shift+E      → trigger export filtered results
+  //   Shift+R      → reload page + summary
+  //   ← / →        → previous / next page (when not typing)
+  // We bail when the user is typing so we never hijack normal text entry.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tgt = e.target as HTMLElement | null;
+      const tag = tgt?.tagName;
+      const typing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (tgt && (tgt as HTMLElement).isContentEditable);
+      if (e.key === "/" && !typing) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select?.();
+        return;
+      }
+      if (typing) return;
+      if (e.shiftKey && (e.key === "S" || e.key === "s")) {
+        e.preventDefault();
+        setSort(cycleSort(sort, e.altKey ? -1 : 1));
+      } else if (e.shiftKey && (e.key === "E" || e.key === "e")) {
+        e.preventDefault();
+        if (!exporting && !summaryLoading) void runExport();
+      } else if (e.shiftKey && (e.key === "R" || e.key === "r")) {
+        e.preventDefault();
+        if (!loading) { void loadPage(page); void loadSummary(); }
+      } else if (e.key === "ArrowLeft" && !e.metaKey && !e.ctrlKey) {
+        if (page > 0 && !loading) { e.preventDefault(); void loadPage(page - 1); }
+      } else if (e.key === "ArrowRight" && !e.metaKey && !e.ctrlKey) {
+        if (page < totalPages - 1 && !loading) { e.preventDefault(); void loadPage(page + 1); }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [sort, page, totalPages, loading, exporting, summaryLoading]);
+
+
   // Summary aggregates (over the bounded summary set, same filters)
   const stats = useMemo(() => {
     const out = {
