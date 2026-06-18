@@ -522,13 +522,7 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
             <Select value={sort} onValueChange={setSort}>
               <SelectTrigger className="h-8 text-xs w-52" aria-label="Sort"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="created_at:desc">Newest first</SelectItem>
-                <SelectItem value="created_at:asc">Oldest first</SelectItem>
-                <SelectItem value="event_type:asc">Event type A→Z</SelectItem>
-                <SelectItem value="event_type:desc">Event type Z→A</SelectItem>
-                <SelectItem value="user_id:asc">User id A→Z</SelectItem>
-                <SelectItem value="metadata->>added:desc">Completion Δ (most added)</SelectItem>
-                <SelectItem value="metadata->>removed:desc">Completion Δ (most removed)</SelectItem>
+                {SORT_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
