@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Boxes, Save, Loader2, Plus, X, Search, CheckSquare, Square } from "lucide-react";
+import { Boxes, Save, Loader2, Plus, X, Search, CheckSquare, Square, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,8 +26,17 @@ export default function PluginInventoryPage() {
   const [saving, setSaving] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<string>>(new Set());
+  const [activeIdx, setActiveIdx] = useState(0);
   const [savedSnapshot, setSavedSnapshot] = useState<{ n: string; t: string; c: string } | null>(null);
   const [savedCompleted, setSavedCompleted] = useState<boolean>(false);
+  // Snapshot of inventory BEFORE the most recent save (for Undo).
+  const [undoSnapshot, setUndoSnapshot] = useState<{
+    native_plugins: string[];
+    third_party_plugins: string[];
+    custom_plugins: string[];
+    inventory_completed: boolean;
+  } | null>(null);
+  const [undoing, setUndoing] = useState(false);
 
   useEffect(() => {
     if (inventory) {
@@ -118,48 +127,145 @@ export default function PluginInventoryPage() {
       .slice(0, 8);
   }, [customDraft, native, third, custom]);
 
-  const onSave = async () => {
-    setSaving(true);
-    // Diff before/after for the toast summary
-    const prevN = new Set((inventory?.native_plugins ?? []).map((x) => x.toLowerCase()));
-    const prevT = new Set((inventory?.third_party_plugins ?? []).map((x) => x.toLowerCase()));
-    const prevC = new Set((inventory?.custom_plugins ?? []).map((x) => x.toLowerCase()));
-    const curN = new Set(native.map((x) => x.toLowerCase()));
-    const curT = new Set(third.map((x) => x.toLowerCase()));
-    const curC = new Set(custom.map((x) => x.toLowerCase()));
-    const added =
-      [...curN].filter((x) => !prevN.has(x)).length +
-      [...curT].filter((x) => !prevT.has(x)).length +
-      [...curC].filter((x) => !prevC.has(x)).length;
-    const removed =
-      [...prevN].filter((x) => !curN.has(x)).length +
-      [...prevT].filter((x) => !curT.has(x)).length +
-      [...prevC].filter((x) => !curC.has(x)).length;
+  // Reset/clamp active highlight when the suggestion list changes
+  useEffect(() => {
+    if (customSuggestions.length === 0) setActiveIdx(0);
+    else if (activeIdx >= customSuggestions.length) setActiveIdx(customSuggestions.length - 1);
+  }, [customSuggestions, activeIdx]);
+
+  const handleCustomKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const open = showSuggestions && customSuggestions.length > 0;
+    if (e.key === "ArrowDown") {
+      if (!open) return;
+      e.preventDefault();
+      setActiveIdx((i) => (i + 1) % customSuggestions.length);
+    } else if (e.key === "ArrowUp") {
+      if (!open) return;
+      e.preventDefault();
+      setActiveIdx((i) => (i - 1 + customSuggestions.length) % customSuggestions.length);
+    } else if (e.key === " " && open) {
+      // Toggle highlighted suggestion (Space is consumed, so name typing uses arrows first)
+      e.preventDefault();
+      const s = customSuggestions[activeIdx];
+      if (s) toggleSuggestion(s);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (open && selectedSuggestions.size > 0) {
+        addSelectedSuggestions();
+      } else if (open && customSuggestions[activeIdx]) {
+        addCustom(customSuggestions[activeIdx]);
+      } else {
+        addCustom();
+      }
+    } else if (e.key === "Escape") {
+      if (open) {
+        e.preventDefault();
+        setShowSuggestions(false);
+      }
+    } else if (e.key === "Home" && open) {
+      e.preventDefault();
+      setActiveIdx(0);
+    } else if (e.key === "End" && open) {
+      e.preventDefault();
+      setActiveIdx(customSuggestions.length - 1);
+    }
+  };
+
+
+
+  const performSave = async (
+    payload: { native_plugins: string[]; third_party_plugins: string[]; custom_plugins: string[] },
+    opts: { isUndo?: boolean } = {},
+  ) => {
+    // Snapshot prior state for Undo (skip when this save IS the undo).
+    const priorInventory = inventory
+      ? {
+          native_plugins: inventory.native_plugins ?? [],
+          third_party_plugins: inventory.third_party_plugins ?? [],
+          custom_plugins: inventory.custom_plugins ?? [],
+          inventory_completed: !!inventory.inventory_completed,
+        }
+      : null;
+
     const wasCompleted = savedCompleted;
+    const result = await save(payload);
+    if (result.error) return { error: result.error };
 
-    const { error } = await save({
-      native_plugins: native,
-      third_party_plugins: third,
-      custom_plugins: custom,
-    });
-    setSaving(false);
-    if (error) return toast.error(`Couldn't save inventory: ${error}`);
+    if (opts.isUndo) {
+      setUndoSnapshot(null);
+    } else {
+      setUndoSnapshot(priorInventory);
+    }
 
-    const total = native.length + third.length + custom.length;
+    const d = result.diff!;
+    const total = d.total;
     const parts: string[] = [];
-    if (added) parts.push(`+${added} added`);
-    if (removed) parts.push(`−${removed} removed`);
+    if (d.added) parts.push(`+${d.added} added`);
+    if (d.removed) parts.push(`−${d.removed} removed`);
     if (parts.length === 0) parts.push("no plugin changes");
     const completedNote = !wasCompleted
       ? "Inventory marked complete — Sensei will now tailor recommendations."
       : "Inventory still complete.";
 
-    toast.success("Plugin inventory saved", {
-      description: `${parts.join(" · ")} · ${total} total (${native.length} native · ${third.length} third-party · ${custom.length} custom). ${completedNote}`,
-      duration: 6000,
+    if (opts.isUndo) {
+      toast.success("Reverted to previous inventory", {
+        description: `Restored ${total} plugin${total === 1 ? "" : "s"} (${payload.native_plugins.length} native · ${payload.third_party_plugins.length} third-party · ${payload.custom_plugins.length} custom).`,
+        duration: 5000,
+      });
+    } else {
+      toast.success("Plugin inventory saved", {
+        description: `${parts.join(" · ")} · ${total} total (${payload.native_plugins.length} native · ${payload.third_party_plugins.length} third-party · ${payload.custom_plugins.length} custom). ${completedNote}`,
+        duration: 6000,
+        action: priorInventory
+          ? {
+              label: "Undo",
+              onClick: () => { void onUndo(priorInventory); },
+            }
+          : undefined,
+      });
+    }
+    return { error: null };
+  };
+
+  const onSave = async () => {
+    setSaving(true);
+    const res = await performSave({
+      native_plugins: native,
+      third_party_plugins: third,
+      custom_plugins: custom,
     });
+    setSaving(false);
+    if (res.error) return toast.error(`Couldn't save inventory: ${res.error}`);
     navigate("/");
   };
+
+  const onUndo = async (snap?: {
+    native_plugins: string[];
+    third_party_plugins: string[];
+    custom_plugins: string[];
+    inventory_completed: boolean;
+  }) => {
+    const target = snap ?? undoSnapshot;
+    if (!target) return;
+    setUndoing(true);
+    const res = await performSave(
+      {
+        native_plugins: target.native_plugins,
+        third_party_plugins: target.third_party_plugins,
+        custom_plugins: target.custom_plugins,
+      },
+      { isUndo: true },
+    );
+    setUndoing(false);
+    if (res.error) toast.error(`Couldn't undo: ${res.error}`);
+    else {
+      setNative(target.native_plugins);
+      setThird(target.third_party_plugins);
+      setCustom(target.custom_plugins);
+    }
+  };
+
+
 
 
   return (
@@ -249,13 +355,23 @@ export default function PluginInventoryPage() {
               <div className="flex gap-2">
                 <Input
                   value={customDraft}
-                  onChange={(e) => { setCustomDraft(e.target.value); setShowSuggestions(true); }}
+                  onChange={(e) => { setCustomDraft(e.target.value); setShowSuggestions(true); setActiveIdx(0); }}
                   onFocus={() => setShowSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }}
-                  placeholder="Plugin name… (suggestions appear as you type)"
+                  onKeyDown={handleCustomKeyDown}
+                  placeholder="Plugin name… (↑↓ navigate, Space toggle, Enter confirm)"
                   maxLength={60}
+                  role="combobox"
+                  aria-expanded={showSuggestions && customSuggestions.length > 0}
+                  aria-controls="custom-plugin-listbox"
+                  aria-activedescendant={
+                    showSuggestions && customSuggestions[activeIdx]
+                      ? `custom-suggestion-${activeIdx}`
+                      : undefined
+                  }
+                  aria-autocomplete="list"
                 />
+
                 <Button type="button" onClick={() => addCustom()} variant="outline"><Plus className="w-4 h-4 mr-1" /> Add</Button>
               </div>
               {showSuggestions && customSuggestions.length > 0 && (
@@ -277,13 +393,18 @@ export default function PluginInventoryPage() {
                       {customSuggestions.every((s) => selectedSuggestions.has(s)) ? "Clear all" : "Select all"}
                     </button>
                   </div>
-                  <div className="max-h-64 overflow-y-auto">
-                    {customSuggestions.map((s) => {
+                  <div className="max-h-64 overflow-y-auto" role="listbox" id="custom-plugin-listbox" aria-multiselectable="true">
+                    {customSuggestions.map((s, idx) => {
                       const checked = selectedSuggestions.has(s);
+                      const active = idx === activeIdx;
                       return (
                         <div
                           key={s}
-                          className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted cursor-pointer"
+                          id={`custom-suggestion-${idx}`}
+                          role="option"
+                          aria-selected={checked}
+                          className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer ${active ? "bg-primary/10 ring-1 ring-inset ring-primary/40" : "hover:bg-muted"}`}
+                          onMouseEnter={() => setActiveIdx(idx)}
                           onClick={() => toggleSuggestion(s)}
                         >
                           {checked ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4 text-muted-foreground" />}
@@ -299,6 +420,7 @@ export default function PluginInventoryPage() {
                       );
                     })}
                   </div>
+
                   <div className="px-3 py-2 border-t border-border/60 flex items-center justify-between gap-2">
                     <span className="text-[10px] text-muted-foreground">
                       {selectedSuggestions.size} selected
@@ -336,17 +458,29 @@ export default function PluginInventoryPage() {
             )}
           </Card>
 
-          <div className="flex items-center justify-end gap-3 pt-2">
+          <div className="flex items-center justify-end gap-3 pt-2 flex-wrap">
+            {undoSnapshot && (
+              <Button
+                variant="outline"
+                onClick={() => onUndo()}
+                disabled={undoing || saving}
+                title={`Restore previous inventory (${undoSnapshot.native_plugins.length} native · ${undoSnapshot.third_party_plugins.length} third-party · ${undoSnapshot.custom_plugins.length} custom)`}
+              >
+                {undoing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Undo2 className="w-4 h-4 mr-2" />}
+                Undo last save
+              </Button>
+            )}
             <Button variant="ghost" onClick={() => navigate("/")}>Cancel</Button>
             <Button
               onClick={onSave}
-              disabled={saving}
+              disabled={saving || undoing}
               className="bg-gradient-gold text-primary-foreground hover:opacity-90 glow-gold"
             >
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
               Save Inventory
             </Button>
           </div>
+
         </div>
       )}
     </div>
