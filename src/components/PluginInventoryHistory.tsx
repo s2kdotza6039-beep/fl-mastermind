@@ -528,29 +528,63 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
                             Restoring won't change anything — your current inventory already matches this snapshot.
                           </p>
                         ) : (
-                          <div className="space-y-1">
+                          <div className="space-y-2">
                             <div className="text-[11px]">
                               <span className="text-emerald-500 font-medium">+{totalAdded}</span>{" "}
                               <span className="text-muted-foreground">would be added</span>{" · "}
                               <span className="text-destructive font-medium">−{totalRemoved}</span>{" "}
                               <span className="text-muted-foreground">would be removed</span>
                             </div>
-                            {([
-                              ["Native", dryN],
-                              ["Third-party", dryT],
-                              ["Custom", dryC],
-                            ] as const).map(([label, d]) => (
-                              (d.added.length > 0 || d.removed.length > 0) && (
-                                <div key={label} className="text-[10px] pl-2 border-l border-amber-500/40">
-                                  <span className="text-muted-foreground">{label}:</span>{" "}
-                                  {d.added.length > 0 && <span className="text-emerald-500">+{d.added.length} ({d.added.slice(0, 3).join(", ")}{d.added.length > 3 ? "…" : ""})</span>}
-                                  {d.added.length > 0 && d.removed.length > 0 && <span className="text-muted-foreground"> · </span>}
-                                  {d.removed.length > 0 && <span className="text-destructive">−{d.removed.length} ({d.removed.slice(0, 3).join(", ")}{d.removed.length > 3 ? "…" : ""})</span>}
-                                </div>
-                              )
-                            ))}
+
+                            {/* Per-category before/after with explicit plugin IDs that move the score. */}
+                            <div className="space-y-1.5">
+                              {([
+                                ["Native", dryN, current.native.length, s.native_plugins.length],
+                                ["Third-party", dryT, current.third.length, s.third_party_plugins.length],
+                                ["Custom", dryC, current.custom.length, s.custom_plugins.length],
+                              ] as const).map(([label, d, beforeCount, afterCount]) => {
+                                const catDelta = afterCount - beforeCount;
+                                const hasChange = d.added.length > 0 || d.removed.length > 0;
+                                if (!hasChange && catDelta === 0) return null;
+                                return (
+                                  <div key={label} className="text-[10px] pl-2 border-l border-amber-500/40 space-y-0.5">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-medium">{label}</span>
+                                      <span className="text-muted-foreground">
+                                        {beforeCount} → {afterCount}{" "}
+                                        <span className={catDelta > 0 ? "text-emerald-500" : catDelta < 0 ? "text-destructive" : ""}>
+                                          ({catDelta > 0 ? "+" : ""}{catDelta})
+                                        </span>
+                                      </span>
+                                    </div>
+                                    {d.added.length > 0 && (
+                                      <div className="text-emerald-500">
+                                        + adds ({d.added.length}): {d.added.slice(0, 5).join(", ")}
+                                        {d.added.length > 5 ? `, +${d.added.length - 5} more` : ""}
+                                      </div>
+                                    )}
+                                    {d.removed.length > 0 && (
+                                      <div className="text-destructive">
+                                        − removes ({d.removed.length}): {d.removed.slice(0, 5).join(", ")}
+                                        {d.removed.length > 5 ? `, +${d.removed.length - 5} more` : ""}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Plain-language summary of which IDs actually move the completion score. */}
+                            <div className="text-[10px] text-muted-foreground italic border-t border-amber-500/30 pt-1.5">
+                              {netDelta === 0
+                                ? "Net count unchanged — completion score holds steady; only specific plugin IDs swap."
+                                : netDelta > 0
+                                  ? `Score improves because ${totalAdded - totalRemoved} more plugin${(totalAdded - totalRemoved) === 1 ? "" : "s"} would be present overall.`
+                                  : `Score drops because ${Math.abs(netDelta)} plugin${Math.abs(netDelta) === 1 ? "" : "s"} present today wouldn't be in the restored snapshot.`}
+                            </div>
                           </div>
                         )}
+
                         <div className="flex items-center gap-2 pt-1">
                           <Button
                             size="sm"
