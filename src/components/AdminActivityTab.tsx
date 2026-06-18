@@ -158,6 +158,10 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const exportBtnRef = useRef<HTMLButtonElement | null>(null);
 
+  // Export state (declared early so the keyboard-shortcut effect can reference it)
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
   const userMap = useMemo(() => {
     const m = new Map<string, UserLike>();
     users.forEach((u) => m.set(u.user_id, u));
