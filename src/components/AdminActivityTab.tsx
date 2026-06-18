@@ -416,8 +416,9 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
 
   const completionRate = stats.saves > 0 ? Math.round((stats.completedSaves / stats.saves) * 100) : null;
 
-  // Export pipeline with explicit retry + timeout. We re-run the same filtered
-  // query (not the cached `summary`) so the file matches the live server state.
+  // Export pipeline with explicit retry + timeout + phased progress. We re-run
+  // the same filtered query (not the cached `summary`) so the file matches the
+  // live server state. Retries use exponential backoff and cap at EXPORT_MAX_ATTEMPTS.
   const EXPORT_TIMEOUT_MS = 20_000;
 
   const runExport = async () => {
@@ -428,17 +429,50 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
     }
     setExporting(true);
     setExportError(null);
+    setExportPhase("requesting");
+    setExportAttempt(1);
+
+    // Retry loop with exponential backoff. Surface the final error after the cap.
+    let data: any = null;
+    let lastErr: any = null;
+    for (let attempt = 1; attempt <= EXPORT_MAX_ATTEMPTS; attempt++) {
+      setExportAttempt(attempt);
+      setExportPhase("requesting");
+      try {
+        const queryPromise = applyOrder(buildBase(false)).limit(SUMMARY_CAP);
+        const timeout = new Promise<never>((_, rej) =>
+          setTimeout(() => rej(new Error(`Export timed out after ${EXPORT_TIMEOUT_MS / 1000}s`)), EXPORT_TIMEOUT_MS),
+        );
+        const res = (await Promise.race([queryPromise, timeout])) as any;
+        if (res?.error) throw res.error;
+        data = res?.data ?? [];
+        lastErr = null;
+        break;
+      } catch (e: any) {
+        lastErr = e;
+        if (attempt < EXPORT_MAX_ATTEMPTS) {
+          const wait = EXPORT_BACKOFF_BASE_MS * Math.pow(2, attempt - 1);
+          await new Promise((r) => setTimeout(r, wait));
+        }
+      }
+    }
+
+    if (lastErr) {
+      const msg = `${lastErr?.message ?? "Export failed."} (after ${EXPORT_MAX_ATTEMPTS} attempt${EXPORT_MAX_ATTEMPTS === 1 ? "" : "s"})`;
+      setExportError(msg);
+      toast.error(msg);
+      setExportPhase("idle");
+      setExporting(false);
+      return;
+    }
+
     try {
-      const queryPromise = applyOrder(buildBase(false)).limit(SUMMARY_CAP);
-      const timeout = new Promise<never>((_, rej) =>
-        setTimeout(() => rej(new Error(`Export timed out after ${EXPORT_TIMEOUT_MS / 1000}s`)), EXPORT_TIMEOUT_MS),
-      );
-      const { data, error } = (await Promise.race([queryPromise, timeout])) as any;
-      if (error) throw error;
+      setExportPhase("generating");
       const source: LogRow[] = (data as LogRow[]) ?? [];
       if (source.length === 0) {
         toast.error("No events match these filters.");
         setExporting(false);
+        setExportPhase("idle");
         return;
       }
 
@@ -448,9 +482,12 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
       const dateRange = (from || to)
         ? `${from || "…"} → ${to || "…"}`
         : presetLabel;
+      const now = new Date();
+      const generatedTs = tz === "utc" ? now.toISOString() : now.toLocaleString();
       const filterLines = [
         `# Plugin inventory admin activity export`,
-        `# Generated: ${new Date().toISOString()}`,
+        `# Generated: ${generatedTs}`,
+        `# Timezone: ${tzLabel(tz)}`,
         `# Total rows: ${source.length}${source.length === SUMMARY_CAP ? " (capped — narrow filters for full set)" : ""}`,
         `# Event filter: ${eventFilter}`,
         `# Date range: ${dateRange}`,
@@ -465,9 +502,14 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
       const header = cols.map((c) => c.label).join(",") + "\n";
       const body = source.map((r) => {
         const info = r.user_id ? userMap.get(r.user_id) ?? null : null;
-        return cols.map((c) => esc(c.resolve(r, info))).join(",");
+        // Apply the timezone to created_at if that column is included
+        return cols.map((c) => {
+          if (c.key === "created_at") return esc(formatTs(r.created_at, tz));
+          return esc(c.resolve(r, info));
+        }).join(",");
       }).join("\n");
 
+      setExportPhase("downloading");
       const blob = new Blob([filterLines + header + body], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -486,15 +528,20 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
           snapshot_id: snapshotId,
           user_query: userQuery,
           preset: presetLabel,
-          from, to, sort,
+          from, to, sort, tz,
           cap_hit: source.length === SUMMARY_CAP,
+          attempts: exportAttempt,
         },
       }).then(() => {}, () => {});
+      setExportPhase("done");
       toast.success(`Exported ${source.length} event${source.length === 1 ? "" : "s"}.`);
+      // Fade the "Done" indicator after a beat.
+      setTimeout(() => setExportPhase((p) => (p === "done" ? "idle" : p)), 1500);
     } catch (e: any) {
-      const msg = e?.message ?? "Export failed. Please try again.";
+      const msg = e?.message ?? "Export failed during CSV generation.";
       setExportError(msg);
       toast.error(msg);
+      setExportPhase("idle");
     } finally {
       setExporting(false);
     }
