@@ -62,11 +62,17 @@ export default function UploadPage() {
     setProgress(0);
     setProgressLabel("Starting…");
     try {
-      const res = await analyzeAudioFile(file, (p, label) => {
+      const { result: res, decoded } = await analyzeAudioFileInWorker(file, (p, label) => {
         setProgress(p);
         setProgressLabel(label);
       });
       setResult(res);
+      // Build waveform peaks from the already-decoded channel data.
+      try {
+        setPeaks(computeWaveformPeaks(decoded.channelData[0], 600));
+      } catch (e) {
+        console.warn("Waveform peaks failed:", e);
+      }
       // Persist (best-effort)
       if (user) {
         const { error } = await supabase.from("audio_analysis_reports").insert({
