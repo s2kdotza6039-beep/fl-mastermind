@@ -40,6 +40,9 @@ export default function PluginInventoryPage() {
     inventory_completed: boolean;
   } | null>(null);
   const [undoing, setUndoing] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [historyReloadKey, setHistoryReloadKey] = useState(0);
+
 
   useEffect(() => {
     if (inventory) {
