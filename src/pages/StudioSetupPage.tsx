@@ -69,6 +69,7 @@ export default function StudioSetupPage() {
 
   const revertTo = async (h: HistoryRow) => {
     setRevertingId(h.id);
+    const previousChangedAt = history[0]?.changed_at ?? null;
     const { error } = await save({
       fl_version: h.fl_version,
       fl_edition: h.fl_edition,
@@ -76,6 +77,26 @@ export default function StudioSetupPage() {
       main_genre: h.main_genre,
       skill_level: h.skill_level,
     });
+    if (!error && user) {
+      // Audit log for admins — captures both timestamps for troubleshooting.
+      await supabase.from("activity_logs").insert({
+        user_id: user.id,
+        event_type: "studio_setup_revert",
+        metadata: {
+          previous_changed_at: previousChangedAt,
+          reverted_to_changed_at: h.changed_at,
+          reverted_to_snapshot_id: h.id,
+          snapshot: {
+            fl_version: h.fl_version,
+            fl_edition: h.fl_edition,
+            main_use: h.main_use,
+            main_genre: h.main_genre,
+            skill_level: h.skill_level,
+          },
+        },
+        user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+      });
+    }
     setRevertingId(null);
     setPendingRevert(null);
     if (error) return toast.error(error);
