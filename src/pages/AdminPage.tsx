@@ -284,6 +284,10 @@ export default function AdminPage() {
             <SecurityIssuesPanel />
           </div>
         </TabsContent>
+
+        <TabsContent value="audio">
+          <AdminAudioReportsTab />
+        </TabsContent>
       </Tabs>
     </div>
   );
