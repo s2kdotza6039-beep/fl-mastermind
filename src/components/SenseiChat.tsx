@@ -328,12 +328,20 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
                         </div>
                         <div className="flex flex-wrap gap-1">
                           {hits.map((h) => (
-                            <span key={h} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30">{h}</span>
+                            <span
+                              key={h.name}
+                              title={`Matched by ${h.rule === "word-boundary" ? "whole-word match (short brand)" : "case-insensitive substring match"} — "${h.snippet}"`}
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30 cursor-help"
+                            >
+                              {h.name}
+                              <span className="ml-1 text-primary/60">· {h.rule === "word-boundary" ? "word" : "substr"}</span>
+                            </span>
                           ))}
                         </div>
                       </div>
                     );
                   })()}
+
                   {!loading && i === messages.length - 1 && m.content.length > 50 && (
                     <Button
                       size="sm"
