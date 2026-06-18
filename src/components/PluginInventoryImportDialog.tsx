@@ -23,7 +23,10 @@ interface Props {
   open: boolean;
   onClose: () => void;
   existing: { native: string[]; third: string[]; custom: string[] };
-  onApply: (additions: { native: string[]; third: string[]; custom: string[] }) => void;
+  onApply: (
+    additions: { native: string[]; third: string[]; custom: string[] },
+    stats?: { source: string | null; rows: number; added: number; skipped: number; duplicate: number; invalid: number },
+  ) => void;
 }
 
 const ciIncludes = (list: readonly string[], v: string) => list.some((x) => x.toLowerCase() === v.toLowerCase());
