@@ -24,6 +24,7 @@ export default function UploadPage() {
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState("");
   const [result, setResult] = useState<AudioAnalysisResult | null>(null);
+  const [peaks, setPeaks] = useState<Float32Array | null>(null);
   const [askSensei, setAskSensei] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -33,6 +34,7 @@ export default function UploadPage() {
   const reset = () => {
     setFile(null);
     setResult(null);
+    setPeaks(null);
     setAskSensei(false);
     setProgress(0);
     setProgressLabel("");
