@@ -283,18 +283,30 @@ function Stat({ label, value, icon, highlight }: { label: string; value: number;
 }
 
 function SetupsTab({
-  setups, users, loading, query, setQuery,
+  setups, users, loading,
 }: {
   setups: SetupRow[];
   users: UserRow[];
   loading: boolean;
-  query: string;
-  setQuery: (v: string) => void;
 }) {
-  const [editionFilter, setEditionFilter] = useState<string>("all");
-  const [tierFilter, setTierFilter] = useState<"all" | "stock" | "advanced">("all");
-  const [genreFilter, setGenreFilter] = useState<string>("all");
-  const [skillFilter, setSkillFilter] = useState<string>("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const query = searchParams.get("q") ?? "";
+  const editionFilter = searchParams.get("edition") ?? "all";
+  const tierFilter = (searchParams.get("tier") as "all" | "stock" | "advanced") ?? "all";
+  const genreFilter = searchParams.get("genre") ?? "all";
+  const skillFilter = searchParams.get("skill") ?? "all";
+
+  const updateParam = (key: string, value: string, defaultValue = "all") => {
+    const next = new URLSearchParams(searchParams);
+    if (!value || value === defaultValue) next.delete(key);
+    else next.set(key, value);
+    setSearchParams(next, { replace: true });
+  };
+  const setQuery = (v: string) => updateParam("q", v, "");
+  const setEditionFilter = (v: string) => updateParam("edition", v);
+  const setTierFilter = (v: "all" | "stock" | "advanced") => updateParam("tier", v);
+  const setGenreFilter = (v: string) => updateParam("genre", v);
+  const setSkillFilter = (v: string) => updateParam("skill", v);
 
   const userMap = useMemo(() => {
     const m = new Map<string, UserRow>();
