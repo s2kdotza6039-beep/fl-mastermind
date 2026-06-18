@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { History, Loader2, Undo2, ChevronDown, ChevronUp, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { History, Loader2, Undo2, ChevronDown, ChevronUp, Search, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
+import { toast } from "sonner";
 
 export interface HistorySnapshot {
   id: string;
