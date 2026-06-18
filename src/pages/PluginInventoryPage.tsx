@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Boxes, Save, Loader2, Plus, X, Search, CheckSquare, Square, Undo2 } from "lucide-react";
+import { Boxes, Save, Loader2, Plus, X, Search, CheckSquare, Square, Undo2, Upload, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,9 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/PageHeader";
 import { usePluginInventory } from "@/context/PluginInventoryContext";
 import { NATIVE_PLUGINS, THIRD_PARTY_BRANDS, CUSTOM_PLUGIN_SUGGESTIONS } from "@/lib/plugin-inventory-constants";
+import { PluginInventoryImportDialog } from "@/components/PluginInventoryImportDialog";
+import { PluginInventoryHistory, type HistorySnapshot } from "@/components/PluginInventoryHistory";
+
 
 const sortKey = (a: string[]) => a.slice().map((x) => x.toLowerCase()).sort().join("|");
 
