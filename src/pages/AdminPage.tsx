@@ -358,25 +358,43 @@ function SetupsTab({
   }, [rows, query, editionFilter, tierFilter, genreFilter, skillFilter]);
 
   const clearFilters = () => {
-    setEditionFilter("all");
-    setTierFilter("all");
-    setGenreFilter("all");
-    setSkillFilter("all");
-    setQuery("");
+    setSearchParams(new URLSearchParams(), { replace: true });
   };
   const filtersActive =
     editionFilter !== "all" || tierFilter !== "all" || genreFilter !== "all" || skillFilter !== "all" || !!query;
 
   const exportCsv = () => {
-    const headers = ["user_id", "display_name", "email", "fl_version", "fl_edition", "main_use", "main_genre", "skill_level", "setup_completed", "updated_at"];
+    const headers = ["user_id", "display_name", "email", "fl_version", "fl_edition", "tier", "main_use", "main_genre", "skill_level", "setup_completed", "updated_at", "allowed_plugins", "blocked_plugins"];
     const esc = (v: unknown) => {
       const s = v == null ? "" : String(v);
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const csv = [
-      headers.join(","),
-      ...filtered.map((r) => headers.map((h) => esc((r as any)[h])).join(",")),
-    ].join("\n");
+    const tierLabelFor = (t: FlEditionTier) => tierLabel(t);
+    const dataRows = filtered.map((r) => {
+      const allowed = eligiblePlugins(r.tier).join("; ");
+      const blocked = forbiddenPlugins(r.tier).join("; ");
+      return headers.map((h) => {
+        if (h === "tier") return esc(tierLabelFor(r.tier));
+        if (h === "allowed_plugins") return esc(allowed);
+        if (h === "blocked_plugins") return esc(blocked);
+        return esc((r as any)[h]);
+      }).join(",");
+    });
+
+    // Filter metadata header (CSV comment lines starting with #)
+    const meta = [
+      `# Studio Sensei — FL Setups export`,
+      `# Generated: ${new Date().toISOString()}`,
+      `# Total rows: ${filtered.length} of ${rows.length}`,
+      `# Filter — search: ${query || "(none)"}`,
+      `# Filter — edition: ${editionFilter}`,
+      `# Filter — tier: ${tierFilter}${tierFilter === "stock" ? " (Fruity / Unknown — stock-only)" : tierFilter === "advanced" ? " (Producer / Signature / All Plugins)" : ""}`,
+      `# Filter — genre: ${genreFilter}`,
+      `# Filter — skill: ${skillFilter}`,
+      `# Eligibility columns reflect each user's edition tier (see fl-plugin-eligibility).`,
+    ];
+
+    const csv = [...meta, headers.join(","), ...dataRows].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
