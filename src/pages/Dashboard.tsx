@@ -139,6 +139,47 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Recent audio analyses */}
+      <div className="mb-8">
+        <h2 className="font-display text-xl font-bold mb-4 flex items-center gap-2">
+          <AudioLines className="w-5 h-5 text-primary" /> Recent Audio Analyses
+        </h2>
+        {recentAudio.length === 0 ? (
+          <Card className="studio-card p-8 text-center">
+            <AudioLines className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground mb-3">No analyses yet. Upload a track and Sensei will diagnose it.</p>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/upload"><UploadCloud className="w-4 h-4 mr-2" /> Upload audio</Link>
+            </Button>
+          </Card>
+        ) : (
+          <div className="grid md:grid-cols-2 gap-3">
+            {recentAudio.map((a) => {
+              const issueCount = Array.isArray(a.detected_issues) ? a.detected_issues.length : 0;
+              return (
+                <Card key={a.id} className="studio-card p-4">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <h4 className="font-semibold text-sm line-clamp-1 flex-1">{a.file_name}</h4>
+                    <Badge variant={issueCount > 0 ? "destructive" : "secondary"} className="text-[10px]">
+                      {issueCount} issue{issueCount === 1 ? "" : "s"}
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-[11px] text-muted-foreground">
+                    <div><span className="text-foreground/70">Key</span> · {a.detected_key ?? "—"}</div>
+                    <div><span className="text-foreground/70">BPM</span> · {a.bpm ?? "—"}</div>
+                    <div><span className="text-foreground/70">LUFS</span> · {a.lufs_estimate ?? "—"}</div>
+                  </div>
+                  <div className="text-[10px] text-muted-foreground/60 mt-2">
+                    {new Date(a.created_at).toLocaleString()}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+
       {/* Saved advice */}
       <div>
         <h2 className="font-display text-xl font-bold mb-4 flex items-center gap-2">
