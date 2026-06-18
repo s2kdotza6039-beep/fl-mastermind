@@ -292,44 +292,92 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
 
   const completionRate = stats.saves > 0 ? Math.round((stats.completedSaves / stats.saves) * 100) : null;
 
-  const exportCsv = () => {
-    if (rows.length === 0 && summary.length === 0) return toast.error("No events match these filters.");
+  // Export pipeline with explicit retry + timeout. We re-run the same filtered
+  // query (not the cached `summary`) so the file matches the live server state.
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const EXPORT_TIMEOUT_MS = 20_000;
+
+  const runExport = async () => {
     const cols = columnKeys.map((k) => ALL_COLUMNS.find((c) => c.key === k)).filter(Boolean) as ColumnDef[];
-    if (cols.length === 0) return toast.error("Pick at least one column to export.");
-    const esc = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    if (cols.length === 0) {
+      toast.error("Pick at least one column to export.");
+      return;
+    }
+    setExporting(true);
+    setExportError(null);
+    try {
+      const queryPromise = applyOrder(buildBase(false)).limit(SUMMARY_CAP);
+      const timeout = new Promise<never>((_, rej) =>
+        setTimeout(() => rej(new Error(`Export timed out after ${EXPORT_TIMEOUT_MS / 1000}s`)), EXPORT_TIMEOUT_MS),
+      );
+      const { data, error } = (await Promise.race([queryPromise, timeout])) as any;
+      if (error) throw error;
+      const source: LogRow[] = (data as LogRow[]) ?? [];
+      if (source.length === 0) {
+        toast.error("No events match these filters.");
+        setExporting(false);
+        return;
+      }
 
-    // Export the FULL filtered set (summary cap), not just the current page.
-    const source = summary;
-    const header = cols.map((c) => c.label).join(",") + "\n";
-    const body = source.map((r) => {
-      const info = r.user_id ? userMap.get(r.user_id) ?? null : null;
-      return cols.map((c) => esc(c.resolve(r, info))).join(",");
-    }).join("\n");
+      const esc = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+      // Prepend a metadata banner describing the export so opened CSVs are self-documenting.
+      const presetLabel = PRESETS[preset]?.label ?? "All time";
+      const dateRange = (from || to)
+        ? `${from || "…"} → ${to || "…"}`
+        : presetLabel;
+      const filterLines = [
+        `# Plugin inventory admin activity export`,
+        `# Generated: ${new Date().toISOString()}`,
+        `# Total rows: ${source.length}${source.length === SUMMARY_CAP ? " (capped — narrow filters for full set)" : ""}`,
+        `# Event filter: ${eventFilter}`,
+        `# Date range: ${dateRange}`,
+        `# Snapshot id: ${snapshotId || "(any)"}`,
+        `# User query: ${userQuery || "(any)"}`,
+        `# Free-text: ${query || "(none)"}`,
+        `# Sort: ${sort}`,
+        `# Columns: ${columnKeys.join(", ")}`,
+        ``,
+      ].map((l) => esc(l)).join("\n") + "\n";
 
-    const blob = new Blob([header + body], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `admin-activity-${eventFilter}-${Date.now()}.csv`;
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
+      const header = cols.map((c) => c.label).join(",") + "\n";
+      const body = source.map((r) => {
+        const info = r.user_id ? userMap.get(r.user_id) ?? null : null;
+        return cols.map((c) => esc(c.resolve(r, info))).join(",");
+      }).join("\n");
 
-    supabase.from("activity_logs").insert({
-      user_id: null,
-      event_type: "admin_activity_exported",
-      metadata: {
-        rows: source.length,
-        columns: columnKeys,
-        event_filter: eventFilter,
-        snapshot_id: snapshotId,
-        user_query: userQuery,
-        preset: PRESETS[preset]?.label,
-        from, to,
-        cap_hit: summaryCapHit,
-      },
-    }).then(() => {}, () => {});
-    toast.success(`Exported ${source.length} event${source.length === 1 ? "" : "s"}.`);
+      const blob = new Blob([filterLines + header + body], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `admin-activity-${eventFilter}-${Date.now()}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+
+      supabase.from("activity_logs").insert({
+        user_id: null,
+        event_type: "admin_activity_exported",
+        metadata: {
+          rows: source.length,
+          columns: columnKeys,
+          event_filter: eventFilter,
+          snapshot_id: snapshotId,
+          user_query: userQuery,
+          preset: presetLabel,
+          from, to, sort,
+          cap_hit: source.length === SUMMARY_CAP,
+        },
+      }).then(() => {}, () => {});
+      toast.success(`Exported ${source.length} event${source.length === 1 ? "" : "s"}.`);
+    } catch (e: any) {
+      const msg = e?.message ?? "Export failed. Please try again.";
+      setExportError(msg);
+      toast.error(msg);
+    } finally {
+      setExporting(false);
+    }
   };
+
 
   const clearAll = () => {
     // Reset every URL-backed filter at once.
