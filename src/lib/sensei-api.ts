@@ -15,6 +15,25 @@ export interface ChatContext {
   nativePlugins?: string[];
   thirdPartyPlugins?: string[];
   customPlugins?: string[];
+  // Audio analysis (from Upload page)
+  audio?: {
+    fileName: string;
+    fileFormat?: string;
+    durationSec?: number;
+    sampleRate?: number;
+    bitRate?: number;
+    channels?: number;
+    peakDb?: number;
+    rmsDb?: number;
+    lufsEstimate?: number;
+    dynamicRangeDb?: number;
+    stereoWidth?: number;
+    stereoWidthLabel?: string;
+    bpm?: number | null;
+    detectedKey?: string | null;
+    bands?: { low: number; lowMid: number; mid: number; highMid: number; high: number };
+    issues?: Array<{ severity: string; title: string; detail: string; recommendation: string }>;
+  };
 }
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sensei-chat`;
