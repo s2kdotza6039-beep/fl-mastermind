@@ -199,7 +199,17 @@ export function PluginInventoryImportDialog({ open, onClose, existing, onApply }
 
   const apply = () => {
     if (totalAdds === 0) return toast.error("Nothing new to import — adjust column mapping.");
-    onApply({ native: preview.native, third: preview.third, custom: preview.custom });
+    onApply(
+      { native: preview.native, third: preview.third, custom: preview.custom },
+      {
+        source: fileName,
+        rows: dataRows.length,
+        added: counts.added,
+        skipped: counts.skipped,
+        duplicate: counts.duplicate,
+        invalid: counts.invalid,
+      },
+    );
     toast.success(`Staged ${totalAdds} plugin${totalAdds === 1 ? "" : "s"} from ${fileName}. Click Save Inventory to persist.`);
     reset();
     onClose();
