@@ -534,3 +534,140 @@ function SetupsTab({
   );
 }
 
+
+function InventoriesTab({
+  inventories, users, loading,
+}: {
+  inventories: { user_id: string; native_plugins: string[]; third_party_plugins: string[]; custom_plugins: string[]; inventory_completed: boolean; updated_at: string }[];
+  users: UserRow[];
+  loading: boolean;
+}) {
+  const [query, setQuery] = useState("");
+
+  const userMap = useMemo(() => {
+    const m = new Map<string, UserRow>();
+    users.forEach((u) => m.set(u.user_id, u));
+    return m;
+  }, [users]);
+
+  const rows = useMemo(() => {
+    return inventories.map((i) => {
+      const u = userMap.get(i.user_id);
+      return {
+        ...i,
+        display_name: u?.display_name ?? null,
+        email: u?.email ?? null,
+      };
+    });
+  }, [inventories, userMap]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) =>
+      [r.display_name, r.email, r.user_id].filter(Boolean).some((v) => String(v).toLowerCase().includes(q)),
+    );
+  }, [rows, query]);
+
+  const exportCsv = () => {
+    const headers = ["user_id", "display_name", "email", "native_count", "third_party_count", "custom_count", "native_plugins", "third_party_plugins", "custom_plugins", "updated_at"];
+    const esc = (v: unknown) => {
+      const s = v == null ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const data = filtered.map((r) => [
+      esc(r.user_id),
+      esc(r.display_name),
+      esc(r.email),
+      esc(r.native_plugins.length),
+      esc(r.third_party_plugins.length),
+      esc(r.custom_plugins.length),
+      esc(r.native_plugins.join("; ")),
+      esc(r.third_party_plugins.join("; ")),
+      esc(r.custom_plugins.join("; ")),
+      esc(r.updated_at),
+    ].join(","));
+    const csv = [
+      `# Studio Sensei — Plugin Inventories export`,
+      `# Generated: ${new Date().toISOString()}`,
+      `# Total rows: ${filtered.length} of ${rows.length}`,
+      headers.join(","),
+      ...data,
+    ].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `plugin-inventories-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${filtered.length} inventor${filtered.length === 1 ? "y" : "ies"}.`);
+  };
+
+  return (
+    <Card className="studio-card p-4 mt-4">
+      <div className="flex flex-col sm:flex-row gap-2 mb-3">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by email or name…"
+            aria-label="Search plugin inventories"
+            maxLength={100}
+            className="pl-9 pr-9"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-muted text-muted-foreground"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <Button onClick={exportCsv} disabled={filtered.length === 0} variant="outline" className="sm:w-auto">
+          <Download className="w-4 h-4 mr-2" /> Export CSV
+        </Button>
+      </div>
+
+      {loading ? (
+        <Loader2 className="w-5 h-5 animate-spin" />
+      ) : filtered.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-6">
+          {inventories.length === 0 ? "No users have saved a plugin inventory yet." : `No inventories match "${query}".`}
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="text-left text-muted-foreground border-b border-border">
+              <tr>
+                <th className="py-2 pr-3 font-medium">User</th>
+                <th className="py-2 pr-3 font-medium">Native</th>
+                <th className="py-2 pr-3 font-medium">Third-party</th>
+                <th className="py-2 pr-3 font-medium">Custom</th>
+                <th className="py-2 pr-3 font-medium">Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r) => (
+                <tr key={r.user_id} className="border-b border-border/40">
+                  <td className="py-2 pr-3 min-w-[160px]">
+                    <div className="font-medium truncate">{r.display_name || r.user_id.slice(0, 8)}</div>
+                    {r.email && <div className="text-muted-foreground truncate">{r.email}</div>}
+                  </td>
+                  <td className="py-2 pr-3 tabular-nums">{r.native_plugins.length}</td>
+                  <td className="py-2 pr-3 tabular-nums">{r.third_party_plugins.length}</td>
+                  <td className="py-2 pr-3 tabular-nums">{r.custom_plugins.length}</td>
+                  <td className="py-2 pr-3 text-muted-foreground">{new Date(r.updated_at).toLocaleDateString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
