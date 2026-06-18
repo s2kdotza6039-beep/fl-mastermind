@@ -220,7 +220,10 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
             </Button>
           </div>
 
-          <CompletenessChart snaps={filtered} />
+          <CompletenessChart
+            snaps={filtered}
+            onPointClick={(s, prev) => setPointDetail({ snap: s, prev })}
+          />
 
 
           {loading ? (
