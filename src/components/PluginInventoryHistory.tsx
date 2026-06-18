@@ -467,6 +467,13 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
                     const totalRemoved = dryN.removed.length + dryT.removed.length + dryC.removed.length;
                     const noChange = totalAdded === 0 && totalRemoved === 0;
 
+                    // Completion impact — total plugin count proxies the completion score.
+                    // A lower post-restore total = regression.
+                    const currentTotal = current.native.length + current.third.length + current.custom.length;
+                    const afterTotal = s.native_plugins.length + s.third_party_plugins.length + s.custom_plugins.length;
+                    const netDelta = afterTotal - currentTotal;
+                    const isRegression = netDelta < 0;
+
                     if (!sheetConfirming) {
                       return (
                         <Button
@@ -485,6 +492,37 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
                         <div className="text-[10px] uppercase tracking-widest text-amber-500 font-medium">
                           Confirm restore — dry run vs your current inventory
                         </div>
+
+                        {/* Completion impact summary */}
+                        <div className="rounded border border-border bg-background/50 p-2 space-y-1">
+                          <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Estimated completion impact</div>
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span><span className="text-muted-foreground">Now:</span> <strong>{currentTotal}</strong></span>
+                            <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                            <span><span className="text-muted-foreground">After:</span> <strong>{afterTotal}</strong></span>
+                            <span className={netDelta > 0 ? "text-emerald-500 font-medium" : netDelta < 0 ? "text-destructive font-medium" : "text-muted-foreground"}>
+                              {netDelta > 0 ? "+" : ""}{netDelta} net
+                            </span>
+                          </div>
+                          {isRegression && (
+                            <div className="flex items-start gap-1.5 text-[11px] text-destructive border-t border-destructive/30 pt-1.5 mt-1">
+                              <span aria-hidden>⚠️</span>
+                              <span>
+                                <strong>Regression warning:</strong> restoring this snapshot lowers your inventory
+                                by <strong>{Math.abs(netDelta)}</strong> plugin{Math.abs(netDelta) === 1 ? "" : "s"}.
+                                Your completion score will decrease.
+                              </span>
+                            </div>
+                          )}
+                          {!isRegression && !noChange && (
+                            <div className="text-[10px] text-muted-foreground">
+                              {netDelta > 0
+                                ? `Completion improves by ${netDelta} plugin${netDelta === 1 ? "" : "s"}.`
+                                : "Net count unchanged — content differences only."}
+                            </div>
+                          )}
+                        </div>
+
                         {noChange ? (
                           <p className="text-[11px] text-muted-foreground italic">
                             Restoring won't change anything — your current inventory already matches this snapshot.
@@ -525,6 +563,7 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
                           </Button>
                           <Button
                             size="sm"
+                            variant={isRegression ? "destructive" : "default"}
                             className="flex-1 h-7 text-xs"
                             onClick={async () => {
                               setSheetRestoring(true);
@@ -536,7 +575,7 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
                             disabled={sheetRestoring}
                           >
                             {sheetRestoring ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Undo2 className="w-3 h-3 mr-1" />}
-                            Confirm restore
+                            {isRegression ? "Restore anyway" : "Confirm restore"}
                           </Button>
                         </div>
                       </div>
