@@ -276,6 +276,12 @@ export default function AdminPage() {
             {alerts.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">No alerts. All quiet.</p>}
           </Card>
         </TabsContent>
+
+        <TabsContent value="security">
+          <div className="mt-4">
+            <SecurityIssuesPanel />
+          </div>
+        </TabsContent>
       </Tabs>
     </div>
   );
