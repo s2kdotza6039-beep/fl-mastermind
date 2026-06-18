@@ -458,17 +458,29 @@ export default function PluginInventoryPage() {
             )}
           </Card>
 
-          <div className="flex items-center justify-end gap-3 pt-2">
+          <div className="flex items-center justify-end gap-3 pt-2 flex-wrap">
+            {undoSnapshot && (
+              <Button
+                variant="outline"
+                onClick={() => onUndo()}
+                disabled={undoing || saving}
+                title={`Restore previous inventory (${undoSnapshot.native_plugins.length} native · ${undoSnapshot.third_party_plugins.length} third-party · ${undoSnapshot.custom_plugins.length} custom)`}
+              >
+                {undoing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Undo2 className="w-4 h-4 mr-2" />}
+                Undo last save
+              </Button>
+            )}
             <Button variant="ghost" onClick={() => navigate("/")}>Cancel</Button>
             <Button
               onClick={onSave}
-              disabled={saving}
+              disabled={saving || undoing}
               className="bg-gradient-gold text-primary-foreground hover:opacity-90 glow-gold"
             >
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
               Save Inventory
             </Button>
           </div>
+
         </div>
       )}
     </div>
