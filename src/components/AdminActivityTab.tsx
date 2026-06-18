@@ -480,9 +480,37 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
   const cancelExport = () => {
     if (!exporting) return;
     cancelRef.current = true;
+    // Abort the in-flight Supabase request immediately if one is open.
+    try { abortRef.current?.abort(); } catch { /* ignore */ }
   };
 
-  const runExport = async () => {
+  // Snapshot of the current filter view — used both as the "view" recorded in the
+  // diagnostics file and as the payload restored by the "Retry failed export" button.
+  const currentFilters = () => ({
+    eventFilter, query, snapshotId, userQuery,
+    preset, from, to, sort, tz, columnKeys: [...columnKeys],
+  });
+
+  const restoreFilters = (snap: NonNullable<typeof lastFailedSnapshot>) => {
+    setParam({
+      a_event: snap.eventFilter === "all" ? null : snap.eventFilter,
+      a_q: snap.query || null,
+      a_snap: snap.snapshotId || null,
+      a_user: snap.userQuery || null,
+      a_preset: snap.preset === 0 ? null : String(snap.preset),
+      a_from: snap.from || null,
+      a_to: snap.to || null,
+      a_sort: snap.sort === "created_at:desc" ? null : snap.sort,
+      a_tz: snap.tz === "local" ? null : snap.tz,
+      a_cols: snap.columnKeys.join(",") === DEFAULT_COLUMN_KEYS.join(",") ? null : snap.columnKeys.join(","),
+    });
+    setColumnKeys(snap.columnKeys);
+    setTzLocal(snap.tz);
+  };
+
+  const runExport = async (opts?: { restoreFrom?: typeof lastFailedSnapshot }) => {
+    if (opts?.restoreFrom) restoreFilters(opts.restoreFrom);
+
     const cols = columnKeys.map((k) => ALL_COLUMNS.find((c) => c.key === k)).filter(Boolean) as ColumnDef[];
     if (cols.length === 0) {
       toast.error("Pick at least one column to export.");
@@ -494,9 +522,14 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
     setExportLastFail(null);
     setExportPhase("requesting");
     setExportAttempt(1);
+    setExportDiag(null);
 
-    // Retry loop with exponential backoff. Surface the final error after the cap.
-    // Cancellation is checked before every attempt and during the backoff wait.
+    const runStarted = Date.now();
+    const runStartedIso = new Date(runStarted).toISOString();
+    const attemptsLog: ExportDiag["attempts"] = [];
+
+    // Retry loop with exponential backoff + AbortController. Cancellation aborts
+    // the in-flight request immediately and breaks out of the loop.
     let data: any = null;
     let lastErr: any = null;
     let lastAttempt = 0;
@@ -505,23 +538,31 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
       lastAttempt = attempt;
       setExportAttempt(attempt);
       setExportPhase("requesting");
+      const attemptStart = Date.now();
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
       try {
-        const queryPromise = applyOrder(buildBase(false)).limit(SUMMARY_CAP);
+        const queryPromise = applyOrder(buildBase(false)).limit(SUMMARY_CAP).abortSignal(ctrl.signal);
         const timeout = new Promise<never>((_, rej) =>
           setTimeout(() => rej(new Error(`Export timed out after ${EXPORT_TIMEOUT_MS / 1000}s`)), EXPORT_TIMEOUT_MS),
         );
         const res = (await Promise.race([queryPromise, timeout])) as any;
-        if (cancelRef.current) break;
+        if (cancelRef.current) {
+          attemptsLog.push({ attempt, ok: false, duration_ms: Date.now() - attemptStart, error: "cancelled" });
+          break;
+        }
         if (res?.error) throw res.error;
         data = res?.data ?? [];
         lastErr = null;
+        attemptsLog.push({ attempt, ok: true, duration_ms: Date.now() - attemptStart });
         break;
       } catch (e: any) {
         lastErr = e;
+        attemptsLog.push({ attempt, ok: false, duration_ms: Date.now() - attemptStart, error: e?.message ?? String(e) });
+        if (cancelRef.current) break;
         const nextDelay = attempt < EXPORT_MAX_ATTEMPTS ? EXPORT_BACKOFF_BASE_MS * Math.pow(2, attempt - 1) : null;
         setExportLastFail({ attempt, message: e?.message ?? "Request failed", nextDelayMs: nextDelay });
         if (nextDelay != null) {
-          // Sleep in small ticks so a Cancel click interrupts the backoff quickly.
           const end = Date.now() + nextDelay;
           while (Date.now() < end) {
             if (cancelRef.current) break;
@@ -529,13 +570,37 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
           }
           if (cancelRef.current) break;
         }
+      } finally {
+        abortRef.current = null;
       }
     }
+
+    const finalize = (outcome: ExportDiag["outcome"], rows: number, lastError: string | null) => {
+      const endIso = new Date().toISOString();
+      const diag: ExportDiag = {
+        started_at: runStartedIso,
+        ended_at: endIso,
+        duration_ms: Date.now() - runStarted,
+        outcome,
+        attempts: attemptsLog,
+        last_error: lastError,
+        tz,
+        rows,
+        filters: {
+          event_filter: eventFilter, query, snapshot_id: snapshotId, user_query: userQuery,
+          preset: PRESETS[preset]?.label ?? "All time", from, to,
+        },
+        columns: [...columnKeys],
+        sort,
+      };
+      setExportDiag(diag);
+    };
 
     if (cancelRef.current) {
       setExportPhase("idle");
       setExporting(false);
       setExportLastFail(null);
+      finalize("cancelled", 0, lastErr?.message ?? null);
       toast("Export cancelled.");
       cancelRef.current = false;
       return;
@@ -545,8 +610,9 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
       const baseMsg = lastErr?.message ?? "Export failed.";
       const msg = `${baseMsg} (failed on attempt ${lastAttempt}/${EXPORT_MAX_ATTEMPTS})`;
       setExportError(msg);
-      // Keep lastFail around (with nextDelayMs=null) so the banner can show details.
       setExportLastFail({ attempt: lastAttempt, message: baseMsg, nextDelayMs: null });
+      setLastFailedSnapshot(currentFilters());
+      finalize("error", 0, baseMsg);
       toast.error(msg);
       setExportPhase("idle");
       setExporting(false);
@@ -558,17 +624,15 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
       const source: LogRow[] = (data as LogRow[]) ?? [];
       if (source.length === 0) {
         toast.error("No events match these filters.");
+        finalize("empty", 0, null);
         setExporting(false);
         setExportPhase("idle");
         return;
       }
 
       const esc = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-      // Prepend a metadata banner describing the export so opened CSVs are self-documenting.
       const presetLabel = PRESETS[preset]?.label ?? "All time";
-      const dateRange = (from || to)
-        ? `${from || "…"} → ${to || "…"}`
-        : presetLabel;
+      const dateRange = (from || to) ? `${from || "…"} → ${to || "…"}` : presetLabel;
       const now = new Date();
       const generatedTs = tz === "utc" ? now.toISOString() : now.toLocaleString();
       const filterLines = [
@@ -589,7 +653,6 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
       const header = cols.map((c) => c.label).join(",") + "\n";
       const body = source.map((r) => {
         const info = r.user_id ? userMap.get(r.user_id) ?? null : null;
-        // Apply the timezone to created_at if that column is included
         return cols.map((c) => {
           if (c.key === "created_at") return esc(formatTs(r.created_at, tz));
           return esc(c.resolve(r, info));
@@ -609,30 +672,43 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
         user_id: null,
         event_type: "admin_activity_exported",
         metadata: {
-          rows: source.length,
-          columns: columnKeys,
-          event_filter: eventFilter,
-          snapshot_id: snapshotId,
-          user_query: userQuery,
-          preset: presetLabel,
+          rows: source.length, columns: columnKeys, event_filter: eventFilter,
+          snapshot_id: snapshotId, user_query: userQuery, preset: presetLabel,
           from, to, sort, tz,
-          cap_hit: source.length === SUMMARY_CAP,
-          attempts: exportAttempt,
+          cap_hit: source.length === SUMMARY_CAP, attempts: lastAttempt,
+          duration_ms: Date.now() - runStarted,
         },
       }).then(() => {}, () => {});
+      finalize("success", source.length, null);
+      // Clear any previous failed-snapshot, since we now have a healthy run.
+      setLastFailedSnapshot(null);
       setExportPhase("done");
       toast.success(`Exported ${source.length} event${source.length === 1 ? "" : "s"}.`);
-      // Fade the "Done" indicator after a beat.
       setTimeout(() => setExportPhase((p) => (p === "done" ? "idle" : p)), 1500);
     } catch (e: any) {
       const msg = e?.message ?? "Export failed during CSV generation.";
       setExportError(msg);
+      setLastFailedSnapshot(currentFilters());
+      finalize("error", 0, msg);
       toast.error(msg);
       setExportPhase("idle");
     } finally {
       setExporting(false);
     }
   };
+
+  // Download the diagnostics JSON for the most recent export run.
+  const downloadDiagnostics = () => {
+    if (!exportDiag) return;
+    const blob = new Blob([JSON.stringify(exportDiag, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `admin-activity-export-diagnostics-${Date.now()}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  };
+
 
 
   const clearAll = () => {
