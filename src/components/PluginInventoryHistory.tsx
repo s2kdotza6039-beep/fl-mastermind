@@ -406,6 +406,154 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Final safety modal — last stop before restore is applied. Computes the
+          contributor-level before/after summary vs the live current state and
+          requires an explicit acknowledgement checkbox. */}
+      <AlertDialog
+        open={!!finalConfirm}
+        onOpenChange={(o) => { if (!o && !finalRestoring) { setFinalConfirm(null); setFinalAck(false); } }}
+      >
+        <AlertDialogContent className="max-w-xl">
+          {finalConfirm && (() => {
+            const s = finalConfirm;
+            const dN = ciDiff(current.native, s.native_plugins);
+            const dT = ciDiff(current.third, s.third_party_plugins);
+            const dC = ciDiff(current.custom, s.custom_plugins);
+            const beforeTotal = current.native.length + current.third.length + current.custom.length;
+            const afterTotal = s.native_plugins.length + s.third_party_plugins.length + s.custom_plugins.length;
+            const net = afterTotal - beforeTotal;
+            const isRegression = net < 0;
+            const totalAdds = dN.added.length + dT.added.length + dC.added.length;
+            const totalRemoves = dN.removed.length + dT.removed.length + dC.removed.length;
+            const noChange = totalAdds === 0 && totalRemoves === 0;
+            const contributors = [
+              { label: "Native",      d: dN, before: current.native.length, after: s.native_plugins.length },
+              { label: "Third-party", d: dT, before: current.third.length,  after: s.third_party_plugins.length },
+              { label: "Custom",      d: dC, before: current.custom.length, after: s.custom_plugins.length },
+            ];
+            return (
+              <>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    Final confirmation — apply restore?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Snapshot from <strong>{new Date(s.created_at).toLocaleString()}</strong>.
+                    This will replace your current inventory. Your current state is also saved to history, so this remains undoable.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+
+                <div className="space-y-3 text-xs">
+                  {/* Overall score */}
+                  <div className="flex items-center justify-between p-2 rounded border border-border bg-muted/30">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Score now</div>
+                      <div className="font-bold text-base">{beforeTotal}</div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <div className="text-[10px] uppercase tracking-widest text-muted-foreground">After restore</div>
+                      <div className="font-bold text-base">{afterTotal}</div>
+                    </div>
+                    <div className={`font-bold ${net > 0 ? "text-emerald-500" : net < 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                      {net > 0 ? "+" : ""}{net} net
+                    </div>
+                  </div>
+
+                  {/* Per-contributor before/after */}
+                  {noChange ? (
+                    <p className="text-muted-foreground italic text-center py-1">
+                      No differences — restoring won't change your inventory or your completion score.
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Contributor changes</div>
+                      {contributors.map(({ label, d, before, after }) => {
+                        const delta = after - before;
+                        const changed = d.added.length > 0 || d.removed.length > 0 || delta !== 0;
+                        if (!changed) return null;
+                        return (
+                          <div key={label} className="border border-border rounded p-2 space-y-0.5">
+                            <div className="flex items-center justify-between">
+                              <span className="font-medium">{label}</span>
+                              <span className="text-muted-foreground">
+                                {before} → {after}{" "}
+                                <span className={delta > 0 ? "text-emerald-500" : delta < 0 ? "text-destructive" : ""}>
+                                  ({delta > 0 ? "+" : ""}{delta})
+                                </span>
+                              </span>
+                            </div>
+                            {d.added.length > 0 && (
+                              <div className="text-[11px] text-emerald-500">
+                                + {d.added.length} added: {d.added.slice(0, 4).join(", ")}{d.added.length > 4 ? `, +${d.added.length - 4} more` : ""}
+                              </div>
+                            )}
+                            {d.removed.length > 0 && (
+                              <div className="text-[11px] text-destructive">
+                                − {d.removed.length} removed: {d.removed.slice(0, 4).join(", ")}{d.removed.length > 4 ? `, +${d.removed.length - 4} more` : ""}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {isRegression && (
+                    <div className="flex items-start gap-2 p-2 rounded border border-destructive/40 bg-destructive/10 text-destructive text-[11px]">
+                      <span aria-hidden>⚠️</span>
+                      <span>
+                        <strong>Completion regression:</strong> the score drops by {Math.abs(net)} plugin{Math.abs(net) === 1 ? "" : "s"}.
+                        You'll need to re-add the removed plugins to recover.
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Final acknowledgement gate */}
+                  <label className="flex items-start gap-2 p-2 rounded border border-amber-500/40 bg-amber-500/10 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-3.5 w-3.5 accent-amber-500"
+                      checked={finalAck}
+                      onChange={(e) => setFinalAck(e.target.checked)}
+                      disabled={finalRestoring}
+                    />
+                    <span className="text-[11px]">
+                      I've reviewed the contributor changes above and want to apply this restore
+                      {noChange ? " (no-op)." : `, taking my inventory from ${beforeTotal} → ${afterTotal} plugin${afterTotal === 1 ? "" : "s"}.`}
+                    </span>
+                  </label>
+                </div>
+
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={finalRestoring}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    disabled={!finalAck || finalRestoring}
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      setFinalRestoring(true);
+                      try {
+                        await onRestore(s);
+                      } finally {
+                        setFinalRestoring(false);
+                        setFinalConfirm(null);
+                        setFinalAck(false);
+                      }
+                    }}
+                    className={isRegression ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+                  >
+                    {finalRestoring ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Undo2 className="w-4 h-4 mr-2" />}
+                    {isRegression ? "Apply restore anyway" : "Apply restore"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </>
+            );
+          })()}
+        </AlertDialogContent>
+      </AlertDialog>
+
+
+
       <Sheet open={!!pointDetail} onOpenChange={(o) => { if (!o) { setPointDetail(null); setSheetConfirming(false); } }}>
         <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
           {pointDetail && (() => {
