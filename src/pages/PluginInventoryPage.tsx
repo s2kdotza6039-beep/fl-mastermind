@@ -202,6 +202,8 @@ export default function PluginInventoryPage() {
     } else {
       setUndoSnapshot(priorInventory);
     }
+    setHistoryReloadKey((k) => k + 1);
+
 
     const d = result.diff!;
     const total = d.total;
