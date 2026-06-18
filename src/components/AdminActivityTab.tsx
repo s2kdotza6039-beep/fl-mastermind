@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Download, Loader2, RefreshCw, ChevronLeft, ChevronRight, X, Columns, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Activity, CheckCircle2, ArrowUpDown } from "lucide-react";
+import { Search, Download, Loader2, RefreshCw, ChevronLeft, ChevronRight, X, Columns, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Activity, CheckCircle2, ArrowUpDown, AlertCircle, Keyboard } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
