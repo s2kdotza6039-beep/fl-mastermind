@@ -977,13 +977,61 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
                   )}
                 </div>
               )}
+              {lastFailedSnapshot && (
+                <div className="text-[10px] opacity-75">
+                  Captured filters: event=<code>{lastFailedSnapshot.eventFilter}</code> · sort=<code>{lastFailedSnapshot.sort}</code> · tz=<code>{lastFailedSnapshot.tz}</code> · cols={lastFailedSnapshot.columnKeys.length}
+                </div>
+              )}
             </div>
-            <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => void runExport()} disabled={exporting}>
-              {exporting ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />} Retry
-            </Button>
+            <div className="flex flex-col gap-1">
+              {lastFailedSnapshot && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 text-[10px]"
+                  onClick={() => void runExport({ restoreFrom: lastFailedSnapshot })}
+                  disabled={exporting}
+                  title="Restore the filters/timezone/columns from the failed run and try again"
+                >
+                  {exporting ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />} Retry failed export
+                </Button>
+              )}
+              <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => void runExport()} disabled={exporting}>
+                Retry current view
+              </Button>
+            </div>
             <button onClick={() => { setExportError(null); setExportLastFail(null); }} className="text-destructive/60 hover:text-destructive" aria-label="Dismiss"><X className="w-3 h-3" /></button>
           </div>
         )}
+
+        {exportDiag && (
+          <div className="flex items-center gap-2 p-2 rounded border border-border bg-muted/20 text-[11px]">
+            <span className="text-muted-foreground">
+              Last run: <strong className={
+                exportDiag.outcome === "success" ? "text-emerald-500"
+                : exportDiag.outcome === "cancelled" ? "text-amber-500"
+                : exportDiag.outcome === "empty" ? "text-muted-foreground"
+                : "text-destructive"
+              }>{exportDiag.outcome}</strong>
+              {" · "}{exportDiag.attempts.length} attempt{exportDiag.attempts.length === 1 ? "" : "s"}
+              {" · "}{exportDiag.rows} row{exportDiag.rows === 1 ? "" : "s"}
+              {" · "}{(exportDiag.duration_ms / 1000).toFixed(2)}s
+              {" · tz "}{exportDiag.tz}
+              {exportDiag.last_error && <> · error: <span className="text-destructive">{exportDiag.last_error}</span></>}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 text-[10px] ml-auto"
+              onClick={downloadDiagnostics}
+              title="Download a JSON log of attempts, durations, last error, timezone, and filters used"
+            >
+              <Download className="w-3 h-3 mr-1" /> Download diagnostics
+            </Button>
+          </div>
+        )}
+
+
 
 
         <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap">
