@@ -156,6 +156,7 @@ export default function AdminPage() {
         <TabsList>
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="setups">FL Setups</TabsTrigger>
+          <TabsTrigger value="inventories">Plugin Inventories</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="alerts">Alerts {unresolved > 0 && <Badge variant="destructive" className="ml-2">{unresolved}</Badge>}</TabsTrigger>
         </TabsList>
