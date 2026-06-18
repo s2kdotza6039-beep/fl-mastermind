@@ -30,8 +30,31 @@ const FEATURES = [
   { to: "/upload", icon: UploadCloud, title: "Upload Audio", desc: "Reference your file." },
 ];
 
+interface RecentAudio {
+  id: string;
+  file_name: string;
+  detected_key: string | null;
+  bpm: number | null;
+  lufs_estimate: number | null;
+  peak_db: number | null;
+  detected_issues: any;
+  created_at: string;
+}
+
 export default function Dashboard() {
   const { projectName, genre, stage, progress, savedAdvice, checklist, removeAdvice } = useSession();
+  const { user } = useAuth();
+  const [recentAudio, setRecentAudio] = useState<RecentAudio[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("audio_analysis_reports")
+      .select("id, file_name, detected_key, bpm, lufs_estimate, peak_db, detected_issues, created_at")
+      .order("created_at", { ascending: false })
+      .limit(5)
+      .then(({ data }) => setRecentAudio((data as RecentAudio[]) ?? []));
+  }, [user]);
 
   const stats = [
     { label: "Genre", value: genre, icon: Music2 },
