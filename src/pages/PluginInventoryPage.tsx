@@ -25,7 +25,9 @@ export default function PluginInventoryPage() {
   const [thirdQuery, setThirdQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedSuggestions, setSelectedSuggestions] = useState<Set<string>>(new Set());
   const [savedSnapshot, setSavedSnapshot] = useState<{ n: string; t: string; c: string } | null>(null);
+  const [savedCompleted, setSavedCompleted] = useState<boolean>(false);
 
   useEffect(() => {
     if (inventory) {
