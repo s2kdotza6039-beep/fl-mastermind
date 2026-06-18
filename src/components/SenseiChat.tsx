@@ -15,21 +15,37 @@ import { editionToTier, forbiddenPlugins, eligiblePlugins, tierLabel } from "@/l
 
 // Detect mentions of owned plugins in assistant text.
 // Short brand names (≤3 chars) use word-boundary to avoid false matches.
-function findPrioritized(text: string, owned: string[]): string[] {
+type PriorityHit = { name: string; rule: "word-boundary" | "substring"; snippet: string };
+function findPrioritized(text: string, owned: string[]): PriorityHit[] {
   if (!text || owned.length === 0) return [];
-  const lower = text.toLowerCase();
-  const hits: string[] = [];
+  const hits: PriorityHit[] = [];
+  const seen = new Set<string>();
   for (const name of owned) {
+    if (seen.has(name.toLowerCase())) continue;
     const n = name.toLowerCase();
+    const esc = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    let match: RegExpExecArray | null = null;
+    let rule: PriorityHit["rule"];
     if (n.length <= 3) {
-      const re = new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-      if (re.test(text)) hits.push(name);
-    } else if (lower.includes(n)) {
-      hits.push(name);
+      const re = new RegExp(`\\b${esc}\\b`, "i");
+      match = re.exec(text);
+      rule = "word-boundary";
+    } else {
+      const re = new RegExp(esc, "i");
+      match = re.exec(text);
+      rule = "substring";
+    }
+    if (match) {
+      const start = Math.max(0, match.index - 25);
+      const end = Math.min(text.length, match.index + match[0].length + 25);
+      const snippet = (start > 0 ? "…" : "") + text.slice(start, end).replace(/\s+/g, " ").trim() + (end < text.length ? "…" : "");
+      hits.push({ name, rule, snippet });
+      seen.add(n);
     }
   }
-  return Array.from(new Set(hits));
+  return hits;
 }
+
 
 interface SenseiChatProps {
   initialPrompt?: string;
@@ -312,12 +328,20 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
                         </div>
                         <div className="flex flex-wrap gap-1">
                           {hits.map((h) => (
-                            <span key={h} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30">{h}</span>
+                            <span
+                              key={h.name}
+                              title={`Matched by ${h.rule === "word-boundary" ? "whole-word match (short brand)" : "case-insensitive substring match"} — "${h.snippet}"`}
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30 cursor-help"
+                            >
+                              {h.name}
+                              <span className="ml-1 text-primary/60">· {h.rule === "word-boundary" ? "word" : "substr"}</span>
+                            </span>
                           ))}
                         </div>
                       </div>
                     );
                   })()}
+
                   {!loading && i === messages.length - 1 && m.content.length > 50 && (
                     <Button
                       size="sm"

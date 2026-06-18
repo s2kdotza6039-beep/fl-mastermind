@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Boxes, Save, Loader2, Plus, X, Search } from "lucide-react";
+import { Boxes, Save, Loader2, Plus, X, Search, CheckSquare, Square } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,9 @@ export default function PluginInventoryPage() {
   const [thirdQuery, setThirdQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedSuggestions, setSelectedSuggestions] = useState<Set<string>>(new Set());
   const [savedSnapshot, setSavedSnapshot] = useState<{ n: string; t: string; c: string } | null>(null);
+  const [savedCompleted, setSavedCompleted] = useState<boolean>(false);
 
   useEffect(() => {
     if (inventory) {
@@ -36,6 +38,7 @@ export default function PluginInventoryPage() {
       setThird(t);
       setCustom(c);
       setSavedSnapshot({ n: sortKey(n), t: sortKey(t), c: sortKey(c) });
+      setSavedCompleted(!!inventory.inventory_completed);
     }
   }, [inventory]);
 
@@ -76,6 +79,28 @@ export default function PluginInventoryPage() {
     setShowSuggestions(false);
   };
 
+  const addSelectedSuggestions = () => {
+    const additions = Array.from(selectedSuggestions).filter((s) => !isDuplicate(s));
+    if (additions.length === 0) {
+      toast.error("Select at least one suggestion to add.");
+      return;
+    }
+    setCustom([...custom, ...additions]);
+    setSelectedSuggestions(new Set());
+    setCustomDraft("");
+    setShowSuggestions(false);
+    toast.success(`Added ${additions.length} custom plugin${additions.length === 1 ? "" : "s"}.`);
+  };
+
+  const toggleSuggestion = (s: string) => {
+    setSelectedSuggestions((prev) => {
+      const next = new Set(prev);
+      if (next.has(s)) next.delete(s);
+      else next.add(s);
+      return next;
+    });
+  };
+
   const filteredNative = useMemo(
     () => NATIVE_PLUGINS.filter((p) => p.toLowerCase().includes(nativeQuery.toLowerCase())),
     [nativeQuery],
@@ -90,21 +115,52 @@ export default function PluginInventoryPage() {
     if (!q) return [];
     return CUSTOM_PLUGIN_SUGGESTIONS
       .filter((p) => p.toLowerCase().includes(q) && !isDuplicate(p))
-      .slice(0, 6);
+      .slice(0, 8);
   }, [customDraft, native, third, custom]);
 
   const onSave = async () => {
     setSaving(true);
+    // Diff before/after for the toast summary
+    const prevN = new Set((inventory?.native_plugins ?? []).map((x) => x.toLowerCase()));
+    const prevT = new Set((inventory?.third_party_plugins ?? []).map((x) => x.toLowerCase()));
+    const prevC = new Set((inventory?.custom_plugins ?? []).map((x) => x.toLowerCase()));
+    const curN = new Set(native.map((x) => x.toLowerCase()));
+    const curT = new Set(third.map((x) => x.toLowerCase()));
+    const curC = new Set(custom.map((x) => x.toLowerCase()));
+    const added =
+      [...curN].filter((x) => !prevN.has(x)).length +
+      [...curT].filter((x) => !prevT.has(x)).length +
+      [...curC].filter((x) => !prevC.has(x)).length;
+    const removed =
+      [...prevN].filter((x) => !curN.has(x)).length +
+      [...prevT].filter((x) => !curT.has(x)).length +
+      [...prevC].filter((x) => !curC.has(x)).length;
+    const wasCompleted = savedCompleted;
+
     const { error } = await save({
       native_plugins: native,
       third_party_plugins: third,
       custom_plugins: custom,
     });
     setSaving(false);
-    if (error) return toast.error(error);
-    toast.success("Plugin inventory saved. Sensei will now recommend tools you actually own.");
+    if (error) return toast.error(`Couldn't save inventory: ${error}`);
+
+    const total = native.length + third.length + custom.length;
+    const parts: string[] = [];
+    if (added) parts.push(`+${added} added`);
+    if (removed) parts.push(`−${removed} removed`);
+    if (parts.length === 0) parts.push("no plugin changes");
+    const completedNote = !wasCompleted
+      ? "Inventory marked complete — Sensei will now tailor recommendations."
+      : "Inventory still complete.";
+
+    toast.success("Plugin inventory saved", {
+      description: `${parts.join(" · ")} · ${total} total (${native.length} native · ${third.length} third-party · ${custom.length} custom). ${completedNote}`,
+      duration: 6000,
+    });
     navigate("/");
   };
+
 
   return (
     <div className="container max-w-4xl py-10 px-4 md:px-8">
@@ -203,19 +259,63 @@ export default function PluginInventoryPage() {
                 <Button type="button" onClick={() => addCustom()} variant="outline"><Plus className="w-4 h-4 mr-1" /> Add</Button>
               </div>
               {showSuggestions && customSuggestions.length > 0 && (
-                <div className="absolute z-10 left-0 right-[88px] mt-1 rounded-md border border-border bg-popover shadow-lg overflow-hidden">
-                  {customSuggestions.map((s) => (
+                <div
+                  className="absolute z-10 left-0 right-0 mt-1 rounded-md border border-border bg-popover shadow-lg overflow-hidden"
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  <div className="px-3 py-2 text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border/60 flex items-center justify-between">
+                    <span>Suggestions ({customSuggestions.length})</span>
                     <button
-                      key={s}
                       type="button"
-                      onMouseDown={(e) => { e.preventDefault(); addCustom(s); }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
+                      onClick={() => {
+                        const all = new Set(customSuggestions);
+                        const allSelected = customSuggestions.every((s) => selectedSuggestions.has(s));
+                        setSelectedSuggestions(allSelected ? new Set() : all);
+                      }}
+                      className="text-primary hover:underline normal-case tracking-normal text-xs"
                     >
-                      {s}
+                      {customSuggestions.every((s) => selectedSuggestions.has(s)) ? "Clear all" : "Select all"}
                     </button>
-                  ))}
+                  </div>
+                  <div className="max-h-64 overflow-y-auto">
+                    {customSuggestions.map((s) => {
+                      const checked = selectedSuggestions.has(s);
+                      return (
+                        <div
+                          key={s}
+                          className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted cursor-pointer"
+                          onClick={() => toggleSuggestion(s)}
+                        >
+                          {checked ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4 text-muted-foreground" />}
+                          <span className="flex-1">{s}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); addCustom(s); }}
+                            className="text-[10px] text-muted-foreground hover:text-primary"
+                          >
+                            add only
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="px-3 py-2 border-t border-border/60 flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-muted-foreground">
+                      {selectedSuggestions.size} selected
+                    </span>
+                    <Button
+                      size="sm"
+                      type="button"
+                      onClick={addSelectedSuggestions}
+                      disabled={selectedSuggestions.size === 0}
+                      className="h-7 text-xs"
+                    >
+                      <Plus className="w-3 h-3 mr-1" /> Add selected ({selectedSuggestions.size})
+                    </Button>
+                  </div>
                 </div>
               )}
+
             </div>
             {custom.length > 0 && (
               <div className="flex flex-wrap gap-2">
