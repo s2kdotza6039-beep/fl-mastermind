@@ -718,6 +718,10 @@ function InventoriesTab({ users }: { users: UserRow[] }) {
         <Button onClick={exportCsv} disabled={filtered.length === 0 || loading || !!error} variant="outline" className="sm:w-auto">
           <Download className="w-4 h-4 mr-2" /> Export CSV
         </Button>
+        <Button onClick={exportRulesCsv} disabled={filtered.length === 0 || loading || !!error} variant="outline" className="sm:w-auto" title="One row per plugin with chat badge match rule + snippet">
+          <Download className="w-4 h-4 mr-2" /> Export w/ rules
+        </Button>
+
       </div>
 
       <div className="flex items-center justify-between mb-3 text-xs text-muted-foreground">
