@@ -536,7 +536,17 @@ function SetupsTab({
 
 const INVENTORIES_PAGE_SIZE = 50;
 
+type ExportKind = "summary" | "rules";
+type ExportPreview = {
+  kind: ExportKind;
+  filename: string;
+  headerComments: string[];
+  columns: string[];
+  rows: string[][];
+};
+
 function InventoriesTab({ users }: { users: UserRow[] }) {
+  const [preview, setPreview] = useState<ExportPreview | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const initialPage = Math.max(0, parseInt(searchParams.get("inv_page") ?? "0", 10) || 0);
   const initialQuery = searchParams.get("inv_q") ?? "";
