@@ -30,13 +30,15 @@ const SKILL = ["Beginner", "Intermediate", "Advanced"];
 
 export default function StudioSetupPage() {
   const navigate = useNavigate();
-  const { setup, loading, save } = useStudioSetup();
+  const { user } = useAuth();
+  const { setup, loading, save, refresh } = useStudioSetup();
   const [flVersion, setFlVersion] = useState("");
   const [flEdition, setFlEdition] = useState("");
   const [mainUse, setMainUse] = useState("");
   const [mainGenre, setMainGenre] = useState("");
   const [skillLevel, setSkillLevel] = useState("");
   const [saving, setSaving] = useState(false);
+  const [history, setHistory] = useState<HistoryRow[]>([]);
 
   useEffect(() => {
     if (setup) {
@@ -47,6 +49,34 @@ export default function StudioSetupPage() {
       setSkillLevel(setup.skill_level ?? "");
     }
   }, [setup]);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("user_studio_setup_history")
+      .select("id, fl_version, fl_edition, main_use, main_genre, skill_level, change_type, changed_at")
+      .eq("user_id", user.id)
+      .order("changed_at", { ascending: false })
+      .limit(20)
+      .then(({ data }) => setHistory((data as HistoryRow[]) ?? []));
+  }, [user, setup]);
+
+  const revertTo = async (h: HistoryRow) => {
+    setSaving(true);
+    const { error } = await save({
+      fl_version: h.fl_version,
+      fl_edition: h.fl_edition,
+      main_use: h.main_use,
+      main_genre: h.main_genre,
+      skill_level: h.skill_level,
+    });
+    setSaving(false);
+    if (error) return toast.error(error);
+    toast.success("Reverted to previous setup.");
+    refresh();
+  };
+
+
 
   const allFilled = flVersion && flEdition && mainUse && mainGenre && skillLevel;
 
