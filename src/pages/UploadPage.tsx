@@ -6,7 +6,13 @@ import { Progress } from "@/components/ui/progress";
 import { UploadCloud, FileAudio, X, Sparkles, Loader2, MessageCircle, RefreshCcw } from "lucide-react";
 import { SenseiChat } from "@/components/SenseiChat";
 import { AudioReportCard } from "@/components/AudioReportCard";
-import { analyzeAudioFile, type AudioAnalysisResult, formatMetricsForPrompt } from "@/lib/audio-analysis";
+import { WaveformPlayer } from "@/components/WaveformPlayer";
+import {
+  analyzeAudioFileInWorker,
+  computeWaveformPeaks,
+  type AudioAnalysisResult,
+  formatMetricsForPrompt,
+} from "@/lib/audio-analysis";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
