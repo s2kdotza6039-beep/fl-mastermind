@@ -47,7 +47,7 @@ export default function AdminPage() {
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
   const [setups, setSetups] = useState<SetupRow[]>([]);
-  const [inventories, setInventories] = useState<InventoryRow[]>([]);
+  
   const [loading, setLoading] = useState(true);
   const [userQuery, setUserQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "paid" | "free" | "none">("all");
@@ -73,14 +73,13 @@ export default function AdminPage() {
 
   async function load() {
     setLoading(true);
-    const [profilesQ, rolesQ, logsQ, alertsQ, emailsQ, setupsQ, invQ] = await Promise.all([
+    const [profilesQ, rolesQ, logsQ, alertsQ, emailsQ, setupsQ] = await Promise.all([
       supabase.from("profiles").select("user_id, display_name").limit(500),
       supabase.from("user_roles").select("user_id, role"),
       supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(100),
       supabase.from("security_alerts").select("*").order("created_at", { ascending: false }).limit(100),
       supabase.rpc("admin_list_user_emails"),
       supabase.from("user_studio_setup").select("user_id, fl_version, fl_edition, main_use, main_genre, skill_level, setup_completed, updated_at").limit(500),
-      supabase.from("user_plugin_inventory").select("user_id, native_plugins, third_party_plugins, custom_plugins, inventory_completed, updated_at").limit(500),
     ]);
     if (profilesQ.data && rolesQ.data) {
       const emailMap = new Map<string, string>();
@@ -111,7 +110,6 @@ export default function AdminPage() {
     if (logsQ.data) setLogs(logsQ.data as LogRow[]);
     if (alertsQ.data) setAlerts(alertsQ.data as AlertRow[]);
     if (setupsQ.data) setSetups(setupsQ.data as SetupRow[]);
-    if (invQ.data) setInventories(invQ.data as InventoryRow[]);
     setLoading(false);
   }
 
@@ -246,7 +244,7 @@ export default function AdminPage() {
         </TabsContent>
 
         <TabsContent value="inventories">
-          <InventoriesTab inventories={inventories} users={users} loading={loading} />
+          <InventoriesTab users={users} />
         </TabsContent>
 
 
@@ -535,14 +533,34 @@ function SetupsTab({
 }
 
 
-function InventoriesTab({
-  inventories, users, loading,
-}: {
-  inventories: { user_id: string; native_plugins: string[]; third_party_plugins: string[]; custom_plugins: string[]; inventory_completed: boolean; updated_at: string }[];
-  users: UserRow[];
-  loading: boolean;
-}) {
+const INVENTORIES_PAGE_SIZE = 50;
+
+function InventoriesTab({ users }: { users: UserRow[] }) {
+  const [page, setPage] = useState(0);
+  const [pageRows, setPageRows] = useState<InventoryRow[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const from = page * INVENTORIES_PAGE_SIZE;
+      const to = from + INVENTORIES_PAGE_SIZE - 1;
+      const { data, count, error } = await supabase
+        .from("user_plugin_inventory")
+        .select("user_id, native_plugins, third_party_plugins, custom_plugins, inventory_completed, updated_at", { count: "exact" })
+        .order("updated_at", { ascending: false })
+        .range(from, to);
+      if (cancelled) return;
+      if (error) toast.error(error.message);
+      setPageRows((data as InventoryRow[]) ?? []);
+      setTotalCount(count ?? 0);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [page]);
 
   const userMap = useMemo(() => {
     const m = new Map<string, UserRow>();
@@ -551,15 +569,11 @@ function InventoriesTab({
   }, [users]);
 
   const rows = useMemo(() => {
-    return inventories.map((i) => {
+    return pageRows.map((i) => {
       const u = userMap.get(i.user_id);
-      return {
-        ...i,
-        display_name: u?.display_name ?? null,
-        email: u?.email ?? null,
-      };
+      return { ...i, display_name: u?.display_name ?? null, email: u?.email ?? null };
     });
-  }, [inventories, userMap]);
+  }, [pageRows, userMap]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -569,6 +583,8 @@ function InventoriesTab({
     );
   }, [rows, query]);
 
+  const totalPages = Math.max(1, Math.ceil(totalCount / INVENTORIES_PAGE_SIZE));
+
   const exportCsv = () => {
     const headers = ["user_id", "display_name", "email", "native_count", "third_party_count", "custom_count", "native_plugins", "third_party_plugins", "custom_plugins", "updated_at"];
     const esc = (v: unknown) => {
@@ -576,21 +592,15 @@ function InventoriesTab({
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
     const data = filtered.map((r) => [
-      esc(r.user_id),
-      esc(r.display_name),
-      esc(r.email),
-      esc(r.native_plugins.length),
-      esc(r.third_party_plugins.length),
-      esc(r.custom_plugins.length),
-      esc(r.native_plugins.join("; ")),
-      esc(r.third_party_plugins.join("; ")),
-      esc(r.custom_plugins.join("; ")),
+      esc(r.user_id), esc(r.display_name), esc(r.email),
+      esc(r.native_plugins.length), esc(r.third_party_plugins.length), esc(r.custom_plugins.length),
+      esc(r.native_plugins.join("; ")), esc(r.third_party_plugins.join("; ")), esc(r.custom_plugins.join("; ")),
       esc(r.updated_at),
     ].join(","));
     const csv = [
       `# Studio Sensei — Plugin Inventories export`,
       `# Generated: ${new Date().toISOString()}`,
-      `# Total rows: ${filtered.length} of ${rows.length}`,
+      `# Page ${page + 1} of ${totalPages} · ${filtered.length} of ${totalCount} total rows`,
       headers.join(","),
       ...data,
     ].join("\n");
@@ -598,7 +608,7 @@ function InventoriesTab({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `plugin-inventories-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `plugin-inventories-p${page + 1}-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success(`Exported ${filtered.length} inventor${filtered.length === 1 ? "y" : "ies"}.`);
@@ -612,7 +622,7 @@ function InventoriesTab({
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by email or name…"
+            placeholder="Search by email or name (current page)…"
             aria-label="Search plugin inventories"
             maxLength={100}
             className="pl-9 pr-9"
@@ -633,11 +643,20 @@ function InventoriesTab({
         </Button>
       </div>
 
+      <div className="flex items-center justify-between mb-3 text-xs text-muted-foreground">
+        <span>Page {page + 1} of {totalPages} · {totalCount} total</span>
+        <span className="italic">Search applies to current page</span>
+      </div>
+
       {loading ? (
         <Loader2 className="w-5 h-5 animate-spin" />
       ) : filtered.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-6">
-          {inventories.length === 0 ? "No users have saved a plugin inventory yet." : `No inventories match "${query}".`}
+          {totalCount === 0
+            ? "No users have saved a plugin inventory yet."
+            : query
+              ? `No inventories on this page match "${query}".`
+              : "No rows on this page."}
         </p>
       ) : (
         <div className="overflow-x-auto">
@@ -668,6 +687,16 @@ function InventoriesTab({
           </table>
         </div>
       )}
+
+      <div className="flex items-center justify-end gap-2 mt-4">
+        <Button size="sm" variant="outline" disabled={page === 0 || loading} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+          Previous
+        </Button>
+        <Button size="sm" variant="outline" disabled={page + 1 >= totalPages || loading} onClick={() => setPage((p) => p + 1)}>
+          Next
+        </Button>
+      </div>
     </Card>
   );
 }
+

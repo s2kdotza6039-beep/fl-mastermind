@@ -39,7 +39,12 @@ export function PluginInventoryCard() {
             <CheckCircle2 className="w-4 h-4 text-primary" />
           </div>
           <div className="min-w-0">
-            <h3 className="font-semibold text-sm text-foreground mb-1">Plugin Inventory</h3>
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="font-semibold text-sm text-foreground">Plugin Inventory</h3>
+              <span className="text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30">
+                Inventory saved
+              </span>
+            </div>
             <div className="grid grid-cols-3 gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
               <div><span className="text-muted-foreground/60">Native:</span> <span className="text-foreground">{n}</span></div>
               <div><span className="text-muted-foreground/60">Third-party:</span> <span className="text-foreground">{t}</span></div>

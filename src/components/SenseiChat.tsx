@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/context/SessionContext";
@@ -12,6 +13,24 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { editionToTier, forbiddenPlugins, eligiblePlugins, tierLabel } from "@/lib/fl-plugin-eligibility";
 
+// Detect mentions of owned plugins in assistant text.
+// Short brand names (≤3 chars) use word-boundary to avoid false matches.
+function findPrioritized(text: string, owned: string[]): string[] {
+  if (!text || owned.length === 0) return [];
+  const lower = text.toLowerCase();
+  const hits: string[] = [];
+  for (const name of owned) {
+    const n = name.toLowerCase();
+    if (n.length <= 3) {
+      const re = new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+      if (re.test(text)) hits.push(name);
+    } else if (lower.includes(n)) {
+      hits.push(name);
+    }
+  }
+  return Array.from(new Set(hits));
+}
+
 interface SenseiChatProps {
   initialPrompt?: string;
   compact?: boolean;
@@ -21,7 +40,7 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
   const { genre, stage, projectName, saveAdvice } = useSession();
   const { isPaid } = useAuth();
   const { setup } = useStudioSetup();
-  const { inventory } = usePluginInventory();
+  const { inventory, isComplete: inventoryComplete } = usePluginInventory();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -29,6 +48,19 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
   const sentInitial = useRef(false);
 
   const [eligibilityOpen, setEligibilityOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+
+  const ownedAll = useMemo(
+    () =>
+      inventoryComplete
+        ? [
+            ...(inventory?.native_plugins ?? []),
+            ...(inventory?.third_party_plugins ?? []),
+            ...(inventory?.custom_plugins ?? []),
+          ]
+        : [],
+    [inventory, inventoryComplete],
+  );
 
   const eligibility = useMemo(() => {
     if (!setup?.fl_edition) return null;
@@ -93,9 +125,9 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
         mainUse: setup?.main_use ?? undefined,
         mainGenre: setup?.main_genre ?? undefined,
         skillLevel: setup?.skill_level ?? undefined,
-        nativePlugins: inventory?.native_plugins ?? undefined,
-        thirdPartyPlugins: inventory?.third_party_plugins ?? undefined,
-        customPlugins: inventory?.custom_plugins ?? undefined,
+        nativePlugins: inventoryComplete ? inventory?.native_plugins ?? undefined : undefined,
+        thirdPartyPlugins: inventoryComplete ? inventory?.third_party_plugins ?? undefined : undefined,
+        customPlugins: inventoryComplete ? inventory?.custom_plugins ?? undefined : undefined,
       },
       onDelta: upsert,
       onDone: () => setLoading(false),
@@ -162,6 +194,68 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
           )}
         </div>
       )}
+
+      {/* Owned tools panel */}
+      {inventoryComplete ? (
+        ownedAll.length > 0 && (
+          <div className="border-b border-border bg-muted/20 text-xs">
+            <button
+              type="button"
+              onClick={() => setToolsOpen((o) => !o)}
+              aria-expanded={toolsOpen}
+              className="w-full px-4 py-2 flex items-start gap-2 text-left hover:bg-muted/40 transition-colors"
+            >
+              <Boxes className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
+              <div className="min-w-0 flex-1">
+                <span className="font-semibold text-foreground">Your owned tools.</span>{" "}
+                <span className="text-muted-foreground">
+                  Sensei prioritizes {inventory?.native_plugins.length ?? 0} native ·{" "}
+                  {inventory?.third_party_plugins.length ?? 0} third-party ·{" "}
+                  {inventory?.custom_plugins.length ?? 0} custom plugin{ownedAll.length === 1 ? "" : "s"}.
+                </span>
+              </div>
+              {toolsOpen ? (
+                <ChevronUp className="w-3.5 h-3.5 mt-0.5 text-muted-foreground shrink-0" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 mt-0.5 text-muted-foreground shrink-0" />
+              )}
+            </button>
+            {toolsOpen && (
+              <div className="px-4 pb-3 pt-1 border-t border-border/60 space-y-2">
+                {(["native_plugins", "third_party_plugins", "custom_plugins"] as const).map((k) => {
+                  const list = inventory?.[k] ?? [];
+                  if (list.length === 0) return null;
+                  const label =
+                    k === "native_plugins" ? "Native" : k === "third_party_plugins" ? "Third-party" : "Custom";
+                  return (
+                    <div key={k}>
+                      <div className="text-[10px] uppercase tracking-widest text-primary/80 mb-1">{label} ({list.length})</div>
+                      <div className="flex flex-wrap gap-1">
+                        {list.map((p) => (
+                          <span key={p} className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border">{p}</span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="pt-1">
+                  <Link to="/plugin-inventory" className="text-[10px] text-primary hover:underline">Update inventory →</Link>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      ) : (
+        <div className="border-b border-border bg-muted/20 text-xs px-4 py-2 flex items-center gap-2">
+          <Boxes className="w-3.5 h-3.5 text-primary shrink-0" />
+          <span className="text-muted-foreground flex-1">
+            Sensei doesn't know which plugins you own yet —{" "}
+            <Link to="/plugin-inventory" className="text-primary hover:underline">add your inventory</Link>{" "}
+            for tailored recommendations.
+          </span>
+        </div>
+      )}
+
       <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-4 py-6 space-y-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center py-12 animate-fade-in-up">
@@ -208,6 +302,22 @@ export const SenseiChat = ({ initialPrompt, compact }: SenseiChatProps) => {
               ) : (
                 <>
                   <SenseiMarkdown content={m.content || "…"} messageId={`m-${i}`} />
+                  {(() => {
+                    const hits = findPrioritized(m.content, ownedAll);
+                    if (hits.length === 0) return null;
+                    return (
+                      <div className="mt-2 pt-2 border-t border-border/40">
+                        <div className="text-[10px] uppercase tracking-widest text-primary/80 mb-1 flex items-center gap-1">
+                          <Boxes className="w-3 h-3" /> Sensei prioritized from your inventory
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {hits.map((h) => (
+                            <span key={h} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30">{h}</span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {!loading && i === messages.length - 1 && m.content.length > 50 && (
                     <Button
                       size="sm"
