@@ -30,6 +30,33 @@ type EventFilter = "all" | "plugin_inventory_imported" | "plugin_inventory_resto
 const PAGE_SIZE = 25;
 const SUMMARY_CAP = 5000;
 const COLUMN_STORAGE_KEY = "studio-sensei.admin-activity-columns.v1";
+const TZ_STORAGE_KEY = "studio-sensei.admin-activity-tz.v1";
+const SHORTCUTS_STORAGE_KEY = "studio-sensei.admin-activity-shortcuts.v1";
+
+// Export retry tuning. Keep this small — exports run interactively, so 4 attempts
+// with exponential backoff (0.5s, 1s, 2s) gives ~3.5s of grace before surfacing.
+const EXPORT_MAX_ATTEMPTS = 4;
+const EXPORT_BACKOFF_BASE_MS = 500;
+
+type ExportPhase = "idle" | "requesting" | "generating" | "downloading" | "done";
+const PHASE_LABEL: Record<ExportPhase, string> = {
+  idle: "",
+  requesting: "Requesting data",
+  generating: "Generating CSV",
+  downloading: "Downloading",
+  done: "Done",
+};
+const PHASE_PERCENT: Record<ExportPhase, number> = {
+  idle: 0, requesting: 25, generating: 70, downloading: 90, done: 100,
+};
+
+type Tz = "local" | "utc";
+const formatTs = (iso: string, tz: Tz) =>
+  tz === "utc" ? new Date(iso).toISOString() : new Date(iso).toLocaleString();
+const tzLabel = (tz: Tz) =>
+  tz === "utc"
+    ? "UTC"
+    : `Local (${Intl.DateTimeFormat().resolvedOptions().timeZone || "browser"})`;
 
 const SORT_OPTIONS: { value: string; label: string }[] = [
   { value: "created_at:desc", label: "Newest first" },
