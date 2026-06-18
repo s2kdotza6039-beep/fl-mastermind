@@ -108,12 +108,30 @@ export default function PluginInventoryPage() {
 
   return (
     <div className="container max-w-4xl py-10 px-4 md:px-8">
-      <PageHeader
-        eyebrow="Personalize Sensei"
-        title="Tell Studio Sensei what plugins you own."
-        description="Sensei will use this to recommend the best plugin chains and fixes using tools already in your studio."
-        icon={<Boxes className="w-6 h-6" />}
-      />
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <PageHeader
+            eyebrow="Personalize Sensei"
+            title="Tell Studio Sensei what plugins you own."
+            description="Sensei will use this to recommend the best plugin chains and fixes using tools already in your studio."
+            icon={<Boxes className="w-6 h-6" />}
+          />
+        </div>
+        {inventory?.inventory_completed && (
+          <div className="pt-2 shrink-0">
+            {dirty ? (
+              <span className="text-[10px] uppercase tracking-widest px-2 py-1 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                Unsaved changes
+              </span>
+            ) : (
+              <span className="text-[10px] uppercase tracking-widest px-2 py-1 rounded bg-primary/15 text-primary border border-primary/30">
+                Inventory saved
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
 
       {loading ? (
         <Card className="studio-card p-10 flex justify-center">
@@ -171,15 +189,33 @@ export default function PluginInventoryPage() {
           <Card className="studio-card p-6">
             <h2 className="font-display text-lg font-bold mb-1">Custom Plugins</h2>
             <p className="text-xs text-muted-foreground mb-4">Add any specific plugin Sensei should know about (e.g. "Serum", "Kontakt 7").</p>
-            <div className="flex gap-2 mb-3">
-              <Input
-                value={customDraft}
-                onChange={(e) => setCustomDraft(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }}
-                placeholder="Plugin name…"
-                maxLength={60}
-              />
-              <Button type="button" onClick={addCustom} variant="outline"><Plus className="w-4 h-4 mr-1" /> Add</Button>
+            <div className="relative mb-3">
+              <div className="flex gap-2">
+                <Input
+                  value={customDraft}
+                  onChange={(e) => { setCustomDraft(e.target.value); setShowSuggestions(true); }}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }}
+                  placeholder="Plugin name… (suggestions appear as you type)"
+                  maxLength={60}
+                />
+                <Button type="button" onClick={() => addCustom()} variant="outline"><Plus className="w-4 h-4 mr-1" /> Add</Button>
+              </div>
+              {showSuggestions && customSuggestions.length > 0 && (
+                <div className="absolute z-10 left-0 right-[88px] mt-1 rounded-md border border-border bg-popover shadow-lg overflow-hidden">
+                  {customSuggestions.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); addCustom(s); }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             {custom.length > 0 && (
               <div className="flex flex-wrap gap-2">
