@@ -637,6 +637,60 @@ function InventoriesTab({ users }: { users: UserRow[] }) {
     toast.success(`Exported ${filtered.length} inventor${filtered.length === 1 ? "y" : "ies"}.`);
   };
 
+  // Long-form export: one row per (user, plugin) including the chat-side
+  // prioritized-badge match rule and a human-readable snippet explaining it.
+  const exportRulesCsv = () => {
+    const headers = [
+      "user_id", "display_name", "email",
+      "category", "plugin", "match_rule", "match_rule_snippet",
+      "inventory_completed", "updated_at",
+    ];
+    const esc = (v: unknown) => {
+      const s = v == null ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const ruleFor = (name: string) => (name.trim().length <= 3 ? "word-boundary" : "substring");
+    const snippetFor = (name: string) => {
+      const len = name.trim().length;
+      return len <= 3
+        ? `Whole-word match required because "${name}" is ${len} chars (avoids false positives in assistant text).`
+        : `Case-insensitive substring match — flagged whenever "${name}" appears anywhere in the assistant response.`;
+    };
+
+    const rows: string[] = [];
+    filtered.forEach((r) => {
+      const emit = (category: "native" | "third_party" | "custom", list: string[]) => {
+        list.forEach((p) => {
+          rows.push([
+            esc(r.user_id), esc(r.display_name), esc(r.email),
+            esc(category), esc(p), esc(ruleFor(p)), esc(snippetFor(p)),
+            esc(r.inventory_completed), esc(r.updated_at),
+          ].join(","));
+        });
+      };
+      emit("native", r.native_plugins);
+      emit("third_party", r.third_party_plugins);
+      emit("custom", r.custom_plugins);
+    });
+
+    const csv = [
+      `# Studio Sensei — Plugin Inventories (with prioritized-badge match rules)`,
+      `# Generated: ${new Date().toISOString()}`,
+      `# Page ${page + 1} of ${totalPages} · ${filtered.length} users · ${rows.length} plugin rows`,
+      `# Rule reference: names ≤3 chars use word-boundary matching, longer names use case-insensitive substring matching.`,
+      headers.join(","),
+      ...rows,
+    ].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `plugin-inventory-rules-p${page + 1}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${rows.length} plugin row${rows.length === 1 ? "" : "s"} with match rules.`);
+  };
+
   return (
     <Card className="studio-card p-4 mt-4">
       <div className="flex flex-col sm:flex-row gap-2 mb-3">
