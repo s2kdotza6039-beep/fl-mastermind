@@ -61,15 +61,19 @@ export default function PluginInventoryPage() {
     setList(list.includes(name) ? list.filter((n) => n !== name) : [...list, name]);
   };
 
-  const addCustom = () => {
-    const v = customDraft.trim();
+  const addCustom = (raw?: string) => {
+    const v = (raw ?? customDraft).trim().replace(/\s+/g, " ");
     if (!v) return;
     if (v.length > 60) return toast.error("Plugin name too long.");
-    if (custom.some((c) => c.toLowerCase() === v.toLowerCase())) {
-      return toast.error("Already added.");
+    if (isDuplicate(v)) {
+      toast.error("Already in your inventory");
+      setCustomDraft("");
+      setShowSuggestions(false);
+      return;
     }
     setCustom([...custom, v]);
     setCustomDraft("");
+    setShowSuggestions(false);
   };
 
   const filteredNative = useMemo(
@@ -80,6 +84,14 @@ export default function PluginInventoryPage() {
     () => THIRD_PARTY_BRANDS.filter((p) => p.toLowerCase().includes(thirdQuery.toLowerCase())),
     [thirdQuery],
   );
+
+  const customSuggestions = useMemo(() => {
+    const q = customDraft.trim().toLowerCase();
+    if (!q) return [];
+    return CUSTOM_PLUGIN_SUGGESTIONS
+      .filter((p) => p.toLowerCase().includes(q) && !isDuplicate(p))
+      .slice(0, 6);
+  }, [customDraft, native, third, custom]);
 
   const onSave = async () => {
     setSaving(true);
