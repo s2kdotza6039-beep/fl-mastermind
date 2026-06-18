@@ -245,6 +245,12 @@ export default function AdminPage() {
           <SetupsTab setups={setups} users={users} loading={loading} />
         </TabsContent>
 
+        <TabsContent value="inventories">
+          <InventoriesTab inventories={inventories} users={users} loading={loading} />
+        </TabsContent>
+
+
+
 
         <TabsContent value="activity">
           <Card className="studio-card p-4 mt-4 max-h-[60vh] overflow-auto">
