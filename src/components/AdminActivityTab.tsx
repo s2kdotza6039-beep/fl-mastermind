@@ -435,21 +435,32 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
   // live server state. Retries use exponential backoff and cap at EXPORT_MAX_ATTEMPTS.
   const EXPORT_TIMEOUT_MS = 20_000;
 
+  const cancelExport = () => {
+    if (!exporting) return;
+    cancelRef.current = true;
+  };
+
   const runExport = async () => {
     const cols = columnKeys.map((k) => ALL_COLUMNS.find((c) => c.key === k)).filter(Boolean) as ColumnDef[];
     if (cols.length === 0) {
       toast.error("Pick at least one column to export.");
       return;
     }
+    cancelRef.current = false;
     setExporting(true);
     setExportError(null);
+    setExportLastFail(null);
     setExportPhase("requesting");
     setExportAttempt(1);
 
     // Retry loop with exponential backoff. Surface the final error after the cap.
+    // Cancellation is checked before every attempt and during the backoff wait.
     let data: any = null;
     let lastErr: any = null;
+    let lastAttempt = 0;
     for (let attempt = 1; attempt <= EXPORT_MAX_ATTEMPTS; attempt++) {
+      if (cancelRef.current) break;
+      lastAttempt = attempt;
       setExportAttempt(attempt);
       setExportPhase("requesting");
       try {
@@ -458,22 +469,42 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
           setTimeout(() => rej(new Error(`Export timed out after ${EXPORT_TIMEOUT_MS / 1000}s`)), EXPORT_TIMEOUT_MS),
         );
         const res = (await Promise.race([queryPromise, timeout])) as any;
+        if (cancelRef.current) break;
         if (res?.error) throw res.error;
         data = res?.data ?? [];
         lastErr = null;
         break;
       } catch (e: any) {
         lastErr = e;
-        if (attempt < EXPORT_MAX_ATTEMPTS) {
-          const wait = EXPORT_BACKOFF_BASE_MS * Math.pow(2, attempt - 1);
-          await new Promise((r) => setTimeout(r, wait));
+        const nextDelay = attempt < EXPORT_MAX_ATTEMPTS ? EXPORT_BACKOFF_BASE_MS * Math.pow(2, attempt - 1) : null;
+        setExportLastFail({ attempt, message: e?.message ?? "Request failed", nextDelayMs: nextDelay });
+        if (nextDelay != null) {
+          // Sleep in small ticks so a Cancel click interrupts the backoff quickly.
+          const end = Date.now() + nextDelay;
+          while (Date.now() < end) {
+            if (cancelRef.current) break;
+            await new Promise((r) => setTimeout(r, Math.min(100, end - Date.now())));
+          }
+          if (cancelRef.current) break;
         }
       }
     }
 
+    if (cancelRef.current) {
+      setExportPhase("idle");
+      setExporting(false);
+      setExportLastFail(null);
+      toast("Export cancelled.");
+      cancelRef.current = false;
+      return;
+    }
+
     if (lastErr) {
-      const msg = `${lastErr?.message ?? "Export failed."} (after ${EXPORT_MAX_ATTEMPTS} attempts)`;
+      const baseMsg = lastErr?.message ?? "Export failed.";
+      const msg = `${baseMsg} (failed on attempt ${lastAttempt}/${EXPORT_MAX_ATTEMPTS})`;
       setExportError(msg);
+      // Keep lastFail around (with nextDelayMs=null) so the banner can show details.
+      setExportLastFail({ attempt: lastAttempt, message: baseMsg, nextDelayMs: null });
       toast.error(msg);
       setExportPhase("idle");
       setExporting(false);
