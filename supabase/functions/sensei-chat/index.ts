@@ -293,6 +293,9 @@ PLUGIN RECOMMENDATION RULES (MANDATORY):
       const str = (v: unknown, max = 60) => (typeof v === "string" ? v.slice(0, max) : "—");
       const bands = audio.bands && typeof audio.bands === "object" ? audio.bands as any : null;
       const issues = Array.isArray(audio.issues) ? audio.issues.slice(0, 12) : [];
+      const recommendations = Array.isArray(audio.recommendations)
+        ? audio.recommendations.filter((r: any) => typeof r === "string").slice(0, 12)
+        : [];
       system += `\n\nUSER AUDIO ANALYSIS (HIGHEST PRIORITY — diagnose these objective measurements first):
 - File: ${str(audio.fileName, 80)} (${str(audio.fileFormat, 10)})
 - Duration: ${num(audio.durationSec)} s | Sample rate: ${num(audio.sampleRate, 0)} Hz | Channels: ${num(audio.channels, 0)} | Bit rate: ${num(audio.bitRate, 0)} kbps
@@ -303,6 +306,9 @@ ${bands ? `- Frequency balance (dB rel total): low ${num(bands.low)} | low-mid $
 
 DETECTED PROBLEMS (address in order of severity):
 ${issues.length ? issues.map((i: any) => `- [${str(i.severity, 10).toUpperCase()}] ${str(i.title, 120)} — ${str(i.detail, 240)} | Recommendation: ${str(i.recommendation, 240)}`).join("\n") : "- (no issues flagged by the analyzer)"}
+
+ANALYZER TOP-LEVEL RECOMMENDATIONS (weave these into your coaching plan):
+${recommendations.length ? recommendations.map((r: string) => `- ${str(r, 280)}`).join("\n") : "- (none)"}
 
 AUDIO COACHING RULES (MANDATORY):
 - Open with one sentence acknowledging the actual measurements (loudness, peak, key, BPM).
