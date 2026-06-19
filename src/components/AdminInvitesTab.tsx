@@ -86,15 +86,46 @@ export function AdminInvitesTab() {
 
   const pending = rows.filter((r) => !r.used_at);
   const used = rows.filter((r) => r.used_at);
+  const validCodes = pending.filter((r) => r.code);
 
   return (
     <Card className="studio-card p-4 mt-4 space-y-4">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <Mail className="w-4 h-4 text-primary" />
         <h3 className="font-semibold">Beta Invites</h3>
         <Badge variant="outline" className="text-[10px]">{pending.length} pending</Badge>
         <Badge variant="secondary" className="text-[10px]">{used.length} used</Badge>
+        <Button
+          size="sm"
+          variant="destructive"
+          className="ml-auto"
+          onClick={rotateAllCodes}
+          disabled={validCodes.length === 0}
+          aria-label="Revoke all unused codes and mint a fresh one"
+        >
+          <RotateCw className="w-3.5 h-3.5 mr-1" /> Rotate &amp; revoke codes
+        </Button>
       </div>
+
+      {validCodes.length > 0 && (
+        <Card className="p-3 border border-emerald-500/30 bg-emerald-500/5">
+          <h4 className="font-semibold text-sm mb-2 flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Currently valid codes ({validCodes.length})
+          </h4>
+          <div className="flex flex-wrap gap-1.5">
+            {validCodes.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => copyCode(c.code!)}
+                className="font-mono text-xs px-2 py-1 rounded border border-emerald-500/30 bg-background hover:bg-emerald-500/10 transition"
+                title="Click to copy"
+              >
+                {c.code} <Copy className="w-3 h-3 inline ml-1 opacity-60" />
+              </button>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <div className="grid sm:grid-cols-2 gap-3">
         <Card className="p-3 border-dashed">
@@ -120,6 +151,7 @@ export function AdminInvitesTab() {
           <p className="text-[10px] text-muted-foreground mt-1">One-time code. Any email may sign up with it.</p>
         </Card>
       </div>
+
 
       {loading ? (
         <Loader2 className="w-5 h-5 animate-spin" />
