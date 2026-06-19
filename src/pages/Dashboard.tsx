@@ -174,6 +174,7 @@ export default function Dashboard() {
                   <div className="text-[10px] text-muted-foreground/60 mt-2">
                     {new Date(a.created_at).toLocaleString()}
                   </div>
+                  <CoachThisTrackButton reportId={a.id} fileName={a.file_name} />
                 </Card>
               );
             })}
