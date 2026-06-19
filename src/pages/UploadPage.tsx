@@ -6,7 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   UploadCloud, FileAudio, X, Sparkles, Loader2, MessageCircle, RefreshCcw, AlertTriangle,
-  Scissors, Minus, Plus, Target, FileJson,
+  Scissors, Minus, Plus, Target, FileJson, FileAudio2, Clipboard,
 } from "lucide-react";
 import { SenseiChat } from "@/components/SenseiChat";
 import { AudioReportCard } from "@/components/AudioReportCard";
@@ -56,6 +56,47 @@ interface Diagnostics {
   statusLog: StatusEntry[];
   errorMessage?: string;
 }
+const PRESET_PREFIX = "studio-sensei:bpm-preset:v1:";
+
+function presetKey(file: File | null): string | null {
+  if (!file) return null;
+  return `${PRESET_PREFIX}${file.name}:${file.size}`;
+}
+
+interface BpmPreset { nudge: number; offsetSec: number; savedAt: string }
+
+function encodeWavPCM16(channels: Float32Array[], sampleRate: number): Blob {
+  const numCh = channels.length;
+  const numFrames = channels[0]?.length ?? 0;
+  const dataLen = numFrames * numCh * 2;
+  const buf = new ArrayBuffer(44 + dataLen);
+  const view = new DataView(buf);
+  const writeStr = (off: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + dataLen, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);             // PCM
+  view.setUint16(22, numCh, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * numCh * 2, true);
+  view.setUint16(32, numCh * 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, "data");
+  view.setUint32(40, dataLen, true);
+  let off = 44;
+  for (let f = 0; f < numFrames; f++) {
+    for (let c = 0; c < numCh; c++) {
+      let s = Math.max(-1, Math.min(1, channels[c][f]));
+      s = s < 0 ? s * 0x8000 : s * 0x7fff;
+      view.setInt16(off, s, true);
+      off += 2;
+    }
+  }
+  return new Blob([buf], { type: "audio/wav" });
+}
+
 
 export default function UploadPage() {
   const { user } = useAuth();
@@ -80,6 +121,49 @@ export default function UploadPage() {
 
   const audioUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
   useEffect(() => () => { if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
+
+  // Load saved BPM preset for this file (if any) when it's selected.
+  useEffect(() => {
+    const key = presetKey(file);
+    if (!key) return;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const p = JSON.parse(raw) as BpmPreset;
+      if (typeof p.nudge === "number") setBpmNudge(p.nudge);
+      if (typeof p.offsetSec === "number") setDownbeatOffsetSec(p.offsetSec);
+      toast.message(`Restored saved BPM alignment for ${file!.name}`, {
+        description: `nudge ${p.nudge >= 0 ? "+" : ""}${p.nudge.toFixed(1)} BPM · offset ${p.offsetSec.toFixed(2)}s`,
+      });
+    } catch (e) {
+      console.warn("Failed to load BPM preset", e);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file]);
+
+  // Auto-save BPM preset when alignment changes (debounced via timer).
+  useEffect(() => {
+    const key = presetKey(file);
+    if (!key) return;
+    const handle = setTimeout(() => {
+      try {
+        if (bpmNudge === 0 && downbeatOffsetSec === 0) {
+          localStorage.removeItem(key);
+        } else {
+          const preset: BpmPreset = {
+            nudge: bpmNudge,
+            offsetSec: downbeatOffsetSec,
+            savedAt: new Date().toISOString(),
+          };
+          localStorage.setItem(key, JSON.stringify(preset));
+        }
+      } catch (e) {
+        console.warn("Failed to save BPM preset", e);
+      }
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [file, bpmNudge, downbeatOffsetSec]);
+
 
   const reset = () => {
     setFile(null);
@@ -198,9 +282,7 @@ export default function UploadPage() {
       const dspMs = performance.now() - tDsp;
       setResult(res);
       setAnalyzedRange(selection ?? null);
-      // Reset visual BPM tweaks when a fresh detection lands.
-      setBpmNudge(0);
-      setDownbeatOffsetSec(0);
+      // Keep the user's BPM nudge / downbeat offset — they're per-file presets now.
       setDiagnostics({
         startedAt,
         fileName: file.name,
@@ -315,7 +397,70 @@ export default function UploadPage() {
     URL.revokeObjectURL(url);
   };
 
+  const copyDiagnostics = async () => {
+    if (!diagnostics) return;
+    const json = JSON.stringify(diagnostics, null, 2);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(json);
+      } else {
+        // Fallback for older browsers / insecure contexts.
+        const ta = document.createElement("textarea");
+        ta.value = json;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+      }
+      toast.success("Diagnostics copied to clipboard");
+    } catch (e: any) {
+      toast.error(`Copy failed: ${e?.message || "clipboard unavailable"}`);
+    }
+  };
+
+  const exportSelectionWav = () => {
+    if (!decoded || !selection) return;
+    const startSample = Math.max(0, Math.floor(selection.startSec * decoded.sampleRate));
+    const endSample = Math.min(decoded.channelData[0].length, Math.floor(selection.endSec * decoded.sampleRate));
+    if (endSample - startSample < 1) {
+      toast.error("Selection too short to export");
+      return;
+    }
+    const sliced = decoded.channelData.map((c) => c.slice(startSample, endSample));
+    const blob = encodeWavPCM16(sliced, decoded.sampleRate);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const safe = (file?.name || "track").replace(/\.[a-z0-9]+$/i, "").replace(/[^a-z0-9_-]+/gi, "_");
+    a.href = url;
+    a.download = `${safe}_${selection.startSec.toFixed(2)}s-${selection.endSec.toFixed(2)}s.wav`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success("Selection exported as WAV");
+  };
+
   const effectiveBpm = result?.metrics.bpm != null ? Math.max(20, result.metrics.bpm + bpmNudge) : null;
+
+  // Recompute analysis timeline live whenever BPM nudge or downbeat offset changes.
+  const beatInfo = useMemo(() => {
+    const dur = result?.metrics.durationSec ?? decoded?.duration ?? 0;
+    if (!effectiveBpm || dur <= 0) return null;
+    const beatSec = 60 / effectiveBpm;
+    const offset = ((downbeatOffsetSec % beatSec) + beatSec) % beatSec;
+    const total = Math.max(0, Math.floor((dur - offset) / beatSec) + 1);
+    const bars = Math.floor(total / 4);
+    return {
+      beatSec,
+      offset,
+      total,
+      bars,
+      msPerBeat: beatSec * 1000,
+    };
+  }, [effectiveBpm, downbeatOffsetSec, result?.metrics.durationSec, decoded?.duration]);
+
 
   const senseiAudioContext = result
     ? {
@@ -445,6 +590,26 @@ export default function UploadPage() {
               </div>
             )}
 
+            {beatInfo && (
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-muted-foreground px-1">
+                <span>Timeline: <span className="text-foreground tabular-nums">{beatInfo.total}</span> beats · <span className="text-foreground tabular-nums">{beatInfo.bars}</span> bars (4/4)</span>
+                <span>Beat interval: <span className="text-foreground tabular-nums">{beatInfo.msPerBeat.toFixed(1)} ms</span></span>
+                <span>First downbeat: <span className="text-foreground tabular-nums">{beatInfo.offset.toFixed(3)}s</span></span>
+                {(bpmNudge !== 0 || downbeatOffsetSec !== 0) && (
+                  <span className="text-primary/80">↳ saved per-file preset</span>
+                )}
+              </div>
+            )}
+
+            {selection && (
+              <div className="mt-3">
+                <Button type="button" size="sm" variant="outline" onClick={exportSelectionWav} title="Download the selected region as a WAV file">
+                  <FileAudio2 className="w-3.5 h-3.5 mr-1.5" />
+                  Export selection as WAV ({(selection.endSec - selection.startSec).toFixed(2)}s)
+                </Button>
+              </div>
+            )}
+
             {!result && !analyzing && !error && (
               <Button
                 onClick={runAnalysis}
@@ -517,6 +682,11 @@ export default function UploadPage() {
                 {diagnostics && (
                   <Button variant="outline" onClick={downloadDiagnostics} title="Download analysis diagnostics (timings, fallback path, confidence values) as JSON">
                     <FileJson className="w-4 h-4 mr-2" /> Download diagnostics
+                  </Button>
+                )}
+                {diagnostics && (
+                  <Button variant="outline" onClick={copyDiagnostics} title="Copy diagnostics JSON to clipboard for easy sharing">
+                    <Clipboard className="w-4 h-4 mr-2" /> Copy diagnostics
                   </Button>
                 )}
               </div>
