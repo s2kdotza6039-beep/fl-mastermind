@@ -209,6 +209,46 @@ export default function UploadPage() {
     return () => clearTimeout(handle);
   }, [file, bpmNudge, downbeatOffsetSec]);
 
+  // Load saved region selection per file once we know its duration (decoded ready).
+  useEffect(() => {
+    const key = regionKey(file);
+    if (!key || !decoded || selection) return;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const r = JSON.parse(raw) as RegionPreset;
+      if (typeof r.startSec === "number" && typeof r.endSec === "number" && r.endSec > r.startSec) {
+        const clampedEnd = Math.min(r.endSec, decoded.duration);
+        const clampedStart = Math.max(0, Math.min(r.startSec, clampedEnd - 0.05));
+        if (clampedEnd - clampedStart >= 0.25) {
+          setSelection({ startSec: clampedStart, endSec: clampedEnd });
+          toast.message("Restored saved selection", {
+            description: `${clampedStart.toFixed(2)}s – ${clampedEnd.toFixed(2)}s`,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to load region preset", e);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file, decoded]);
+
+  // Auto-save region selection (debounced).
+  useEffect(() => {
+    const key = regionKey(file);
+    if (!key) return;
+    const handle = setTimeout(() => {
+      try {
+        if (!selection) localStorage.removeItem(key);
+        else {
+          const p: RegionPreset = { startSec: selection.startSec, endSec: selection.endSec, savedAt: new Date().toISOString() };
+          localStorage.setItem(key, JSON.stringify(p));
+        }
+      } catch (e) { console.warn("Failed to save region preset", e); }
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [file, selection]);
+
 
   const reset = () => {
     setFile(null);
