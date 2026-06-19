@@ -786,6 +786,8 @@ export default function UploadPage() {
         icon={<UploadCloud className="w-6 h-6" />}
       />
 
+      <ActiveTrackChip />
+
       {!file ? (
         <Card
           className="studio-card-gold p-12 text-center border-2 border-dashed border-primary/30 cursor-pointer hover:border-primary/60 transition"
