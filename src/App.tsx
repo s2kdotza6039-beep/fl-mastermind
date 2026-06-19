@@ -15,6 +15,7 @@ import { StudioLayout } from "@/components/StudioLayout";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { armSenseiBootTone } from "@/lib/sensei-tone";
+import { AudioGlobalBindings } from "@/components/AudioGlobalBindings";
 import Dashboard from "./pages/Dashboard";
 import ChatPage from "./pages/ChatPage";
 import QuickFixPage from "./pages/QuickFixPage";
@@ -109,6 +110,7 @@ const App = () => {
                 <SessionProvider>
                   <TrackSessionProvider>
                     <ScrollToTop />
+                    <AudioGlobalBindings />
                     <AppShell />
                   </TrackSessionProvider>
                 </SessionProvider>
