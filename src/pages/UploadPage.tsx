@@ -94,7 +94,18 @@ function resampleChannels(channels: Float32Array[], fromRate: number, toRate: nu
   });
 }
 
-function encodeWav(channels: Float32Array[], sampleRate: number, depth: WavBitDepth): Blob {
+interface EncodeOptions {
+  signal?: { cancelled: boolean };
+  onProgress?: (pct: number) => void;
+  chunkFrames?: number;
+}
+
+async function encodeWavAsync(
+  channels: Float32Array[],
+  sampleRate: number,
+  depth: WavBitDepth,
+  opts: EncodeOptions = {},
+): Promise<Blob> {
   const numCh = channels.length;
   const numFrames = channels[0]?.length ?? 0;
   const bytesPerSample = depth === "pcm16" ? 2 : depth === "pcm24" ? 3 : 4;
@@ -117,24 +128,34 @@ function encodeWav(channels: Float32Array[], sampleRate: number, depth: WavBitDe
   view.setUint16(34, bytesPerSample * 8, true);
   writeStr(36, "data");
   view.setUint32(40, dataLen, true);
+
+  const chunkFrames = opts.chunkFrames ?? Math.max(8192, Math.floor(sampleRate / 4)); // ~250ms
   let off = 44;
-  for (let f = 0; f < numFrames; f++) {
-    for (let c = 0; c < numCh; c++) {
-      const sample = Math.max(-1, Math.min(1, channels[c][f]));
-      if (depth === "pcm16") {
-        view.setInt16(off, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-        off += 2;
-      } else if (depth === "pcm24") {
-        const v = Math.round((sample < 0 ? sample * 0x800000 : sample * 0x7fffff)) | 0;
-        view.setUint8(off, v & 0xff);
-        view.setUint8(off + 1, (v >> 8) & 0xff);
-        view.setUint8(off + 2, (v >> 16) & 0xff);
-        off += 3;
-      } else {
-        view.setFloat32(off, sample, true);
-        off += 4;
+  let f = 0;
+  while (f < numFrames) {
+    if (opts.signal?.cancelled) throw new Error("cancelled");
+    const end = Math.min(numFrames, f + chunkFrames);
+    for (; f < end; f++) {
+      for (let c = 0; c < numCh; c++) {
+        const sample = Math.max(-1, Math.min(1, channels[c][f]));
+        if (depth === "pcm16") {
+          view.setInt16(off, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+          off += 2;
+        } else if (depth === "pcm24") {
+          const v = Math.round((sample < 0 ? sample * 0x800000 : sample * 0x7fffff)) | 0;
+          view.setUint8(off, v & 0xff);
+          view.setUint8(off + 1, (v >> 8) & 0xff);
+          view.setUint8(off + 2, (v >> 16) & 0xff);
+          off += 3;
+        } else {
+          view.setFloat32(off, sample, true);
+          off += 4;
+        }
       }
     }
+    opts.onProgress?.(f / numFrames);
+    // Yield to event loop so UI / cancel can respond.
+    await new Promise((r) => setTimeout(r, 0));
   }
   return new Blob([buf], { type: "audio/wav" });
 }
@@ -160,9 +181,17 @@ export default function UploadPage() {
   const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
   const [wavBitDepth, setWavBitDepth] = useState<WavBitDepth>("pcm16");
   const [wavSampleRate, setWavSampleRate] = useState<"original" | "44100" | "48000" | "96000">("original");
+  const [savedRegion, setSavedRegion] = useState<RegionPreset | null>(null);
+  const [exportState, setExportState] = useState<{
+    active: boolean; pct: number; etaMs: number; sizeBytes: number; startedAt: number;
+  } | null>(null);
+  const exportCancelRef = useRef<{ cancelled: boolean } | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [waveformFocused, setWaveformFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const waveformCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const waveformRef = useRef<WaveformPlayerHandle | null>(null);
+  const waveformWrapperRef = useRef<HTMLDivElement | null>(null);
 
   const audioUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
   useEffect(() => () => { if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
@@ -212,20 +241,41 @@ export default function UploadPage() {
   // Load saved region selection per file once we know its duration (decoded ready).
   useEffect(() => {
     const key = regionKey(file);
-    if (!key || !decoded || selection) return;
+    if (!key || !decoded) return;
     try {
       const raw = localStorage.getItem(key);
-      if (!raw) return;
+      if (!raw) { setSavedRegion(null); return; }
       const r = JSON.parse(raw) as RegionPreset;
-      if (typeof r.startSec === "number" && typeof r.endSec === "number" && r.endSec > r.startSec) {
-        const clampedEnd = Math.min(r.endSec, decoded.duration);
-        const clampedStart = Math.max(0, Math.min(r.startSec, clampedEnd - 0.05));
-        if (clampedEnd - clampedStart >= 0.25) {
-          setSelection({ startSec: clampedStart, endSec: clampedEnd });
-          toast.message("Restored saved selection", {
-            description: `${clampedStart.toFixed(2)}s – ${clampedEnd.toFixed(2)}s`,
+      if (typeof r.startSec !== "number" || typeof r.endSec !== "number" || r.endSec <= r.startSec) {
+        setSavedRegion(null); return;
+      }
+      // Auto-clamp to valid bounds.
+      const origStart = r.startSec, origEnd = r.endSec;
+      const clampedEnd = Math.max(0.25, Math.min(origEnd, decoded.duration));
+      const clampedStart = Math.max(0, Math.min(origStart, clampedEnd - 0.05));
+      const adjusted = clampedStart !== origStart || clampedEnd !== origEnd;
+      if (clampedEnd - clampedStart < 0.25) {
+        // Region became invalid after clamp — drop it.
+        localStorage.removeItem(key);
+        setSavedRegion(null);
+        if (adjusted) {
+          toast.warning("Saved region was outside this file and was discarded", {
+            description: `Original ${origStart.toFixed(2)}s – ${origEnd.toFixed(2)}s exceeded ${decoded.duration.toFixed(2)}s.`,
           });
         }
+        return;
+      }
+      const finalRegion: RegionPreset = { startSec: clampedStart, endSec: clampedEnd, savedAt: r.savedAt };
+      setSavedRegion(finalRegion);
+      if (!selection) setSelection({ startSec: clampedStart, endSec: clampedEnd });
+      if (adjusted) {
+        toast.warning("Saved region was clamped to valid bounds", {
+          description: `Adjusted from ${origStart.toFixed(2)}–${origEnd.toFixed(2)}s to ${clampedStart.toFixed(2)}–${clampedEnd.toFixed(2)}s.`,
+        });
+      } else {
+        toast.message("Restored saved selection", {
+          description: `${clampedStart.toFixed(2)}s – ${clampedEnd.toFixed(2)}s`,
+        });
       }
     } catch (e) {
       console.warn("Failed to load region preset", e);
@@ -239,10 +289,13 @@ export default function UploadPage() {
     if (!key) return;
     const handle = setTimeout(() => {
       try {
-        if (!selection) localStorage.removeItem(key);
-        else {
+        if (!selection) {
+          localStorage.removeItem(key);
+          setSavedRegion(null);
+        } else {
           const p: RegionPreset = { startSec: selection.startSec, endSec: selection.endSec, savedAt: new Date().toISOString() };
           localStorage.setItem(key, JSON.stringify(p));
+          setSavedRegion(p);
         }
       } catch (e) { console.warn("Failed to save region preset", e); }
     }, 400);
@@ -505,8 +558,19 @@ export default function UploadPage() {
     }
   };
 
-  const exportSelectionWav = () => {
+  const cancelExport = () => {
+    if (exportCancelRef.current) exportCancelRef.current.cancelled = true;
+  };
+
+  const revertToSavedRegion = () => {
+    if (!savedRegion) return;
+    setSelection({ startSec: savedRegion.startSec, endSec: savedRegion.endSec });
+    toast.success("Reverted to saved region");
+  };
+
+  const exportSelectionWav = async () => {
     if (!decoded || !selection) return;
+    if (exportState?.active) return;
     const startSample = Math.max(0, Math.floor(selection.startSec * decoded.sampleRate));
     const endSample = Math.min(decoded.channelData[0].length, Math.floor(selection.endSec * decoded.sampleRate));
     if (endSample - startSample < 1) {
@@ -516,21 +580,55 @@ export default function UploadPage() {
     const sliced = decoded.channelData.map((c) => c.slice(startSample, endSample));
     const targetRate = wavSampleRate === "original" ? decoded.sampleRate : parseInt(wavSampleRate, 10);
     const resampled = resampleChannels(sliced, decoded.sampleRate, targetRate);
-    const blob = encodeWav(resampled, targetRate, wavBitDepth);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    const safe = (file?.name || "track").replace(/\.[a-z0-9]+$/i, "").replace(/[^a-z0-9_-]+/gi, "_");
-    const suffix = `${wavBitDepth}_${targetRate}`;
-    a.href = url;
-    a.download = `${safe}_${selection.startSec.toFixed(2)}s-${selection.endSec.toFixed(2)}s_${suffix}.wav`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    const label = wavBitDepth === "float32" ? "32-bit float" : wavBitDepth === "pcm24" ? "24-bit PCM" : "16-bit PCM";
-    toast.success(`Selection exported as ${label} WAV @ ${targetRate} Hz`, {
-      description: `${(selection.endSec - selection.startSec).toFixed(2)}s · ${(blob.size / 1024).toFixed(1)} KB`,
+    const bytesPerSample = wavBitDepth === "pcm16" ? 2 : wavBitDepth === "pcm24" ? 3 : 4;
+    const estSize = resampled[0].length * resampled.length * bytesPerSample + 44;
+
+    const cancelToken = { cancelled: false };
+    exportCancelRef.current = cancelToken;
+    const startedAt = performance.now();
+    setExportState({ active: true, pct: 0, etaMs: 0, sizeBytes: estSize, startedAt });
+    const toastId = toast.loading("Encoding WAV…", {
+      description: `0% · ~${(estSize / 1024 / 1024).toFixed(2)} MB`,
     });
+
+    try {
+      const blob = await encodeWavAsync(resampled, targetRate, wavBitDepth, {
+        signal: cancelToken,
+        onProgress: (p) => {
+          const elapsed = performance.now() - startedAt;
+          const etaMs = p > 0.02 ? (elapsed / p) * (1 - p) : 0;
+          setExportState({ active: true, pct: p, etaMs, sizeBytes: estSize, startedAt });
+          toast.loading("Encoding WAV…", {
+            id: toastId,
+            description: `${Math.round(p * 100)}% · ETA ${(etaMs / 1000).toFixed(1)}s`,
+          });
+        },
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const safe = (file?.name || "track").replace(/\.[a-z0-9]+$/i, "").replace(/[^a-z0-9_-]+/gi, "_");
+      const suffix = `${wavBitDepth}_${targetRate}`;
+      a.href = url;
+      a.download = `${safe}_${selection.startSec.toFixed(2)}s-${selection.endSec.toFixed(2)}s_${suffix}.wav`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      const label = wavBitDepth === "float32" ? "32-bit float" : wavBitDepth === "pcm24" ? "24-bit PCM" : "16-bit PCM";
+      toast.success(`Exported ${label} WAV @ ${targetRate} Hz`, {
+        id: toastId,
+        description: `${(selection.endSec - selection.startSec).toFixed(2)}s · ${(blob.size / 1024).toFixed(1)} KB`,
+      });
+    } catch (e: any) {
+      if (e?.message === "cancelled") {
+        toast.info("WAV export cancelled", { id: toastId });
+      } else {
+        toast.error(`Export failed: ${e?.message || "unknown error"}`, { id: toastId });
+      }
+    } finally {
+      exportCancelRef.current = null;
+      setExportState(null);
+    }
   };
 
   const effectiveBpm = result?.metrics.bpm != null ? Math.max(20, result.metrics.bpm + bpmNudge) : null;
@@ -591,16 +689,32 @@ export default function UploadPage() {
 
   const bpmConfidenceValue = result?.metrics.bpmConfidence.value;
 
-  // Keyboard shortcuts: Space play/pause · +/− zoom · ←/→ nudge BPM · [/] nudge downbeat.
+  // Keyboard shortcuts — only fire when waveform area is focused (or for the global "?" help toggle).
+  // Always skip when a real form input is active, regardless of focus.
   useEffect(() => {
     if (!file) return;
+    const isTypingTarget = (t: EventTarget | null) => {
+      const el = t as HTMLElement | null;
+      if (!el) return false;
+      if (/input|textarea|select/i.test(el.tagName)) return true;
+      if (el.isContentEditable) return true;
+      const role = el.getAttribute?.("role");
+      if (role === "textbox" || role === "combobox") return true;
+      return false;
+    };
     const handler = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && /input|textarea|select/i.test(t.tagName)) return;
-      if (t && t.isContentEditable) return;
+      if (isTypingTarget(e.target)) return;
+      // "?" toggles the help panel from anywhere (still respects typing check above).
+      if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
+        e.preventDefault();
+        setShowShortcuts((s) => !s);
+        return;
+      }
+      // All other shortcuts require the waveform region to have focus.
+      if (!waveformFocused) return;
       const wf = waveformRef.current;
       switch (e.key) {
-        case " ": // play/pause
+        case " ":
         case "Spacebar":
           e.preventDefault();
           wf?.togglePlay();
@@ -642,7 +756,7 @@ export default function UploadPage() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [file, result?.metrics.bpm]);
+  }, [file, result?.metrics.bpm, waveformFocused]);
 
   return (
     <div className="container max-w-4xl py-8 px-4 md:px-8">
@@ -691,18 +805,81 @@ export default function UploadPage() {
             </div>
 
             {audioUrl && (
-              <WaveformPlayer
-                ref={waveformRef}
-                src={audioUrl}
-                peaks={peaks}
-                durationSec={result?.metrics.durationSec ?? decoded?.duration ?? 0}
-                bpm={effectiveBpm}
-                bpmConfidence={bpmConfidenceValue}
-                bpmOffsetSec={downbeatOffsetSec}
-                selection={selection}
-                onSelectionChange={setSelection}
-                onCanvasRef={(c) => { waveformCanvasRef.current = c; }}
-              />
+              <div
+                ref={waveformWrapperRef}
+                tabIndex={0}
+                role="region"
+                aria-label="Waveform — focus this area to use keyboard shortcuts (Space, +/-, arrows, [, ])"
+                onFocus={() => setWaveformFocused(true)}
+                onBlur={(e) => {
+                  // Stay "focused" if the new focus target is still inside the wrapper.
+                  if (!waveformWrapperRef.current?.contains(e.relatedTarget as Node)) setWaveformFocused(false);
+                }}
+                onMouseDown={() => waveformWrapperRef.current?.focus()}
+                className={`rounded-md outline-none transition ring-offset-background ${waveformFocused ? "ring-2 ring-primary/40" : ""}`}
+              >
+                <WaveformPlayer
+                  ref={waveformRef}
+                  src={audioUrl}
+                  peaks={peaks}
+                  durationSec={result?.metrics.durationSec ?? decoded?.duration ?? 0}
+                  bpm={effectiveBpm}
+                  bpmConfidence={bpmConfidenceValue}
+                  bpmOffsetSec={downbeatOffsetSec}
+                  selection={selection}
+                  onSelectionChange={setSelection}
+                  onCanvasRef={(c) => { waveformCanvasRef.current = c; }}
+                />
+                <div className="mt-1 px-1 flex items-center justify-between text-[10px] text-muted-foreground">
+                  <span>
+                    {waveformFocused
+                      ? "⌨ Waveform focused — Space / +/− / ←→ / [ ] active"
+                      : "Click the waveform to enable keyboard shortcuts"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowShortcuts((s) => !s)}
+                    className="underline hover:text-foreground"
+                    aria-label="Show keyboard shortcuts"
+                  >
+                    Press ? for shortcuts
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {savedRegion && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 px-2 py-1.5 rounded-md bg-secondary/30 border border-border text-[11px]">
+                <span className="text-muted-foreground">Saved region:</span>
+                <span className="tabular-nums text-foreground">
+                  {savedRegion.startSec.toFixed(2)}s – {savedRegion.endSec.toFixed(2)}s
+                </span>
+                <span className="text-muted-foreground">
+                  ({(savedRegion.endSec - savedRegion.startSec).toFixed(2)}s)
+                </span>
+                {selection && (selection.startSec !== savedRegion.startSec || selection.endSec !== savedRegion.endSec) && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 ml-1 text-[11px]"
+                    onClick={revertToSavedRegion}
+                  >
+                    <RefreshCcw className="w-3 h-3 mr-1" /> Revert to saved region
+                  </Button>
+                )}
+                {!selection && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 ml-1 text-[11px]"
+                    onClick={revertToSavedRegion}
+                  >
+                    <RefreshCcw className="w-3 h-3 mr-1" /> Apply saved region
+                  </Button>
+                )}
+              </div>
             )}
 
             {result?.metrics.bpm != null && (
@@ -767,9 +944,24 @@ export default function UploadPage() {
                     <SelectItem value="96000">96 kHz</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button type="button" size="sm" variant="outline" onClick={exportSelectionWav}>
+                <Button type="button" size="sm" variant="outline" onClick={exportSelectionWav} disabled={!!exportState?.active}>
+                  {exportState?.active ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
                   Download ({(selection.endSec - selection.startSec).toFixed(2)}s)
                 </Button>
+                {exportState?.active && (
+                  <div className="w-full flex items-center gap-2 mt-1">
+                    <Progress value={Math.round(exportState.pct * 100)} className="h-1.5 flex-1 bg-secondary" />
+                    <span className="text-[10px] tabular-nums text-muted-foreground min-w-[55px] text-right">
+                      {Math.round(exportState.pct * 100)}%
+                    </span>
+                    <span className="text-[10px] tabular-nums text-muted-foreground">
+                      ETA {(exportState.etaMs / 1000).toFixed(1)}s
+                    </span>
+                    <Button type="button" size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={cancelExport}>
+                      <X className="w-3 h-3 mr-1" /> Cancel
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -870,6 +1062,49 @@ export default function UploadPage() {
             </Card>
           )}
         </>
+      )}
+
+      {showShortcuts && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Keyboard shortcuts"
+          onClick={() => setShowShortcuts(false)}
+        >
+          <Card
+            className="studio-card w-full max-w-md p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-display text-base font-bold">Keyboard shortcuts</h3>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowShortcuts(false)} aria-label="Close">
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground mb-3">
+              Shortcuts (except <kbd className="px-1 rounded border bg-secondary/40">?</kbd>) only fire when the waveform area is focused.
+            </p>
+            <dl className="text-xs space-y-1.5">
+              {[
+                ["Space", "Play / pause"],
+                ["+ / −", "Zoom in / out"],
+                ["Shift + 0", "Reset zoom"],
+                ["← / →", "Nudge BPM ±0.1 (Shift = ±1)"],
+                ["[ / ]", "Nudge downbeat ±10 ms (Shift = ±100 ms)"],
+                ["?", "Toggle this help panel"],
+              ].map(([key, desc]) => (
+                <div key={key} className="flex items-center justify-between gap-3">
+                  <kbd className="px-1.5 py-0.5 rounded border bg-secondary/40 text-[10px] tabular-nums">{key}</kbd>
+                  <dd className="text-muted-foreground flex-1 text-right">{desc}</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="mt-4 pt-3 border-t border-border text-[11px] text-muted-foreground">
+              Tip: use <span className="text-foreground">Copy diagnostics</span> after an analysis to share runtime details, or <span className="text-foreground">Revert to saved region</span> to restore the last analyzed selection for this file.
+            </div>
+          </Card>
+        </div>
       )}
     </div>
   );
