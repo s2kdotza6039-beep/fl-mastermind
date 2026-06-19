@@ -407,12 +407,43 @@ export default function UploadPage() {
                 src={audioUrl}
                 peaks={peaks}
                 durationSec={result?.metrics.durationSec ?? decoded?.duration ?? 0}
-                bpm={result?.metrics.bpm ?? null}
+                bpm={effectiveBpm}
                 bpmConfidence={bpmConfidenceValue}
+                bpmOffsetSec={downbeatOffsetSec}
                 selection={selection}
                 onSelectionChange={setSelection}
                 onCanvasRef={(c) => { waveformCanvasRef.current = c; }}
               />
+            )}
+
+            {result?.metrics.bpm != null && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 p-2 rounded-md bg-secondary/40 border border-border text-xs">
+                <span className="text-muted-foreground">Beat grid:</span>
+                <Button type="button" size="icon" variant="outline" className="h-7 w-7" aria-label="Nudge BPM −1" onClick={() => setBpmNudge((n) => Math.round((n - 1) * 10) / 10)}>
+                  <Minus className="w-3 h-3" />
+                </Button>
+                <Button type="button" size="sm" variant="outline" className="h-7 px-2" onClick={() => setBpmNudge((n) => Math.round((n - 0.1) * 10) / 10)}>−0.1</Button>
+                <span className="tabular-nums font-semibold min-w-[60px] text-center">
+                  {effectiveBpm?.toFixed(1)} BPM
+                </span>
+                <Button type="button" size="sm" variant="outline" className="h-7 px-2" onClick={() => setBpmNudge((n) => Math.round((n + 0.1) * 10) / 10)}>+0.1</Button>
+                <Button type="button" size="icon" variant="outline" className="h-7 w-7" aria-label="Nudge BPM +1" onClick={() => setBpmNudge((n) => Math.round((n + 1) * 10) / 10)}>
+                  <Plus className="w-3 h-3" />
+                </Button>
+                {bpmNudge !== 0 && (
+                  <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[10px]" onClick={() => setBpmNudge(0)}>Reset</Button>
+                )}
+                <span className="text-muted-foreground ml-2">Downbeat:</span>
+                <Button type="button" size="sm" variant="outline" className="h-7 px-2" onClick={() => setDownbeatOffsetSec((o) => Math.max(0, o - 0.01))}>−10ms</Button>
+                <span className="tabular-nums min-w-[55px] text-center">{downbeatOffsetSec.toFixed(2)}s</span>
+                <Button type="button" size="sm" variant="outline" className="h-7 px-2" onClick={() => setDownbeatOffsetSec((o) => o + 0.01)}>+10ms</Button>
+                <Button type="button" size="sm" variant="outline" className="h-7 px-2" onClick={snapToDownbeat}>
+                  <Target className="w-3 h-3 mr-1" /> Snap to onset
+                </Button>
+                {downbeatOffsetSec !== 0 && (
+                  <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[10px]" onClick={() => setDownbeatOffsetSec(0)}>Reset offset</Button>
+                )}
+              </div>
             )}
 
             {!result && !analyzing && !error && (
