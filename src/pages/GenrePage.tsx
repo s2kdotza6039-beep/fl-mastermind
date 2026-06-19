@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Music2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ActiveTrackChip } from "@/components/ActiveTrackChip";
 
 const GENRES: { name: Genre; vibe: string; emoji: string }[] = [
   { name: "Hip-hop", vibe: "Boom bap, soul, drums up front", emoji: "🎤" },
