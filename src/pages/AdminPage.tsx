@@ -16,6 +16,7 @@ import { editionToTier, tierLabel, eligiblePlugins, forbiddenPlugins, type FlEdi
 import { AdminActivityTab } from "@/components/AdminActivityTab";
 import { SecurityIssuesPanel } from "@/components/SecurityIssuesPanel";
 import { AdminAudioReportsTab } from "@/components/AdminAudioReportsTab";
+import { AdminTrackSessionsTab } from "@/components/AdminTrackSessionsTab";
 
 
 interface UserRow {
