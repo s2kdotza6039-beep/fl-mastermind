@@ -30,6 +30,8 @@ export default function ChainBuilderPage() {
         icon={<Layers className="w-6 h-6" />}
       />
 
+      <ActiveTrackChip />
+
       {!prompt ? (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {TRACKS.map((t) => (
