@@ -10,7 +10,10 @@ import {
 } from "lucide-react";
 import { SenseiChat } from "@/components/SenseiChat";
 import { AudioReportCard } from "@/components/AudioReportCard";
-import { WaveformPlayer, type WaveformSelection } from "@/components/WaveformPlayer";
+import { WaveformPlayer, type WaveformSelection, type WaveformPlayerHandle } from "@/components/WaveformPlayer";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import {
   computeWaveformPeaks,
   decodeAudioToChannels,
