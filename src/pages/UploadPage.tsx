@@ -747,10 +747,28 @@ export default function UploadPage() {
             )}
 
             {selection && (
-              <div className="mt-3">
-                <Button type="button" size="sm" variant="outline" onClick={exportSelectionWav} title="Download the selected region as a WAV file">
-                  <FileAudio2 className="w-3.5 h-3.5 mr-1.5" />
-                  Export selection as WAV ({(selection.endSec - selection.startSec).toFixed(2)}s)
+              <div className="mt-3 flex flex-wrap items-center gap-2 p-2 rounded-md bg-secondary/30 border border-border">
+                <FileAudio2 className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Export selection WAV:</span>
+                <Select value={wavBitDepth} onValueChange={(v) => setWavBitDepth(v as WavBitDepth)}>
+                  <SelectTrigger className="h-7 w-[130px] text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pcm16">16-bit PCM</SelectItem>
+                    <SelectItem value="pcm24">24-bit PCM</SelectItem>
+                    <SelectItem value="float32">32-bit float</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={wavSampleRate} onValueChange={(v) => setWavSampleRate(v as typeof wavSampleRate)}>
+                  <SelectTrigger className="h-7 w-[130px] text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="original">Original{decoded ? ` (${decoded.sampleRate} Hz)` : ""}</SelectItem>
+                    <SelectItem value="44100">44.1 kHz</SelectItem>
+                    <SelectItem value="48000">48 kHz</SelectItem>
+                    <SelectItem value="96000">96 kHz</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button type="button" size="sm" variant="outline" onClick={exportSelectionWav}>
+                  Download ({(selection.endSec - selection.startSec).toFixed(2)}s)
                 </Button>
               </div>
             )}
