@@ -75,7 +75,11 @@ function buildStepSummary(result: AudioAnalysisResult): { title: string; detail:
   ];
 }
 
-async function exportReportPdf(result: AudioAnalysisResult, waveformDataUrl?: string | null) {
+async function exportReportPdf(
+  result: AudioAnalysisResult,
+  waveformDataUrl?: string | null,
+  analyzedRange?: { startSec: number; endSec: number } | null,
+) {
   try {
     const { jsPDF } = await import("jspdf");
     const { metrics: m, issues } = result;
