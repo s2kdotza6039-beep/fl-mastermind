@@ -158,8 +158,11 @@ export default function UploadPage() {
   const [bpmNudge, setBpmNudge] = useState(0); // ± offset on top of detected BPM
   const [downbeatOffsetSec, setDownbeatOffsetSec] = useState(0);
   const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
+  const [wavBitDepth, setWavBitDepth] = useState<WavBitDepth>("pcm16");
+  const [wavSampleRate, setWavSampleRate] = useState<"original" | "44100" | "48000" | "96000">("original");
   const inputRef = useRef<HTMLInputElement>(null);
   const waveformCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const waveformRef = useRef<WaveformPlayerHandle | null>(null);
 
   const audioUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
   useEffect(() => () => { if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
