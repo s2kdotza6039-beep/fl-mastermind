@@ -31,6 +31,8 @@ export default function ProblemsPage() {
         description="Select your symptom. Sensei prescribes the cure with exact FL Studio settings."
         icon={<Disc3 className="w-6 h-6" />}
       />
+      <ActiveTrackChip />
+
 
       {!prompt ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
