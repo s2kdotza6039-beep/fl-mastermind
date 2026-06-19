@@ -25,6 +25,8 @@ import {
 } from "@/lib/audio-analysis";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
+import { useTrackSession } from "@/context/TrackSessionContext";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 const MAX_FILE_MB = 50;
