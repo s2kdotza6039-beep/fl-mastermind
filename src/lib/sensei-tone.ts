@@ -1,143 +1,277 @@
-// Studio Sensei startup tone — synthesized "dojo kiai" (IYAAAH-style shout)
-// All Web Audio. No external asset needed.
-// Plays once per browser session; gated by a one-time user gesture if the
-// browser blocks autoplay.
+// Studio Sensei startup tone — ancient Chinese-inspired motif synthesized via
+// Web Audio API. Layered impression of: soft temple bell, guqin & guzheng plucks,
+// and a breathy xiao bamboo flute. Pentatonic (D major pentatonic).
+// ~3 seconds, plays once per browser session, respects user audio settings.
+
+import { getAudioSettings } from "./audio-settings";
 
 const SESSION_KEY = "studio-sensei-boot-tone-played";
 
 let armed = false;
 
+type Ctx = AudioContext;
+
+// ---------- Helpers ----------
+const decayGain = (
+  ctx: Ctx,
+  start: number,
+  peak: number,
+  attack: number,
+  release: number,
+  end: number,
+) => {
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, start);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), start + attack);
+  g.gain.exponentialRampToValueAtTime(0.0001, end);
+  void release;
+  return g;
+};
+
+// Temple bell: fundamental + inharmonic partials, long exponential decay
+const playTempleBell = (ctx: Ctx, out: AudioNode, t: number, freq = 523.25) => {
+  const partials = [
+    { mult: 1.0, gain: 0.55, decay: 2.8 },
+    { mult: 2.76, gain: 0.28, decay: 2.0 },
+    { mult: 5.40, gain: 0.12, decay: 1.3 },
+    { mult: 8.93, gain: 0.06, decay: 0.7 },
+  ];
+  partials.forEach(({ mult, gain, decay }) => {
+    const o = ctx.createOscillator();
+    o.type = "sine";
+    o.frequency.value = freq * mult;
+    const g = decayGain(ctx, t, gain, 0.005, decay, t + decay);
+    o.connect(g);
+    g.connect(out);
+    o.start(t);
+    o.stop(t + decay + 0.05);
+  });
+};
+
+// Plucked string (guqin / guzheng) — detuned triangle stack through a lowpass
+// that closes quickly, mimicking a plucked silk-string envelope.
+const playPluck = (
+  ctx: Ctx,
+  out: AudioNode,
+  t: number,
+  freq: number,
+  brightness: number, // 0..1 — higher = guzheng-ish, lower = guqin-ish
+  level = 0.4,
+  durSec = 1.6,
+) => {
+  const merge = ctx.createGain();
+  merge.gain.value = level;
+
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass";
+  const startCutoff = 1800 + brightness * 4000;
+  const endCutoff = 350 + brightness * 600;
+  lp.frequency.setValueAtTime(startCutoff, t);
+  lp.frequency.exponentialRampToValueAtTime(endCutoff, t + durSec);
+  lp.Q.value = 0.9;
+
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0.0001, t);
+  env.gain.exponentialRampToValueAtTime(1, t + 0.006);
+  env.gain.exponentialRampToValueAtTime(0.0001, t + durSec);
+
+  ([-7, 0, +7] as const).forEach((detune, idx) => {
+    const o = ctx.createOscillator();
+    o.type = idx === 1 ? "triangle" : "sawtooth";
+    o.frequency.value = freq;
+    o.detune.value = detune;
+    const og = ctx.createGain();
+    og.gain.value = idx === 1 ? 0.6 : 0.22;
+    o.connect(og);
+    og.connect(lp);
+    o.start(t);
+    o.stop(t + durSec + 0.05);
+  });
+
+  // tiny pitch drop for plucked realism
+  const subtleBend = ctx.createOscillator();
+  subtleBend.frequency.value = freq * 0.5;
+  subtleBend.type = "sine";
+  const sbg = ctx.createGain();
+  sbg.gain.value = 0.05;
+  subtleBend.connect(sbg);
+  sbg.connect(lp);
+  subtleBend.start(t);
+  subtleBend.stop(t + 0.4);
+
+  lp.connect(env);
+  env.connect(merge);
+  merge.connect(out);
+};
+
+// Xiao bamboo flute — breathy sine with vibrato and a touch of filtered noise
+const playXiao = (
+  ctx: Ctx,
+  out: AudioNode,
+  t: number,
+  freq: number,
+  level = 0.28,
+  durSec = 1.4,
+) => {
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0.0001, t);
+  env.gain.exponentialRampToValueAtTime(level, t + 0.25);
+  env.gain.setValueAtTime(level, t + durSec * 0.6);
+  env.gain.exponentialRampToValueAtTime(0.0001, t + durSec);
+
+  const tone = ctx.createOscillator();
+  tone.type = "sine";
+  tone.frequency.value = freq;
+
+  // gentle vibrato
+  const lfo = ctx.createOscillator();
+  lfo.frequency.value = 4.8;
+  const lfoGain = ctx.createGain();
+  lfoGain.gain.value = freq * 0.008;
+  lfo.connect(lfoGain);
+  lfoGain.connect(tone.frequency);
+
+  // soft 2nd harmonic for body
+  const tone2 = ctx.createOscillator();
+  tone2.type = "sine";
+  tone2.frequency.value = freq * 2;
+  const tone2g = ctx.createGain();
+  tone2g.gain.value = 0.18;
+
+  // breath noise
+  const noiseBuf = ctx.createBuffer(1, ctx.sampleRate * durSec, ctx.sampleRate);
+  const ch = noiseBuf.getChannelData(0);
+  for (let i = 0; i < ch.length; i++) ch[i] = (Math.random() * 2 - 1);
+  const noise = ctx.createBufferSource();
+  noise.buffer = noiseBuf;
+  const noiseBp = ctx.createBiquadFilter();
+  noiseBp.type = "bandpass";
+  noiseBp.frequency.value = freq * 2.2;
+  noiseBp.Q.value = 0.7;
+  const noiseG = ctx.createGain();
+  noiseG.gain.value = 0.05;
+
+  tone.connect(env);
+  tone2.connect(tone2g);
+  tone2g.connect(env);
+  noise.connect(noiseBp);
+  noiseBp.connect(noiseG);
+  noiseG.connect(env);
+  env.connect(out);
+
+  tone.start(t);
+  tone.stop(t + durSec + 0.05);
+  tone2.start(t);
+  tone2.stop(t + durSec + 0.05);
+  lfo.start(t);
+  lfo.stop(t + durSec + 0.05);
+  noise.start(t);
+  noise.stop(t + durSec);
+};
+
+// A tiny "hall" using a short feedback delay for air around the motif
+const makeHall = (ctx: Ctx, out: AudioNode) => {
+  const send = ctx.createGain();
+  send.gain.value = 0.22;
+  const delay = ctx.createDelay(1.0);
+  delay.delayTime.value = 0.22;
+  const fb = ctx.createGain();
+  fb.gain.value = 0.32;
+  const wet = ctx.createGain();
+  wet.gain.value = 1;
+  const hp = ctx.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = 250;
+  send.connect(delay);
+  delay.connect(hp);
+  hp.connect(fb);
+  fb.connect(delay);
+  hp.connect(wet);
+  wet.connect(out);
+  return send;
+};
+
 export const playSenseiBootTone = async () => {
   try {
-    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
+    const settings = getAudioSettings();
+    if (!settings.enabled) return;
+
+    const CtxClass =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!CtxClass) return;
+    const ctx = new CtxClass();
     if (ctx.state === "suspended") await ctx.resume().catch(() => {});
 
-    const now = ctx.currentTime;
     const master = ctx.createGain();
-    master.gain.value = 0.0001;
+    // moderate baseline (~0.6) scaled by user volume
+    master.gain.value = 0.6 * settings.volume;
     master.connect(ctx.destination);
 
-    // Master envelope — short, punchy
-    master.gain.setValueAtTime(0.0001, now);
-    master.gain.exponentialRampToValueAtTime(0.55, now + 0.04);
-    master.gain.exponentialRampToValueAtTime(0.4, now + 0.55);
-    master.gain.exponentialRampToValueAtTime(0.0001, now + 1.4);
+    const hallSend = makeHall(ctx, master);
 
-    // ---- 1. Tonal "shout" body — saw + square stack with a vowel-like formant filter sweep
-    const buildVoice = (freq: number, detune: number, gain: number, type: OscillatorType) => {
-      const o = ctx.createOscillator();
-      o.type = type;
-      o.frequency.value = freq;
-      o.detune.value = detune;
-      const g = ctx.createGain();
-      g.gain.value = gain;
-      o.connect(g);
-      return { o, g };
-    };
+    // route a "dry+wet" bus: dry to master, also send to hall
+    const dry = ctx.createGain();
+    dry.gain.value = 1;
+    dry.connect(master);
+    dry.connect(hallSend);
 
-    // Pitch glide mimics "iyaaah" — rises then drops
-    const v1 = buildVoice(180, -8, 0.35, "sawtooth");
-    const v2 = buildVoice(180, +8, 0.3, "sawtooth");
-    const v3 = buildVoice(360, 0, 0.18, "square");
+    const t0 = ctx.currentTime + 0.02;
 
-    [v1, v2, v3].forEach(({ o }) => {
-      o.frequency.setValueAtTime(150, now);
-      o.frequency.exponentialRampToValueAtTime(310, now + 0.12); // "EE-YAA"
-      o.frequency.exponentialRampToValueAtTime(220, now + 0.45);
-      o.frequency.exponentialRampToValueAtTime(140, now + 1.2);
-    });
+    // D major pentatonic — D3=146.83, A3=220, F#4=369.99, A4=440, D5=587.33
+    // 1. Temple bell entrance (high C-ish, soft)
+    playTempleBell(ctx, dry, t0, 523.25);
 
-    // Vowel formant sweep — bandpass moving from "ee" to "ah"
-    const formant = ctx.createBiquadFilter();
-    formant.type = "bandpass";
-    formant.Q.value = 2.5;
-    formant.frequency.setValueAtTime(2400, now);
-    formant.frequency.exponentialRampToValueAtTime(900, now + 0.35);
-    formant.frequency.exponentialRampToValueAtTime(700, now + 1.1);
+    // 2. Guqin low pluck D3 — the master arriving
+    playPluck(ctx, dry, t0 + 0.35, 146.83, 0.15, 0.42, 1.8);
 
-    // Mild low-shelf for chest weight
-    const chest = ctx.createBiquadFilter();
-    chest.type = "lowshelf";
-    chest.frequency.value = 220;
-    chest.gain.value = 5;
+    // 3. Guqin A3 — second breath
+    playPluck(ctx, dry, t0 + 0.85, 220.0, 0.2, 0.36, 1.6);
 
-    [v1, v2, v3].forEach(({ g }) => g.connect(formant));
-    formant.connect(chest);
-    chest.connect(master);
+    // 4. Guzheng arpeggio (F#4 -> A4) — brighter strings
+    playPluck(ctx, dry, t0 + 1.25, 369.99, 0.7, 0.32, 1.3);
+    playPluck(ctx, dry, t0 + 1.55, 440.0, 0.78, 0.30, 1.2);
 
-    // ---- 2. Breath / aspiration noise burst at attack
-    const noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 0.25, ctx.sampleRate);
-    const ch = noiseBuf.getChannelData(0);
-    for (let i = 0; i < ch.length; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / ch.length);
-    const noise = ctx.createBufferSource();
-    noise.buffer = noiseBuf;
-    const noiseFilter = ctx.createBiquadFilter();
-    noiseFilter.type = "bandpass";
-    noiseFilter.frequency.value = 3500;
-    noiseFilter.Q.value = 0.9;
-    const noiseGain = ctx.createGain();
-    noiseGain.gain.setValueAtTime(0.0001, now);
-    noiseGain.gain.exponentialRampToValueAtTime(0.35, now + 0.02);
-    noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
-    noise.connect(noiseFilter);
-    noiseFilter.connect(noiseGain);
-    noiseGain.connect(master);
+    // 5. Xiao bamboo flute — D5 sustained, fading out
+    playXiao(ctx, dry, t0 + 1.4, 587.33, 0.26, 1.5);
 
-    // ---- 3. Low boom — dojo impact under the shout
-    const boom = ctx.createOscillator();
-    boom.type = "sine";
-    boom.frequency.setValueAtTime(110, now);
-    boom.frequency.exponentialRampToValueAtTime(45, now + 0.35);
-    const boomGain = ctx.createGain();
-    boomGain.gain.setValueAtTime(0.0001, now);
-    boomGain.gain.exponentialRampToValueAtTime(0.6, now + 0.015);
-    boomGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
-    boom.connect(boomGain);
-    boomGain.connect(master);
-
-    // ---- Start / stop everything
-    [v1.o, v2.o, v3.o].forEach((o) => {
-      o.start(now);
-      o.stop(now + 1.45);
-    });
-    noise.start(now);
-    noise.stop(now + 0.25);
-    boom.start(now);
-    boom.stop(now + 0.55);
-
-    // Cleanup
-    setTimeout(() => ctx.close().catch(() => {}), 1700);
+    // Cleanup after motif decays
+    setTimeout(() => {
+      ctx.close().catch(() => {});
+    }, 4200);
   } catch {
-    /* ignore — audio is non-critical */
+    /* audio is non-critical */
   }
 };
 
 /**
- * Plays the boot tone once per browser session.
- * Browsers block audio without a user gesture, so on first call we either play
- * immediately (if allowed) or arm a one-time listener for the next click/key press.
+ * Play the boot tone once per browser session, respecting:
+ *  - user audio settings (enabled/volume)
+ *  - browser autoplay policy (requires a user gesture if not allowed)
+ * Page navigation within the SPA will NOT replay it because sessionStorage
+ * is checked before each attempt.
  */
 export const armSenseiBootTone = () => {
   if (armed) return;
+  if (typeof window === "undefined") return;
   if (sessionStorage.getItem(SESSION_KEY) === "1") return;
+  if (!getAudioSettings().enabled) return;
   armed = true;
 
   const fire = () => {
     sessionStorage.setItem(SESSION_KEY, "1");
-    playSenseiBootTone();
+    void playSenseiBootTone();
     window.removeEventListener("pointerdown", fire);
     window.removeEventListener("keydown", fire);
   };
 
-  // Try to play right away. If the AudioContext can't start without a gesture,
-  // browsers will refuse silently and we fall back to the gesture listeners.
   const tryNow = async () => {
     try {
-      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (!Ctx) return;
-      const probe = new Ctx();
+      const CtxClass =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!CtxClass) return;
+      const probe = new CtxClass();
       const allowed = probe.state === "running";
       await probe.close().catch(() => {});
       if (allowed) {
@@ -151,5 +285,5 @@ export const armSenseiBootTone = () => {
       window.addEventListener("keydown", fire, { once: false });
     }
   };
-  tryNow();
+  void tryNow();
 };

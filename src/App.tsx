@@ -38,6 +38,7 @@ import OwnershipPage from "./pages/OwnershipPage";
 import SecurityPage from "./pages/SecurityPage";
 import FeedbackPage from "./pages/FeedbackPage";
 import StatusPage from "./pages/StatusPage";
+import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -77,6 +78,7 @@ function AppShell() {
       <Route path="/upgrade" element={<ProtectedRoute><UpgradePage /></ProtectedRoute>} />
       <Route path="/studio-setup" element={<ProtectedRoute><StudioSetupPage /></ProtectedRoute>} />
       <Route path="/plugin-inventory" element={<ProtectedRoute><PluginInventoryPage /></ProtectedRoute>} />
+      <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
 
       {/* Paid only */}
       <Route path="/chains" element={<ProtectedRoute requirePaid><ChainBuilderPage /></ProtectedRoute>} />
