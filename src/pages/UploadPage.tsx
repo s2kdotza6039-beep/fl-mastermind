@@ -944,9 +944,24 @@ export default function UploadPage() {
                     <SelectItem value="96000">96 kHz</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button type="button" size="sm" variant="outline" onClick={exportSelectionWav}>
+                <Button type="button" size="sm" variant="outline" onClick={exportSelectionWav} disabled={!!exportState?.active}>
+                  {exportState?.active ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
                   Download ({(selection.endSec - selection.startSec).toFixed(2)}s)
                 </Button>
+                {exportState?.active && (
+                  <div className="w-full flex items-center gap-2 mt-1">
+                    <Progress value={Math.round(exportState.pct * 100)} className="h-1.5 flex-1 bg-secondary" />
+                    <span className="text-[10px] tabular-nums text-muted-foreground min-w-[55px] text-right">
+                      {Math.round(exportState.pct * 100)}%
+                    </span>
+                    <span className="text-[10px] tabular-nums text-muted-foreground">
+                      ETA {(exportState.etaMs / 1000).toFixed(1)}s
+                    </span>
+                    <Button type="button" size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={cancelExport}>
+                      <X className="w-3 h-3 mr-1" /> Cancel
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
 
