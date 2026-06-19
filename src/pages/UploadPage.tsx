@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
-  UploadCloud, FileAudio, X, Sparkles, Loader2, MessageCircle, RefreshCcw, AlertTriangle, Scissors,
+  UploadCloud, FileAudio, X, Sparkles, Loader2, MessageCircle, RefreshCcw, AlertTriangle,
+  Scissors, Minus, Plus, Target, FileJson,
 } from "lucide-react";
 import { SenseiChat } from "@/components/SenseiChat";
 import { AudioReportCard } from "@/components/AudioReportCard";
