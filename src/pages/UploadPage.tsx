@@ -10,7 +10,10 @@ import {
 } from "lucide-react";
 import { SenseiChat } from "@/components/SenseiChat";
 import { AudioReportCard } from "@/components/AudioReportCard";
-import { WaveformPlayer, type WaveformSelection } from "@/components/WaveformPlayer";
+import { WaveformPlayer, type WaveformSelection, type WaveformPlayerHandle } from "@/components/WaveformPlayer";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import {
   computeWaveformPeaks,
   decodeAudioToChannels,
@@ -57,18 +60,47 @@ interface Diagnostics {
   errorMessage?: string;
 }
 const PRESET_PREFIX = "studio-sensei:bpm-preset:v1:";
+const REGION_PREFIX = "studio-sensei:region-preset:v1:";
 
 function presetKey(file: File | null): string | null {
   if (!file) return null;
   return `${PRESET_PREFIX}${file.name}:${file.size}`;
 }
+function regionKey(file: File | null): string | null {
+  if (!file) return null;
+  return `${REGION_PREFIX}${file.name}:${file.size}`;
+}
 
 interface BpmPreset { nudge: number; offsetSec: number; savedAt: string }
+interface RegionPreset { startSec: number; endSec: number; savedAt: string }
 
-function encodeWavPCM16(channels: Float32Array[], sampleRate: number): Blob {
+export type WavBitDepth = "pcm16" | "pcm24" | "float32";
+
+/** Linear resampler (per-channel). For MVP — fine for export, not pristine quality. */
+function resampleChannels(channels: Float32Array[], fromRate: number, toRate: number): Float32Array[] {
+  if (fromRate === toRate) return channels.map((c) => new Float32Array(c));
+  const ratio = fromRate / toRate;
+  const newLen = Math.floor(channels[0].length / ratio);
+  return channels.map((src) => {
+    const out = new Float32Array(newLen);
+    for (let i = 0; i < newLen; i++) {
+      const srcIdx = i * ratio;
+      const i0 = Math.floor(srcIdx);
+      const i1 = Math.min(src.length - 1, i0 + 1);
+      const t = srcIdx - i0;
+      out[i] = src[i0] * (1 - t) + src[i1] * t;
+    }
+    return out;
+  });
+}
+
+function encodeWav(channels: Float32Array[], sampleRate: number, depth: WavBitDepth): Blob {
   const numCh = channels.length;
   const numFrames = channels[0]?.length ?? 0;
-  const dataLen = numFrames * numCh * 2;
+  const bytesPerSample = depth === "pcm16" ? 2 : depth === "pcm24" ? 3 : 4;
+  const isFloat = depth === "float32";
+  const formatTag = isFloat ? 3 : 1; // 1 = PCM, 3 = IEEE float
+  const dataLen = numFrames * numCh * bytesPerSample;
   const buf = new ArrayBuffer(44 + dataLen);
   const view = new DataView(buf);
   const writeStr = (off: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
@@ -77,21 +109,31 @@ function encodeWavPCM16(channels: Float32Array[], sampleRate: number): Blob {
   writeStr(8, "WAVE");
   writeStr(12, "fmt ");
   view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);             // PCM
+  view.setUint16(20, formatTag, true);
   view.setUint16(22, numCh, true);
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * numCh * 2, true);
-  view.setUint16(32, numCh * 2, true);
-  view.setUint16(34, 16, true);
+  view.setUint32(28, sampleRate * numCh * bytesPerSample, true);
+  view.setUint16(32, numCh * bytesPerSample, true);
+  view.setUint16(34, bytesPerSample * 8, true);
   writeStr(36, "data");
   view.setUint32(40, dataLen, true);
   let off = 44;
   for (let f = 0; f < numFrames; f++) {
     for (let c = 0; c < numCh; c++) {
-      let s = Math.max(-1, Math.min(1, channels[c][f]));
-      s = s < 0 ? s * 0x8000 : s * 0x7fff;
-      view.setInt16(off, s, true);
-      off += 2;
+      const sample = Math.max(-1, Math.min(1, channels[c][f]));
+      if (depth === "pcm16") {
+        view.setInt16(off, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+        off += 2;
+      } else if (depth === "pcm24") {
+        const v = Math.round((sample < 0 ? sample * 0x800000 : sample * 0x7fffff)) | 0;
+        view.setUint8(off, v & 0xff);
+        view.setUint8(off + 1, (v >> 8) & 0xff);
+        view.setUint8(off + 2, (v >> 16) & 0xff);
+        off += 3;
+      } else {
+        view.setFloat32(off, sample, true);
+        off += 4;
+      }
     }
   }
   return new Blob([buf], { type: "audio/wav" });
@@ -116,8 +158,11 @@ export default function UploadPage() {
   const [bpmNudge, setBpmNudge] = useState(0); // ± offset on top of detected BPM
   const [downbeatOffsetSec, setDownbeatOffsetSec] = useState(0);
   const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
+  const [wavBitDepth, setWavBitDepth] = useState<WavBitDepth>("pcm16");
+  const [wavSampleRate, setWavSampleRate] = useState<"original" | "44100" | "48000" | "96000">("original");
   const inputRef = useRef<HTMLInputElement>(null);
   const waveformCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const waveformRef = useRef<WaveformPlayerHandle | null>(null);
 
   const audioUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
   useEffect(() => () => { if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
@@ -163,6 +208,46 @@ export default function UploadPage() {
     }, 400);
     return () => clearTimeout(handle);
   }, [file, bpmNudge, downbeatOffsetSec]);
+
+  // Load saved region selection per file once we know its duration (decoded ready).
+  useEffect(() => {
+    const key = regionKey(file);
+    if (!key || !decoded || selection) return;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const r = JSON.parse(raw) as RegionPreset;
+      if (typeof r.startSec === "number" && typeof r.endSec === "number" && r.endSec > r.startSec) {
+        const clampedEnd = Math.min(r.endSec, decoded.duration);
+        const clampedStart = Math.max(0, Math.min(r.startSec, clampedEnd - 0.05));
+        if (clampedEnd - clampedStart >= 0.25) {
+          setSelection({ startSec: clampedStart, endSec: clampedEnd });
+          toast.message("Restored saved selection", {
+            description: `${clampedStart.toFixed(2)}s – ${clampedEnd.toFixed(2)}s`,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to load region preset", e);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file, decoded]);
+
+  // Auto-save region selection (debounced).
+  useEffect(() => {
+    const key = regionKey(file);
+    if (!key) return;
+    const handle = setTimeout(() => {
+      try {
+        if (!selection) localStorage.removeItem(key);
+        else {
+          const p: RegionPreset = { startSec: selection.startSec, endSec: selection.endSec, savedAt: new Date().toISOString() };
+          localStorage.setItem(key, JSON.stringify(p));
+        }
+      } catch (e) { console.warn("Failed to save region preset", e); }
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [file, selection]);
 
 
   const reset = () => {
@@ -429,17 +514,23 @@ export default function UploadPage() {
       return;
     }
     const sliced = decoded.channelData.map((c) => c.slice(startSample, endSample));
-    const blob = encodeWavPCM16(sliced, decoded.sampleRate);
+    const targetRate = wavSampleRate === "original" ? decoded.sampleRate : parseInt(wavSampleRate, 10);
+    const resampled = resampleChannels(sliced, decoded.sampleRate, targetRate);
+    const blob = encodeWav(resampled, targetRate, wavBitDepth);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     const safe = (file?.name || "track").replace(/\.[a-z0-9]+$/i, "").replace(/[^a-z0-9_-]+/gi, "_");
+    const suffix = `${wavBitDepth}_${targetRate}`;
     a.href = url;
-    a.download = `${safe}_${selection.startSec.toFixed(2)}s-${selection.endSec.toFixed(2)}s.wav`;
+    a.download = `${safe}_${selection.startSec.toFixed(2)}s-${selection.endSec.toFixed(2)}s_${suffix}.wav`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    toast.success("Selection exported as WAV");
+    const label = wavBitDepth === "float32" ? "32-bit float" : wavBitDepth === "pcm24" ? "24-bit PCM" : "16-bit PCM";
+    toast.success(`Selection exported as ${label} WAV @ ${targetRate} Hz`, {
+      description: `${(selection.endSec - selection.startSec).toFixed(2)}s · ${(blob.size / 1024).toFixed(1)} KB`,
+    });
   };
 
   const effectiveBpm = result?.metrics.bpm != null ? Math.max(20, result.metrics.bpm + bpmNudge) : null;
@@ -500,6 +591,59 @@ export default function UploadPage() {
 
   const bpmConfidenceValue = result?.metrics.bpmConfidence.value;
 
+  // Keyboard shortcuts: Space play/pause · +/− zoom · ←/→ nudge BPM · [/] nudge downbeat.
+  useEffect(() => {
+    if (!file) return;
+    const handler = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && /input|textarea|select/i.test(t.tagName)) return;
+      if (t && t.isContentEditable) return;
+      const wf = waveformRef.current;
+      switch (e.key) {
+        case " ": // play/pause
+        case "Spacebar":
+          e.preventDefault();
+          wf?.togglePlay();
+          break;
+        case "+":
+        case "=":
+          e.preventDefault();
+          wf?.zoomIn();
+          break;
+        case "-":
+        case "_":
+          e.preventDefault();
+          wf?.zoomOut();
+          break;
+        case "0":
+          if (e.shiftKey) { e.preventDefault(); wf?.resetZoom(); }
+          break;
+        case "ArrowLeft":
+          if (result?.metrics.bpm == null) return;
+          e.preventDefault();
+          setBpmNudge((n) => Math.round((n - (e.shiftKey ? 1 : 0.1)) * 10) / 10);
+          break;
+        case "ArrowRight":
+          if (result?.metrics.bpm == null) return;
+          e.preventDefault();
+          setBpmNudge((n) => Math.round((n + (e.shiftKey ? 1 : 0.1)) * 10) / 10);
+          break;
+        case "[":
+          if (result?.metrics.bpm == null) return;
+          e.preventDefault();
+          setDownbeatOffsetSec((o) => Math.max(0, o - (e.shiftKey ? 0.1 : 0.01)));
+          break;
+        case "]":
+          if (result?.metrics.bpm == null) return;
+          e.preventDefault();
+          setDownbeatOffsetSec((o) => o + (e.shiftKey ? 0.1 : 0.01));
+          break;
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [file, result?.metrics.bpm]);
+
   return (
     <div className="container max-w-4xl py-8 px-4 md:px-8">
       <PageHeader
@@ -548,6 +692,7 @@ export default function UploadPage() {
 
             {audioUrl && (
               <WaveformPlayer
+                ref={waveformRef}
                 src={audioUrl}
                 peaks={peaks}
                 durationSec={result?.metrics.durationSec ?? decoded?.duration ?? 0}
@@ -602,10 +747,28 @@ export default function UploadPage() {
             )}
 
             {selection && (
-              <div className="mt-3">
-                <Button type="button" size="sm" variant="outline" onClick={exportSelectionWav} title="Download the selected region as a WAV file">
-                  <FileAudio2 className="w-3.5 h-3.5 mr-1.5" />
-                  Export selection as WAV ({(selection.endSec - selection.startSec).toFixed(2)}s)
+              <div className="mt-3 flex flex-wrap items-center gap-2 p-2 rounded-md bg-secondary/30 border border-border">
+                <FileAudio2 className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Export selection WAV:</span>
+                <Select value={wavBitDepth} onValueChange={(v) => setWavBitDepth(v as WavBitDepth)}>
+                  <SelectTrigger className="h-7 w-[130px] text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pcm16">16-bit PCM</SelectItem>
+                    <SelectItem value="pcm24">24-bit PCM</SelectItem>
+                    <SelectItem value="float32">32-bit float</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={wavSampleRate} onValueChange={(v) => setWavSampleRate(v as typeof wavSampleRate)}>
+                  <SelectTrigger className="h-7 w-[130px] text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="original">Original{decoded ? ` (${decoded.sampleRate} Hz)` : ""}</SelectItem>
+                    <SelectItem value="44100">44.1 kHz</SelectItem>
+                    <SelectItem value="48000">48 kHz</SelectItem>
+                    <SelectItem value="96000">96 kHz</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button type="button" size="sm" variant="outline" onClick={exportSelectionWav}>
+                  Download ({(selection.endSec - selection.startSec).toFixed(2)}s)
                 </Button>
               </div>
             )}

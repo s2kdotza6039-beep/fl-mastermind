@@ -1,10 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Play, Pause, SkipBack, X } from "lucide-react";
+import { Play, Pause, SkipBack, X, ZoomIn, ZoomOut } from "lucide-react";
 
 export interface WaveformSelection {
   startSec: number;
   endSec: number;
+}
+
+export interface WaveformPlayerHandle {
+  togglePlay: () => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  resetZoom: () => void;
+  isPlaying: () => boolean;
 }
 
 interface WaveformPlayerProps {
@@ -30,31 +38,69 @@ function fmt(t: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-/** Lightweight waveform display + transport controls + beat grid + click-drag selection. */
-export function WaveformPlayer({
-  src,
-  peaks,
-  durationSec,
-  bpm,
-  bpmConfidence = 1,
-  bpmOffsetSec = 0,
-  selection,
-  onSelectionChange,
-  onCanvasRef,
-}: WaveformPlayerProps) {
+const ZOOM_LEVELS = [1, 2, 4, 8, 16];
+
+/** Lightweight waveform display + transport + beat grid + zoom + selection. */
+export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerProps>(function WaveformPlayer(
+  {
+    src,
+    peaks,
+    durationSec,
+    bpm,
+    bpmConfidence = 1,
+    bpmOffsetSec = 0,
+    selection,
+    onSelectionChange,
+    onCanvasRef,
+  },
+  ref,
+) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [playing, setPlaying] = useState(false);
   const [pos, setPos] = useState(0);
   const [actualDuration, setActualDuration] = useState(durationSec);
+  const [zoomIdx, setZoomIdx] = useState(0);
+  const [viewStartSec, setViewStartSec] = useState(0);
   const dragRef = useRef<{ startX: number; startT: number; moved: boolean } | null>(null);
+
+  const zoom = ZOOM_LEVELS[zoomIdx];
+  const totalDur = actualDuration > 0 ? actualDuration : durationSec;
+  const viewDur = totalDur / zoom;
+
+  // Clamp / auto-follow viewStart so playhead stays visible.
+  useEffect(() => {
+    if (zoom === 1) { if (viewStartSec !== 0) setViewStartSec(0); return; }
+    const maxStart = Math.max(0, totalDur - viewDur);
+    let next = viewStartSec;
+    if (pos < viewStartSec || pos > viewStartSec + viewDur) {
+      next = Math.max(0, Math.min(maxStart, pos - viewDur / 2));
+    }
+    next = Math.max(0, Math.min(maxStart, next));
+    if (next !== viewStartSec) setViewStartSec(next);
+  }, [zoom, pos, totalDur, viewDur, viewStartSec]);
 
   useEffect(() => {
     onCanvasRef?.(canvasRef.current);
     return () => onCanvasRef?.(null);
   }, [onCanvasRef]);
 
-  // Redraw on any visual input change.
+  const toggle = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (a.paused) a.play().catch(() => {});
+    else a.pause();
+  };
+
+  useImperativeHandle(ref, () => ({
+    togglePlay: toggle,
+    zoomIn: () => setZoomIdx((i) => Math.min(ZOOM_LEVELS.length - 1, i + 1)),
+    zoomOut: () => setZoomIdx((i) => Math.max(0, i - 1)),
+    resetZoom: () => { setZoomIdx(0); setViewStartSec(0); },
+    isPlaying: () => !!audioRef.current && !audioRef.current.paused,
+  }), []);
+
+  // Redraw.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -69,47 +115,53 @@ export function WaveformPlayer({
     ctx.clearRect(0, 0, cssW, cssH);
 
     const mid = cssH / 2;
-    const dur = actualDuration > 0 ? actualDuration : durationSec;
-    const playedPct = dur > 0 ? pos / dur : 0;
-    const playedX = playedPct * cssW;
+    const vStart = viewStartSec;
+    const vDur = viewDur;
+    const secToX = (s: number) => ((s - vStart) / vDur) * cssW;
+    const playedX = secToX(pos);
 
     const root = getComputedStyle(document.documentElement);
     const primary = `hsl(${root.getPropertyValue("--primary").trim() || "45 95% 55%"})`;
     const muted = `hsl(${root.getPropertyValue("--muted-foreground").trim() || "220 10% 50%"} / 0.45)`;
 
-    // Selection backdrop first (under waveform)
-    if (selection && dur > 0) {
-      const x1 = (selection.startSec / dur) * cssW;
-      const x2 = (selection.endSec / dur) * cssW;
+    // Selection backdrop
+    if (selection && vDur > 0) {
+      const x1 = secToX(selection.startSec);
+      const x2 = secToX(selection.endSec);
       ctx.fillStyle = `hsl(${root.getPropertyValue("--primary").trim() || "45 95% 55%"} / 0.18)`;
       ctx.fillRect(Math.min(x1, x2), 0, Math.abs(x2 - x1), cssH);
     }
 
-    // Waveform bars
-    if (peaks) {
-      const buckets = peaks.length;
-      const barW = Math.max(1, cssW / buckets);
-      for (let i = 0; i < buckets; i++) {
+    // Waveform — slice peaks for current view.
+    if (peaks && totalDur > 0) {
+      const startBucket = Math.floor((vStart / totalDur) * peaks.length);
+      const endBucket = Math.ceil(((vStart + vDur) / totalDur) * peaks.length);
+      const visible = Math.max(1, endBucket - startBucket);
+      const barW = Math.max(1, cssW / visible);
+      for (let i = 0; i < visible; i++) {
+        const peak = peaks[startBucket + i] ?? 0;
         const x = i * barW;
-        const h = Math.max(1, peaks[i] * (cssH * 0.92));
+        const h = Math.max(1, peak * (cssH * 0.92));
         ctx.fillStyle = x < playedX ? primary : muted;
         ctx.fillRect(x, mid - h / 2, Math.max(1, barW - 0.5), h);
       }
     }
 
-    // Beat grid (drawn over waveform, under playhead)
-    if (bpm && bpm > 0 && dur > 0) {
+    // Beat grid
+    if (bpm && bpm > 0 && vDur > 0) {
       const beatSec = 60 / bpm;
       const alpha = Math.max(0.15, Math.min(0.7, bpmConfidence));
       const beatColor = `hsl(${root.getPropertyValue("--primary").trim() || "45 95% 55%"} / ${alpha})`;
       const downbeatColor = `hsl(${root.getPropertyValue("--primary").trim() || "45 95% 55%"} / ${Math.min(1, alpha + 0.25)})`;
       const offset = ((bpmOffsetSec % beatSec) + beatSec) % beatSec;
-      const totalBeats = Math.floor((dur - offset) / beatSec);
-      const maxBeats = Math.min(totalBeats, 512);
-      for (let i = 0; i <= maxBeats; i++) {
+      // First beat index visible
+      const firstBeatIdx = Math.max(0, Math.floor((vStart - offset) / beatSec));
+      const lastBeatIdx = Math.min(firstBeatIdx + 1024, Math.floor((vStart + vDur - offset) / beatSec) + 1);
+      for (let i = firstBeatIdx; i <= lastBeatIdx; i++) {
         const t = offset + i * beatSec;
-        if (t > dur) break;
-        const x = (t / dur) * cssW;
+        if (t > totalDur) break;
+        const x = secToX(t);
+        if (x < -2 || x > cssW + 2) continue;
         const isDownbeat = i % 4 === 0;
         ctx.fillStyle = isDownbeat ? downbeatColor : beatColor;
         const w = isDownbeat ? 1.4 : 0.6;
@@ -120,9 +172,9 @@ export function WaveformPlayer({
     }
 
     // Selection borders
-    if (selection && dur > 0) {
-      const x1 = (selection.startSec / dur) * cssW;
-      const x2 = (selection.endSec / dur) * cssW;
+    if (selection && vDur > 0) {
+      const x1 = secToX(selection.startSec);
+      const x2 = secToX(selection.endSec);
       ctx.strokeStyle = primary;
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -132,9 +184,11 @@ export function WaveformPlayer({
     }
 
     // Playhead
-    ctx.fillStyle = primary;
-    ctx.fillRect(Math.max(0, playedX - 1), 0, 2, cssH);
-  }, [peaks, pos, actualDuration, durationSec, bpm, bpmConfidence, bpmOffsetSec, selection]);
+    if (playedX >= 0 && playedX <= cssW) {
+      ctx.fillStyle = primary;
+      ctx.fillRect(Math.max(0, playedX - 1), 0, 2, cssH);
+    }
+  }, [peaks, pos, actualDuration, durationSec, bpm, bpmConfidence, bpmOffsetSec, selection, viewStartSec, viewDur, totalDur]);
 
   useEffect(() => {
     const a = audioRef.current;
@@ -158,13 +212,6 @@ export function WaveformPlayer({
     };
   }, [src]);
 
-  const toggle = () => {
-    const a = audioRef.current;
-    if (!a) return;
-    if (a.paused) a.play().catch(() => {});
-    else a.pause();
-  };
-
   const restart = () => {
     const a = audioRef.current;
     if (!a) return;
@@ -177,37 +224,30 @@ export function WaveformPlayer({
     if (!canvas) return 0;
     const rect = canvas.getBoundingClientRect();
     const pct = (clientX - rect.left) / rect.width;
-    const dur = actualDuration || durationSec;
-    return Math.max(0, Math.min(dur, pct * dur));
+    return Math.max(0, Math.min(totalDur, viewStartSec + pct * viewDur));
   };
 
   const onMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const t = xToTime(e.clientX);
     dragRef.current = { startX: e.clientX, startT: t, moved: false };
   };
-
   const onMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const d = dragRef.current;
     if (!d) return;
     if (Math.abs(e.clientX - d.startX) > 3) d.moved = true;
     if (d.moved && onSelectionChange) {
       const t = xToTime(e.clientX);
-      const start = Math.min(d.startT, t);
-      const end = Math.max(d.startT, t);
-      onSelectionChange({ startSec: start, endSec: end });
+      onSelectionChange({ startSec: Math.min(d.startT, t), endSec: Math.max(d.startT, t) });
     }
   };
-
   const onMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const d = dragRef.current;
     dragRef.current = null;
     if (!d) return;
     if (!d.moved) {
-      // Click — seek
       const a = audioRef.current;
       const t = xToTime(e.clientX);
       if (a) { a.currentTime = t; setPos(t); }
-      // Clicking outside an existing selection clears it; clicking inside leaves it.
       if (selection && (t < selection.startSec || t > selection.endSec) && onSelectionChange) {
         onSelectionChange(null);
       }
@@ -215,7 +255,6 @@ export function WaveformPlayer({
       const t = xToTime(e.clientX);
       const start = Math.min(d.startT, t);
       const end = Math.max(d.startT, t);
-      // Discard tiny selections (< 0.25s) — treat as a click.
       if (end - start < 0.25) onSelectionChange(null);
       else onSelectionChange({ startSec: start, endSec: end });
     }
@@ -252,11 +291,21 @@ export function WaveformPlayer({
           onClick={toggle}
           className="bg-gradient-gold text-primary-foreground hover:opacity-90"
           aria-label={playing ? "Pause" : "Play"}
+          title={playing ? "Pause (Space)" : "Play (Space)"}
         >
           {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
         </Button>
         <div className="text-xs text-muted-foreground tabular-nums ml-1">
           {fmt(pos)} / {fmt(actualDuration || durationSec)}
+        </div>
+        <div className="flex items-center gap-1 ml-2">
+          <Button type="button" size="icon" variant="outline" className="h-7 w-7" onClick={() => setZoomIdx((i) => Math.max(0, i - 1))} disabled={zoomIdx === 0} aria-label="Zoom out" title="Zoom out (−)">
+            <ZoomOut className="w-3 h-3" />
+          </Button>
+          <span className="text-[10px] tabular-nums text-muted-foreground min-w-[28px] text-center">{zoom}x</span>
+          <Button type="button" size="icon" variant="outline" className="h-7 w-7" onClick={() => setZoomIdx((i) => Math.min(ZOOM_LEVELS.length - 1, i + 1))} disabled={zoomIdx === ZOOM_LEVELS.length - 1} aria-label="Zoom in" title="Zoom in (+)">
+            <ZoomIn className="w-3 h-3" />
+          </Button>
         </div>
         {selection && (
           <div className="flex items-center gap-1 ml-auto text-xs">
@@ -270,10 +319,10 @@ export function WaveformPlayer({
         )}
         {bpm && !selection && (
           <span className="ml-auto text-[10px] text-muted-foreground">
-            Beat grid: {bpm} BPM · drag waveform to select a region
+            Beat grid: {bpm} BPM · drag to select · Space / +/− / ←→
           </span>
         )}
       </div>
     </div>
   );
-}
+});
