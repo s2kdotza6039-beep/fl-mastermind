@@ -37,6 +37,7 @@ export function WaveformPlayer({
   durationSec,
   bpm,
   bpmConfidence = 1,
+  bpmOffsetSec = 0,
   selection,
   onSelectionChange,
   onCanvasRef,
