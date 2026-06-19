@@ -16,6 +16,7 @@ import { SetupChecklistCard } from "@/components/SetupChecklistCard";
 import { PluginInventoryCard } from "@/components/PluginInventoryCard";
 import { ActiveTrackChip } from "@/components/ActiveTrackChip";
 import { CoachThisTrackButton } from "@/components/CoachThisTrackButton";
+import { AnalysisHistoryPanel } from "@/components/AnalysisHistoryPanel";
 import { supabase } from "@/integrations/supabase/client";
 
 const FEATURES = [
@@ -83,6 +84,7 @@ export default function Dashboard() {
       <SetupChecklistCard />
       <PluginInventoryCard />
       <ActiveTrackChip />
+      <AnalysisHistoryPanel />
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
