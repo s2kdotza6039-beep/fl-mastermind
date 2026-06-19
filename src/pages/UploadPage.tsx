@@ -692,6 +692,7 @@ export default function UploadPage() {
 
             {audioUrl && (
               <WaveformPlayer
+                ref={waveformRef}
                 src={audioUrl}
                 peaks={peaks}
                 durationSec={result?.metrics.durationSec ?? decoded?.duration ?? 0}
