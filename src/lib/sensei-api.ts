@@ -45,12 +45,15 @@ export async function streamSenseiChat({
   onDelta,
   onDone,
   onError,
+  onRateLimit,
 }: {
   messages: ChatMsg[];
   context?: ChatContext;
   onDelta: (d: string) => void;
   onDone: () => void;
   onError: (msg: string) => void;
+  /** Optional: invoked instead of onError when the server returns 429. */
+  onRateLimit?: (info: { retryAfterSec: number; message: string }) => void;
 }) {
   // Require an authenticated session — protects content from anonymous scraping.
   const { data: { session } } = await supabase.auth.getSession();
@@ -82,9 +85,14 @@ export async function streamSenseiChat({
       if (data?.error) msg = data.error;
     } catch {}
     if (resp.status === 429) {
-      const retry = Number(resp.headers.get("Retry-After")) || undefined;
+      const retry = Number(resp.headers.get("Retry-After")) || 30;
       const { friendlyRateLimitMessage } = await import("./beta-config");
-      msg = friendlyRateLimitMessage(retry);
+      const friendly = friendlyRateLimitMessage(retry);
+      if (onRateLimit) {
+        onRateLimit({ retryAfterSec: retry, message: friendly });
+        return;
+      }
+      msg = friendly;
     }
     if (resp.status === 402) msg = "AI credits exhausted. Add funds in Lovable Cloud workspace settings.";
     onError(msg);
