@@ -310,7 +310,7 @@ function widthLabel(w: number): AudioMetrics["stereoWidthLabel"] {
   return "Wide";
 }
 
-function detectFormat(file: File): string {
+export function detectFormat(file: File): string {
   const m = /\.([a-z0-9]+)$/i.exec(file.name);
   return (m?.[1] || file.type.split("/").pop() || "audio").toLowerCase();
 }
