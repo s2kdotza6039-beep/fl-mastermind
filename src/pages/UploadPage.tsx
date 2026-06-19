@@ -166,42 +166,114 @@ export default function UploadPage() {
     setError(null);
     setProgress(0);
     setStatusLog([]);
-    pushStatus(2, selection ? `Re-analyzing selection (${selection.startSec.toFixed(1)}s–${selection.endSec.toFixed(1)}s)…` : "Starting full-track analysis…");
+    const collectedLog: StatusEntry[] = [];
+    let sawFallback = false;
+    const trackingPush = (pct: number, label: string) => {
+      if (/main thread|worker unavailable/i.test(label)) sawFallback = true;
+      collectedLog.push({ pct, label, at: Date.now() });
+      pushStatus(pct, label);
+    };
+    const t0 = performance.now();
+    const startedAt = new Date().toISOString();
+    let decodeMs = 0, decodedReused = !!decoded;
+    trackingPush(2, selection
+      ? `Re-analyzing selection (${selection.startSec.toFixed(1)}s–${selection.endSec.toFixed(1)}s)…`
+      : decoded ? "Reusing cached decoded buffer — re-running DSP only…" : "Starting full-track analysis…");
     try {
       let workingDecoded = decoded;
       if (!workingDecoded) {
-        pushStatus(5, "Decoding audio in browser…");
+        trackingPush(5, "Decoding audio in browser…");
+        const tDec = performance.now();
         workingDecoded = await decodeAudioToChannels(file);
+        decodeMs = performance.now() - tDec;
         setDecoded(workingDecoded);
         try { setPeaks(computeWaveformPeaks(workingDecoded.channelData[0], 600)); } catch (e) { console.warn(e); }
       }
+      const tDsp = performance.now();
       const res = await runAnalysisOnDecoded(
         workingDecoded,
         { name: file.name, format: detectFormat(file), sizeBytes: file.size },
         selection ?? undefined,
-        pushStatus,
+        trackingPush,
       );
+      const dspMs = performance.now() - tDsp;
       setResult(res);
+      setAnalyzedRange(selection ?? null);
+      // Reset visual BPM tweaks when a fresh detection lands.
+      setBpmNudge(0);
+      setDownbeatOffsetSec(0);
+      setDiagnostics({
+        startedAt,
+        fileName: file.name,
+        fileSizeBytes: file.size,
+        fileFormat: detectFormat(file),
+        decodedReused,
+        decodeMs: Math.round(decodeMs),
+        dspMs: Math.round(dspMs),
+        totalMs: Math.round(performance.now() - t0),
+        fallbackToMainThread: sawFallback,
+        retryAttempted: retryCount > 0,
+        range: selection ?? null,
+        workerSupported: typeof Worker !== "undefined",
+        hardwareConcurrency: navigator.hardwareConcurrency || 0,
+        userAgent: navigator.userAgent,
+        bpm: res.metrics.bpm,
+        bpmConfidence: res.metrics.bpmConfidence.value,
+        bpmConfidenceLabel: res.metrics.bpmConfidence.label,
+        detectedKey: res.metrics.detectedKey,
+        keyConfidence: res.metrics.keyConfidence.value,
+        keyConfidenceLabel: res.metrics.keyConfidence.label,
+        statusLog: collectedLog.slice(-30),
+      });
       await persistReport(res);
       toast.success(selection ? "Selection analyzed" : "Analysis complete");
     } catch (e: any) {
       const msg = e?.message || "Failed to analyze audio";
       console.error("[analysis]", e);
       setError(msg);
-      // Auto-retry once for transient worker failures.
+      setDiagnostics({
+        startedAt,
+        fileName: file.name,
+        fileSizeBytes: file.size,
+        fileFormat: detectFormat(file),
+        decodedReused,
+        decodeMs: Math.round(decodeMs),
+        dspMs: 0,
+        totalMs: Math.round(performance.now() - t0),
+        fallbackToMainThread: sawFallback,
+        retryAttempted: retryCount > 0,
+        range: selection ?? null,
+        workerSupported: typeof Worker !== "undefined",
+        hardwareConcurrency: navigator.hardwareConcurrency || 0,
+        userAgent: navigator.userAgent,
+        bpm: null, bpmConfidence: 0, bpmConfidenceLabel: "unreliable",
+        detectedKey: null, keyConfidence: 0, keyConfidenceLabel: "unreliable",
+        statusLog: collectedLog.slice(-30),
+        errorMessage: msg,
+      });
+      // Auto-retry once for transient worker failures — reuse the cached decoded buffer.
       if (retryCount === 0 && /worker|timed out|crashed/i.test(msg)) {
         setRetryCount(1);
-        toast.message("Worker failed — retrying on main thread…");
+        toast.message("Worker failed — retrying with cached buffer on main thread…");
         try {
-          if (file) {
-            const { result: res, decoded: d } = await analyzeAudioFileInWorker(file, pushStatus);
-            setResult(res);
-            setDecoded(d);
-            setPeaks(computeWaveformPeaks(d.channelData[0], 600));
-            await persistReport(res);
-            setError(null);
-            toast.success("Analysis complete (recovered)");
+          let working = decoded;
+          if (!working && file) {
+            working = await decodeAudioToChannels(file);
+            setDecoded(working);
+            setPeaks(computeWaveformPeaks(working.channelData[0], 600));
           }
+          if (!working) throw new Error("No decoded buffer available for retry.");
+          const res = await runAnalysisOnDecoded(
+            working,
+            { name: file!.name, format: detectFormat(file!), sizeBytes: file!.size },
+            selection ?? undefined,
+            trackingPush,
+          );
+          setResult(res);
+          setAnalyzedRange(selection ?? null);
+          await persistReport(res);
+          setError(null);
+          toast.success("Analysis complete (recovered from cache)");
         } catch (e2: any) {
           setError(e2?.message || msg);
           toast.error("Analysis failed — see error below");
@@ -213,6 +285,38 @@ export default function UploadPage() {
       setAnalyzing(false);
     }
   };
+
+  /** Snap the beat grid's downbeat to the first prominent onset detected in the waveform peaks. */
+  const snapToDownbeat = () => {
+    if (!peaks || peaks.length === 0) return;
+    const dur = result?.metrics.durationSec ?? decoded?.duration ?? 0;
+    if (dur <= 0) return;
+    // Scan first ~6s for the loudest peak; use it as downbeat anchor.
+    const window = Math.min(peaks.length, Math.floor((6 / dur) * peaks.length));
+    let maxIdx = 0, maxVal = 0;
+    for (let i = 0; i < window; i++) {
+      if (peaks[i] > maxVal) { maxVal = peaks[i]; maxIdx = i; }
+    }
+    const t = (maxIdx / peaks.length) * dur;
+    setDownbeatOffsetSec(t);
+    toast.success(`Downbeat snapped to ${t.toFixed(2)}s`);
+  };
+
+  const downloadDiagnostics = () => {
+    if (!diagnostics) return;
+    const blob = new Blob([JSON.stringify(diagnostics, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const safe = (file?.name || "track").replace(/\.[a-z0-9]+$/i, "").replace(/[^a-z0-9_-]+/gi, "_");
+    a.href = url;
+    a.download = `audio-diagnostics-${safe}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const effectiveBpm = result?.metrics.bpm != null ? Math.max(20, result.metrics.bpm + bpmNudge) : null;
 
   const senseiAudioContext = result
     ? {
