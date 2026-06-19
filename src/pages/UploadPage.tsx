@@ -689,16 +689,32 @@ export default function UploadPage() {
 
   const bpmConfidenceValue = result?.metrics.bpmConfidence.value;
 
-  // Keyboard shortcuts: Space play/pause · +/− zoom · ←/→ nudge BPM · [/] nudge downbeat.
+  // Keyboard shortcuts — only fire when waveform area is focused (or for the global "?" help toggle).
+  // Always skip when a real form input is active, regardless of focus.
   useEffect(() => {
     if (!file) return;
+    const isTypingTarget = (t: EventTarget | null) => {
+      const el = t as HTMLElement | null;
+      if (!el) return false;
+      if (/input|textarea|select/i.test(el.tagName)) return true;
+      if (el.isContentEditable) return true;
+      const role = el.getAttribute?.("role");
+      if (role === "textbox" || role === "combobox") return true;
+      return false;
+    };
     const handler = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && /input|textarea|select/i.test(t.tagName)) return;
-      if (t && t.isContentEditable) return;
+      if (isTypingTarget(e.target)) return;
+      // "?" toggles the help panel from anywhere (still respects typing check above).
+      if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
+        e.preventDefault();
+        setShowShortcuts((s) => !s);
+        return;
+      }
+      // All other shortcuts require the waveform region to have focus.
+      if (!waveformFocused) return;
       const wf = waveformRef.current;
       switch (e.key) {
-        case " ": // play/pause
+        case " ":
         case "Spacebar":
           e.preventDefault();
           wf?.togglePlay();
