@@ -12,7 +12,6 @@ import { SenseiChat } from "@/components/SenseiChat";
 import { AudioReportCard } from "@/components/AudioReportCard";
 import { WaveformPlayer, type WaveformSelection } from "@/components/WaveformPlayer";
 import {
-  analyzeAudioFileInWorker,
   computeWaveformPeaks,
   decodeAudioToChannels,
   detectFormat,
