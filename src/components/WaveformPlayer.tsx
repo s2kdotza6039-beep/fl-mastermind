@@ -134,7 +134,7 @@ export function WaveformPlayer({
     // Playhead
     ctx.fillStyle = primary;
     ctx.fillRect(Math.max(0, playedX - 1), 0, 2, cssH);
-  }, [peaks, pos, actualDuration, durationSec, bpm, bpmConfidence, selection]);
+  }, [peaks, pos, actualDuration, durationSec, bpm, bpmConfidence, bpmOffsetSec, selection]);
 
   useEffect(() => {
     const a = audioRef.current;
