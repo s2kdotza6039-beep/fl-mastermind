@@ -132,6 +132,15 @@ async function exportReportPdf(
 
     writeLine("Studio Sensei — Audio Analysis Report", 18, { bold: true });
     writeLine(new Date().toLocaleString(), 9, { color: [110, 110, 110] });
+    if (analyzedRange) {
+      writeLine(
+        `Scope: selected region ${analyzedRange.startSec.toFixed(2)}s – ${analyzedRange.endSec.toFixed(2)}s (${(analyzedRange.endSec - analyzedRange.startSec).toFixed(2)}s)`,
+        9,
+        { color: [120, 80, 0], bold: true },
+      );
+    } else {
+      writeLine("Scope: full track", 9, { color: [110, 110, 110] });
+    }
     y += 6;
     hr();
 
