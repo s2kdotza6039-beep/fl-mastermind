@@ -4,6 +4,7 @@ import { SenseiChat } from "@/components/SenseiChat";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { LucideIcon } from "lucide-react";
+import { ActiveTrackChip } from "@/components/ActiveTrackChip";
 
 interface CoachPageProps {
   eyebrow: string;
