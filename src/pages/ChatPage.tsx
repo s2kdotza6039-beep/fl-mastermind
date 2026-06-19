@@ -13,6 +13,7 @@ export default function ChatPage() {
         description="Ask anything. Mix problems, plugin chains, key detection, mastering — get engineer-grade answers."
         icon={<MessageCircle className="w-6 h-6" />}
       />
+      <ActiveTrackChip />
       <Card className="studio-card flex-1 overflow-hidden flex flex-col min-h-[600px]">
         <SenseiChat />
       </Card>
