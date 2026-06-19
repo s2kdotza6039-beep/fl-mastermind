@@ -165,6 +165,9 @@ async function encodeWavAsync(
 
 export default function UploadPage() {
   const { user } = useAuth();
+  const { setActiveReport, refreshRecent } = useTrackSession();
+  const navigate = useNavigate();
+  const [lastReportId, setLastReportId] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [decoded, setDecoded] = useState<DecodedAudio | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
