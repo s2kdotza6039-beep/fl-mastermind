@@ -59,6 +59,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   const { isPaid } = useAuth();
   const { setup } = useStudioSetup();
   const { inventory, isComplete: inventoryComplete } = usePluginInventory();
+  const { toChatAudio } = useTrackSession();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
