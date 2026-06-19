@@ -558,8 +558,19 @@ export default function UploadPage() {
     }
   };
 
-  const exportSelectionWav = () => {
+  const cancelExport = () => {
+    if (exportCancelRef.current) exportCancelRef.current.cancelled = true;
+  };
+
+  const revertToSavedRegion = () => {
+    if (!savedRegion) return;
+    setSelection({ startSec: savedRegion.startSec, endSec: savedRegion.endSec });
+    toast.success("Reverted to saved region");
+  };
+
+  const exportSelectionWav = async () => {
     if (!decoded || !selection) return;
+    if (exportState?.active) return;
     const startSample = Math.max(0, Math.floor(selection.startSec * decoded.sampleRate));
     const endSample = Math.min(decoded.channelData[0].length, Math.floor(selection.endSec * decoded.sampleRate));
     if (endSample - startSample < 1) {
@@ -569,21 +580,55 @@ export default function UploadPage() {
     const sliced = decoded.channelData.map((c) => c.slice(startSample, endSample));
     const targetRate = wavSampleRate === "original" ? decoded.sampleRate : parseInt(wavSampleRate, 10);
     const resampled = resampleChannels(sliced, decoded.sampleRate, targetRate);
-    const blob = encodeWav(resampled, targetRate, wavBitDepth);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    const safe = (file?.name || "track").replace(/\.[a-z0-9]+$/i, "").replace(/[^a-z0-9_-]+/gi, "_");
-    const suffix = `${wavBitDepth}_${targetRate}`;
-    a.href = url;
-    a.download = `${safe}_${selection.startSec.toFixed(2)}s-${selection.endSec.toFixed(2)}s_${suffix}.wav`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    const label = wavBitDepth === "float32" ? "32-bit float" : wavBitDepth === "pcm24" ? "24-bit PCM" : "16-bit PCM";
-    toast.success(`Selection exported as ${label} WAV @ ${targetRate} Hz`, {
-      description: `${(selection.endSec - selection.startSec).toFixed(2)}s · ${(blob.size / 1024).toFixed(1)} KB`,
+    const bytesPerSample = wavBitDepth === "pcm16" ? 2 : wavBitDepth === "pcm24" ? 3 : 4;
+    const estSize = resampled[0].length * resampled.length * bytesPerSample + 44;
+
+    const cancelToken = { cancelled: false };
+    exportCancelRef.current = cancelToken;
+    const startedAt = performance.now();
+    setExportState({ active: true, pct: 0, etaMs: 0, sizeBytes: estSize, startedAt });
+    const toastId = toast.loading("Encoding WAV…", {
+      description: `0% · ~${(estSize / 1024 / 1024).toFixed(2)} MB`,
     });
+
+    try {
+      const blob = await encodeWavAsync(resampled, targetRate, wavBitDepth, {
+        signal: cancelToken,
+        onProgress: (p) => {
+          const elapsed = performance.now() - startedAt;
+          const etaMs = p > 0.02 ? (elapsed / p) * (1 - p) : 0;
+          setExportState({ active: true, pct: p, etaMs, sizeBytes: estSize, startedAt });
+          toast.loading("Encoding WAV…", {
+            id: toastId,
+            description: `${Math.round(p * 100)}% · ETA ${(etaMs / 1000).toFixed(1)}s`,
+          });
+        },
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const safe = (file?.name || "track").replace(/\.[a-z0-9]+$/i, "").replace(/[^a-z0-9_-]+/gi, "_");
+      const suffix = `${wavBitDepth}_${targetRate}`;
+      a.href = url;
+      a.download = `${safe}_${selection.startSec.toFixed(2)}s-${selection.endSec.toFixed(2)}s_${suffix}.wav`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      const label = wavBitDepth === "float32" ? "32-bit float" : wavBitDepth === "pcm24" ? "24-bit PCM" : "16-bit PCM";
+      toast.success(`Exported ${label} WAV @ ${targetRate} Hz`, {
+        id: toastId,
+        description: `${(selection.endSec - selection.startSec).toFixed(2)}s · ${(blob.size / 1024).toFixed(1)} KB`,
+      });
+    } catch (e: any) {
+      if (e?.message === "cancelled") {
+        toast.info("WAV export cancelled", { id: toastId });
+      } else {
+        toast.error(`Export failed: ${e?.message || "unknown error"}`, { id: toastId });
+      }
+    } finally {
+      exportCancelRef.current = null;
+      setExportState(null);
+    }
   };
 
   const effectiveBpm = result?.metrics.bpm != null ? Math.max(20, result.metrics.bpm + bpmNudge) : null;
