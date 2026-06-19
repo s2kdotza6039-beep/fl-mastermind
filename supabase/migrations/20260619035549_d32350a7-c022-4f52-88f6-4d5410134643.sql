@@ -1,0 +1,2 @@
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS audio_startup_scope text;
+ALTER TABLE public.profiles ADD CONSTRAINT profiles_audio_startup_scope_check CHECK (audio_startup_scope IS NULL OR audio_startup_scope IN ('session','first-visit'));

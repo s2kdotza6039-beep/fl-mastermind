@@ -1,10 +1,14 @@
-// Persistent user audio preferences (startup sound on/off + volume + scope).
+// Persistent user audio preferences (startup sound on/off + volume + scope + mute).
 // Stored in localStorage so it survives reloads and is read by sensei-tone.ts.
+// Scope is also synced to the user's profile so it follows them across devices.
+
+import { supabase } from "@/integrations/supabase/client";
 
 const ENABLED_KEY = "studio-sensei-audio-enabled";
 const VOLUME_KEY = "studio-sensei-audio-volume";
 const SCOPE_KEY = "studio-sensei-audio-scope";
 const PAUSE_ON_HIDDEN_KEY = "studio-sensei-audio-pause-hidden";
+const MUTED_KEY = "studio-sensei-audio-muted";
 const INTERACTED_KEY = "studio-sensei-audio-interacted";
 const FIRST_VISIT_PLAYED_KEY = "studio-sensei-audio-first-visit-played";
 
@@ -15,6 +19,7 @@ export type AudioSettings = {
   volume: number; // 0..1
   scope: PlayScope;
   pauseOnHidden: boolean;
+  muted: boolean;
 };
 
 const DEFAULTS: AudioSettings = {
@@ -22,9 +27,11 @@ const DEFAULTS: AudioSettings = {
   volume: 0.7,
   scope: "session",
   pauseOnHidden: true,
+  muted: false,
 };
 
 const CHANGE_EVENT = "studio-sensei-audio-settings-changed";
+const MUTE_EVENT = "studio-sensei-audio-mute-changed";
 
 export const getAudioSettings = (): AudioSettings => {
   if (typeof window === "undefined") return DEFAULTS;
@@ -32,15 +39,18 @@ export const getAudioSettings = (): AudioSettings => {
   const volumeRaw = window.localStorage.getItem(VOLUME_KEY);
   const scopeRaw = window.localStorage.getItem(SCOPE_KEY);
   const pauseRaw = window.localStorage.getItem(PAUSE_ON_HIDDEN_KEY);
+  const mutedRaw = window.localStorage.getItem(MUTED_KEY);
   const enabled = enabledRaw === null ? DEFAULTS.enabled : enabledRaw === "1";
   const volume = volumeRaw === null ? DEFAULTS.volume : Math.min(1, Math.max(0, Number(volumeRaw)));
   const scope: PlayScope = scopeRaw === "first-visit" ? "first-visit" : "session";
   const pauseOnHidden = pauseRaw === null ? DEFAULTS.pauseOnHidden : pauseRaw === "1";
+  const muted = mutedRaw === "1";
   return {
     enabled,
     volume: Number.isFinite(volume) ? volume : DEFAULTS.volume,
     scope,
     pauseOnHidden,
+    muted,
   };
 };
 
@@ -57,14 +67,27 @@ export const setAudioVolume = (volume: number) => {
   emit();
 };
 
-export const setAudioScope = (scope: PlayScope) => {
+export const setAudioScope = (scope: PlayScope, opts: { sync?: boolean } = { sync: true }) => {
   window.localStorage.setItem(SCOPE_KEY, scope);
   emit();
+  if (opts.sync !== false) void syncScopeToProfile(scope);
 };
 
 export const setPauseOnHidden = (v: boolean) => {
   window.localStorage.setItem(PAUSE_ON_HIDDEN_KEY, v ? "1" : "0");
   emit();
+};
+
+export const setAudioMuted = (muted: boolean) => {
+  window.localStorage.setItem(MUTED_KEY, muted ? "1" : "0");
+  emit();
+  window.dispatchEvent(new CustomEvent(MUTE_EVENT, { detail: { muted } }));
+};
+
+export const toggleAudioMuted = (): boolean => {
+  const next = !getAudioSettings().muted;
+  setAudioMuted(next);
+  return next;
 };
 
 export const subscribeAudioSettings = (cb: () => void) => {
@@ -73,11 +96,16 @@ export const subscribeAudioSettings = (cb: () => void) => {
   return () => window.removeEventListener(CHANGE_EVENT, handler);
 };
 
-// ---- Interaction memory (persists across loads) ----
-export const hasUserInteractedBefore = (): boolean => {
-  if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(INTERACTED_KEY) === "1";
+export const subscribeMuteChange = (cb: (muted: boolean) => void) => {
+  const handler = (e: Event) => cb((e as CustomEvent<{ muted: boolean }>).detail.muted);
+  window.addEventListener(MUTE_EVENT, handler);
+  return () => window.removeEventListener(MUTE_EVENT, handler);
 };
+
+// ---- Interaction memory ----
+export const hasUserInteractedBefore = (): boolean =>
+  typeof window !== "undefined" &&
+  window.localStorage.getItem(INTERACTED_KEY) === "1";
 
 export const markUserInteracted = () => {
   if (typeof window === "undefined") return;
@@ -100,4 +128,39 @@ export const markPlayedForFirstVisit = () => {
 
 export const resetFirstVisitFlag = () => {
   window.localStorage.removeItem(FIRST_VISIT_PLAYED_KEY);
+};
+
+// ---- Cross-device profile sync (scope only) ----
+export const loadScopeFromProfile = async (userId: string): Promise<PlayScope | null> => {
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("audio_startup_scope")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error || !data) return null;
+    const remote = data.audio_startup_scope;
+    if (remote === "session" || remote === "first-visit") {
+      window.localStorage.setItem(SCOPE_KEY, remote);
+      emit();
+      return remote;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+export const syncScopeToProfile = async (scope: PlayScope): Promise<boolean> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+    const { error } = await supabase
+      .from("profiles")
+      .update({ audio_startup_scope: scope })
+      .eq("user_id", user.id);
+    return !error;
+  } catch {
+    return false;
+  }
 };
