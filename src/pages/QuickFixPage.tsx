@@ -26,6 +26,8 @@ export default function QuickFixPage() {
         description="Tap a button. Get a full step-by-step solution from Sensei."
         icon={<Wrench className="w-6 h-6" />}
       />
+      <ActiveTrackChip />
+
 
       {!prompt ? (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
