@@ -1063,6 +1063,49 @@ export default function UploadPage() {
           )}
         </>
       )}
+
+      {showShortcuts && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Keyboard shortcuts"
+          onClick={() => setShowShortcuts(false)}
+        >
+          <Card
+            className="studio-card w-full max-w-md p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-display text-base font-bold">Keyboard shortcuts</h3>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowShortcuts(false)} aria-label="Close">
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground mb-3">
+              Shortcuts (except <kbd className="px-1 rounded border bg-secondary/40">?</kbd>) only fire when the waveform area is focused.
+            </p>
+            <dl className="text-xs space-y-1.5">
+              {[
+                ["Space", "Play / pause"],
+                ["+ / −", "Zoom in / out"],
+                ["Shift + 0", "Reset zoom"],
+                ["← / →", "Nudge BPM ±0.1 (Shift = ±1)"],
+                ["[ / ]", "Nudge downbeat ±10 ms (Shift = ±100 ms)"],
+                ["?", "Toggle this help panel"],
+              ].map(([key, desc]) => (
+                <div key={key} className="flex items-center justify-between gap-3">
+                  <kbd className="px-1.5 py-0.5 rounded border bg-secondary/40 text-[10px] tabular-nums">{key}</kbd>
+                  <dd className="text-muted-foreground flex-1 text-right">{desc}</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="mt-4 pt-3 border-t border-border text-[11px] text-muted-foreground">
+              Tip: use <span className="text-foreground">Copy diagnostics</span> after an analysis to share runtime details, or <span className="text-foreground">Revert to saved region</span> to restore the last analyzed selection for this file.
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
