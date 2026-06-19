@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Music2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ActiveTrackChip } from "@/components/ActiveTrackChip";
 
 const GENRES: { name: Genre; vibe: string; emoji: string }[] = [
   { name: "Hip-hop", vibe: "Boom bap, soul, drums up front", emoji: "🎤" },
@@ -37,6 +38,8 @@ export default function GenrePage() {
         description="Lock in your genre. Sensei adjusts mixing, mastering, and arrangement advice to match the sound of the culture."
         icon={<Music2 className="w-6 h-6" />}
       />
+      <ActiveTrackChip />
+
 
       {!active ? (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">

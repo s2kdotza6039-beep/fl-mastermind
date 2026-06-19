@@ -16,6 +16,7 @@ import { editionToTier, tierLabel, eligiblePlugins, forbiddenPlugins, type FlEdi
 import { AdminActivityTab } from "@/components/AdminActivityTab";
 import { SecurityIssuesPanel } from "@/components/SecurityIssuesPanel";
 import { AdminAudioReportsTab } from "@/components/AdminAudioReportsTab";
+import { AdminTrackSessionsTab } from "@/components/AdminTrackSessionsTab";
 
 
 interface UserRow {
@@ -163,6 +164,7 @@ export default function AdminPage() {
           <TabsTrigger value="alerts">Alerts {unresolved > 0 && <Badge variant="destructive" className="ml-2">{unresolved}</Badge>}</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
           <TabsTrigger value="audio">Audio Reports</TabsTrigger>
+          <TabsTrigger value="sessions">Track Sessions</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users">
@@ -287,6 +289,10 @@ export default function AdminPage() {
 
         <TabsContent value="audio">
           <AdminAudioReportsTab />
+        </TabsContent>
+
+        <TabsContent value="sessions">
+          <AdminTrackSessionsTab />
         </TabsContent>
       </Tabs>
     </div>

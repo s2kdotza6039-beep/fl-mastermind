@@ -4,6 +4,7 @@ import { SenseiChat } from "@/components/SenseiChat";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Wrench, Mic, Speaker, Sparkles, Volume2, Scale, Crown } from "lucide-react";
+import { ActiveTrackChip } from "@/components/ActiveTrackChip";
 
 const ACTIONS = [
   { label: "Fix My Vocal", icon: Mic, prompt: "Help me fix my vocal. It needs to sit professionally in the mix. Walk me through the FL Studio chain step by step." },
@@ -25,6 +26,8 @@ export default function QuickFixPage() {
         description="Tap a button. Get a full step-by-step solution from Sensei."
         icon={<Wrench className="w-6 h-6" />}
       />
+      <ActiveTrackChip />
+
 
       {!prompt ? (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">

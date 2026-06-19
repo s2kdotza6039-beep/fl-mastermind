@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { StudioSetupCard } from "@/components/StudioSetupCard";
 import { SetupChecklistCard } from "@/components/SetupChecklistCard";
 import { PluginInventoryCard } from "@/components/PluginInventoryCard";
+import { ActiveTrackChip } from "@/components/ActiveTrackChip";
+import { CoachThisTrackButton } from "@/components/CoachThisTrackButton";
 import { supabase } from "@/integrations/supabase/client";
 
 const FEATURES = [
@@ -80,6 +82,7 @@ export default function Dashboard() {
       <StudioSetupCard />
       <SetupChecklistCard />
       <PluginInventoryCard />
+      <ActiveTrackChip />
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -172,6 +175,7 @@ export default function Dashboard() {
                   <div className="text-[10px] text-muted-foreground/60 mt-2">
                     {new Date(a.created_at).toLocaleString()}
                   </div>
+                  <CoachThisTrackButton reportId={a.id} fileName={a.file_name} />
                 </Card>
               );
             })}

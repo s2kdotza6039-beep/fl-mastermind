@@ -7,6 +7,7 @@ import { useSession } from "@/context/SessionContext";
 import { useAuth } from "@/context/AuthContext";
 import { useStudioSetup } from "@/context/StudioSetupContext";
 import { usePluginInventory } from "@/context/PluginInventoryContext";
+import { useTrackSession } from "@/context/TrackSessionContext";
 import { streamSenseiChat, type ChatMsg } from "@/lib/sensei-api";
 import { SenseiMarkdown } from "./SenseiMarkdown";
 import { toast } from "sonner";
@@ -58,6 +59,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   const { isPaid } = useAuth();
   const { setup } = useStudioSetup();
   const { inventory, isComplete: inventoryComplete } = usePluginInventory();
+  const { toChatAudio } = useTrackSession();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -145,7 +147,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
         nativePlugins: inventoryComplete ? inventory?.native_plugins ?? undefined : undefined,
         thirdPartyPlugins: inventoryComplete ? inventory?.third_party_plugins ?? undefined : undefined,
         customPlugins: inventoryComplete ? inventory?.custom_plugins ?? undefined : undefined,
-        audio: audioContext,
+        audio: audioContext ?? toChatAudio(),
       },
       onDelta: upsert,
       onDone: () => setLoading(false),

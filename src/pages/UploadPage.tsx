@@ -25,6 +25,8 @@ import {
 } from "@/lib/audio-analysis";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
+import { useTrackSession } from "@/context/TrackSessionContext";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 const MAX_FILE_MB = 50;
@@ -163,6 +165,9 @@ async function encodeWavAsync(
 
 export default function UploadPage() {
   const { user } = useAuth();
+  const { setActiveReport, refreshRecent } = useTrackSession();
+  const navigate = useNavigate();
+  const [lastReportId, setLastReportId] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [decoded, setDecoded] = useState<DecodedAudio | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -354,31 +359,44 @@ export default function UploadPage() {
 
   const persistReport = async (res: AudioAnalysisResult) => {
     if (!user) return;
-    const { error: insertErr } = await supabase.from("audio_analysis_reports").insert({
-      user_id: user.id,
-      file_name: res.metrics.fileName,
-      file_format: res.metrics.fileFormat,
-      file_size_bytes: res.metrics.fileSizeBytes,
-      duration_sec: res.metrics.durationSec,
-      sample_rate: res.metrics.sampleRate,
-      bit_rate: res.metrics.bitRate,
-      channels: res.metrics.channels,
-      peak_db: res.metrics.peakDb,
-      rms_db: res.metrics.rmsDb,
-      lufs_estimate: res.metrics.lufsEstimate,
-      dynamic_range_db: res.metrics.dynamicRangeDb,
-      stereo_width: res.metrics.stereoWidth,
-      bpm: res.metrics.bpm,
-      detected_key: res.metrics.detectedKey,
-      band_low_db: res.metrics.bands.low,
-      band_lowmid_db: res.metrics.bands.lowMid,
-      band_mid_db: res.metrics.bands.mid,
-      band_highmid_db: res.metrics.bands.highMid,
-      band_high_db: res.metrics.bands.high,
-      detected_issues: res.issues as unknown as any,
-      recommendations: res.recommendations as unknown as any,
-    });
-    if (insertErr) console.warn("Failed to save analysis report:", insertErr.message);
+    const { data: inserted, error: insertErr } = await supabase
+      .from("audio_analysis_reports")
+      .insert({
+        user_id: user.id,
+        file_name: res.metrics.fileName,
+        file_format: res.metrics.fileFormat,
+        file_size_bytes: res.metrics.fileSizeBytes,
+        duration_sec: res.metrics.durationSec,
+        sample_rate: res.metrics.sampleRate,
+        bit_rate: res.metrics.bitRate,
+        channels: res.metrics.channels,
+        peak_db: res.metrics.peakDb,
+        rms_db: res.metrics.rmsDb,
+        lufs_estimate: res.metrics.lufsEstimate,
+        dynamic_range_db: res.metrics.dynamicRangeDb,
+        stereo_width: res.metrics.stereoWidth,
+        bpm: res.metrics.bpm,
+        detected_key: res.metrics.detectedKey,
+        band_low_db: res.metrics.bands.low,
+        band_lowmid_db: res.metrics.bands.lowMid,
+        band_mid_db: res.metrics.bands.mid,
+        band_highmid_db: res.metrics.bands.highMid,
+        band_high_db: res.metrics.bands.high,
+        detected_issues: res.issues as unknown as any,
+        recommendations: res.recommendations as unknown as any,
+      })
+      .select("id")
+      .maybeSingle();
+    if (insertErr) {
+      console.warn("Failed to save analysis report:", insertErr.message);
+      return;
+    }
+    if (inserted?.id) {
+      setLastReportId(inserted.id);
+      // Auto-activate this report as the coaching session
+      await setActiveReport(inserted.id);
+      await refreshRecent();
+    }
   };
 
   const runAnalysis = async () => {
@@ -1054,6 +1072,30 @@ export default function UploadPage() {
               getWaveformSnapshot={getWaveformSnapshot}
               analyzedRange={analyzedRange}
             />
+          )}
+
+          {result && lastReportId && (
+            <Card className="studio-card-gold p-4 mt-6 flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Track session ready
+                </div>
+                <div className="font-semibold text-sm text-foreground">
+                  Sensei is now coaching about {result.metrics.fileName}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Every page (Chat, Mixing, Mastering, Quick Fix, Problems, Genre) will use this analysis until you change or clear it.
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => navigate("/chat")}
+                  className="bg-gradient-gold text-primary-foreground hover:opacity-90"
+                >
+                  <MessageCircle className="w-4 h-4 mr-2" /> Start coaching this track
+                </Button>
+              </div>
+            </Card>
           )}
 
           {result && askSensei && (
