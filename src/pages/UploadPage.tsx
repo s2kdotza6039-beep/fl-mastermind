@@ -94,7 +94,18 @@ function resampleChannels(channels: Float32Array[], fromRate: number, toRate: nu
   });
 }
 
-function encodeWav(channels: Float32Array[], sampleRate: number, depth: WavBitDepth): Blob {
+interface EncodeOptions {
+  signal?: { cancelled: boolean };
+  onProgress?: (pct: number) => void;
+  chunkFrames?: number;
+}
+
+async function encodeWavAsync(
+  channels: Float32Array[],
+  sampleRate: number,
+  depth: WavBitDepth,
+  opts: EncodeOptions = {},
+): Promise<Blob> {
   const numCh = channels.length;
   const numFrames = channels[0]?.length ?? 0;
   const bytesPerSample = depth === "pcm16" ? 2 : depth === "pcm24" ? 3 : 4;
@@ -117,24 +128,34 @@ function encodeWav(channels: Float32Array[], sampleRate: number, depth: WavBitDe
   view.setUint16(34, bytesPerSample * 8, true);
   writeStr(36, "data");
   view.setUint32(40, dataLen, true);
+
+  const chunkFrames = opts.chunkFrames ?? Math.max(8192, Math.floor(sampleRate / 4)); // ~250ms
   let off = 44;
-  for (let f = 0; f < numFrames; f++) {
-    for (let c = 0; c < numCh; c++) {
-      const sample = Math.max(-1, Math.min(1, channels[c][f]));
-      if (depth === "pcm16") {
-        view.setInt16(off, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-        off += 2;
-      } else if (depth === "pcm24") {
-        const v = Math.round((sample < 0 ? sample * 0x800000 : sample * 0x7fffff)) | 0;
-        view.setUint8(off, v & 0xff);
-        view.setUint8(off + 1, (v >> 8) & 0xff);
-        view.setUint8(off + 2, (v >> 16) & 0xff);
-        off += 3;
-      } else {
-        view.setFloat32(off, sample, true);
-        off += 4;
+  let f = 0;
+  while (f < numFrames) {
+    if (opts.signal?.cancelled) throw new Error("cancelled");
+    const end = Math.min(numFrames, f + chunkFrames);
+    for (; f < end; f++) {
+      for (let c = 0; c < numCh; c++) {
+        const sample = Math.max(-1, Math.min(1, channels[c][f]));
+        if (depth === "pcm16") {
+          view.setInt16(off, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+          off += 2;
+        } else if (depth === "pcm24") {
+          const v = Math.round((sample < 0 ? sample * 0x800000 : sample * 0x7fffff)) | 0;
+          view.setUint8(off, v & 0xff);
+          view.setUint8(off + 1, (v >> 8) & 0xff);
+          view.setUint8(off + 2, (v >> 16) & 0xff);
+          off += 3;
+        } else {
+          view.setFloat32(off, sample, true);
+          off += 4;
+        }
       }
     }
+    opts.onProgress?.(f / numFrames);
+    // Yield to event loop so UI / cancel can respond.
+    await new Promise((r) => setTimeout(r, 0));
   }
   return new Blob([buf], { type: "audio/wav" });
 }
