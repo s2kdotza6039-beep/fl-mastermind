@@ -91,6 +91,12 @@ export const ActiveTrackChip = ({ className }: { className?: string }) => {
               <Badge variant="secondary" className="text-[10px]">
                 LUFS · {active.lufs_estimate?.toFixed(1) ?? "—"}
               </Badge>
+              <Badge variant="secondary" className="text-[10px]">
+                Peak · {active.peak_db?.toFixed(1) ?? "—"} dB
+              </Badge>
+              <Badge variant="secondary" className="text-[10px]">
+                DR · {active.dynamic_range_db?.toFixed(1) ?? "—"}
+              </Badge>
               <Badge variant={issues > 0 ? "destructive" : "secondary"} className="text-[10px]">
                 {issues} issue{issues === 1 ? "" : "s"}
               </Badge>
