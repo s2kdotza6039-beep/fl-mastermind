@@ -499,48 +499,86 @@ export async function analyzeAudioFile(
   );
 }
 
-/**
- * Worker-backed analysis: decodes on the main thread (AudioContext is only
- * available here) then offloads all DSP to a Web Worker so the UI stays
- * responsive on large files. Returns the decoded channel data too, so the
- * caller can render a waveform without decoding twice.
- *
- * If anything goes wrong spinning up the worker we silently fall back to
- * the main-thread implementation.
- */
+export interface AnalyzeRange {
+  startSec: number;
+  endSec: number;
+}
+
+const WORKER_TIMEOUT_MS = 90_000;
+const MAX_FILE_SIZE_BYTES = 80 * 1024 * 1024;
+
 export async function analyzeAudioFileInWorker(
   file: File,
   onProgress?: (pct: number, label: string) => void,
 ): Promise<{ result: AudioAnalysisResult; decoded: DecodedAudio }> {
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    throw new Error(
+      `File is ${(file.size / 1024 / 1024).toFixed(1)}MB — too large to analyze in the browser. ` +
+      `Try a shorter excerpt (under 80MB) or convert to a lower-bitrate MP3.`,
+    );
+  }
   onProgress?.(5, "Decoding audio…");
   const decoded = await decodeAudioToChannels(file);
   const fileMeta: FileMeta = { name: file.name, format: detectFormat(file), sizeBytes: file.size };
+  const result = await runAnalysisOnDecoded(decoded, fileMeta, undefined, onProgress);
+  return { result, decoded };
+}
+
+/**
+ * Analyze a (possibly sliced) region of already-decoded audio. Used for
+ * "re-analyze selection" so we don't re-decode the file. Falls back to the
+ * main thread if the worker fails or times out.
+ */
+export async function runAnalysisOnDecoded(
+  decoded: DecodedAudio,
+  fileMeta: FileMeta,
+  range?: AnalyzeRange,
+  onProgress?: (pct: number, label: string) => void,
+): Promise<AudioAnalysisResult> {
+  const channels = sliceChannels(decoded.channelData, decoded.sampleRate, range);
 
   try {
     const worker = new Worker(new URL("../workers/audio-analysis.worker.ts", import.meta.url), {
       type: "module",
     });
     const result = await new Promise<AudioAnalysisResult>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error("Analysis timed out after 90s — try a shorter selection."));
+      }, WORKER_TIMEOUT_MS);
       worker.onmessage = (e: MessageEvent) => {
         const msg = e.data;
         if (msg?.type === "progress") onProgress?.(msg.pct, msg.label);
-        else if (msg?.type === "result") resolve(msg.result as AudioAnalysisResult);
-        else if (msg?.type === "error") reject(new Error(msg.message || "Analysis worker failed"));
+        else if (msg?.type === "result") { clearTimeout(timer); resolve(msg.result as AudioAnalysisResult); }
+        else if (msg?.type === "error") { clearTimeout(timer); reject(new Error(msg.message || "Analysis worker failed")); }
       };
-      worker.onerror = (e) => reject(new Error(e.message || "Analysis worker crashed"));
-      // Clone channel buffers for transfer (decoded copy stays with the caller for waveform display).
-      const transfer = decoded.channelData.map((c) => new Float32Array(c));
+      worker.onerror = (e) => { clearTimeout(timer); reject(new Error(e.message || "Analysis worker crashed")); };
+      const transfer = channels.map((c) => new Float32Array(c));
       worker.postMessage(
         { type: "analyze", channels: transfer, sampleRate: decoded.sampleRate, fileMeta },
         transfer.map((c) => c.buffer),
       );
     }).finally(() => worker.terminate());
-    return { result, decoded };
+    return result;
   } catch (err) {
-    console.warn("[audio-analysis] Worker unavailable, falling back to main thread:", err);
-    const result = runDspAnalysis(decoded.channelData, decoded.sampleRate, fileMeta, onProgress);
-    return { result, decoded };
+    console.warn("[audio-analysis] Worker failed, falling back to main thread:", err);
+    onProgress?.(20, "Worker unavailable — running on main thread…");
+    return runDspAnalysis(channels, decoded.sampleRate, fileMeta, onProgress);
   }
+}
+
+function sliceChannels(
+  channels: Float32Array[],
+  sampleRate: number,
+  range?: AnalyzeRange,
+): Float32Array[] {
+  if (!range) return channels.map((c) => new Float32Array(c));
+  const startSample = Math.max(0, Math.floor(range.startSec * sampleRate));
+  const endSample = Math.min(channels[0].length, Math.floor(range.endSec * sampleRate));
+  if (endSample - startSample < sampleRate) {
+    // Selection shorter than 1s — fall back to the full track.
+    return channels.map((c) => new Float32Array(c));
+  }
+  return channels.map((c) => c.slice(startSample, endSample));
 }
 
 function diagnose(m: AudioMetrics): AudioIssue[] {
