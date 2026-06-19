@@ -397,7 +397,70 @@ export default function UploadPage() {
     URL.revokeObjectURL(url);
   };
 
+  const copyDiagnostics = async () => {
+    if (!diagnostics) return;
+    const json = JSON.stringify(diagnostics, null, 2);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(json);
+      } else {
+        // Fallback for older browsers / insecure contexts.
+        const ta = document.createElement("textarea");
+        ta.value = json;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+      }
+      toast.success("Diagnostics copied to clipboard");
+    } catch (e: any) {
+      toast.error(`Copy failed: ${e?.message || "clipboard unavailable"}`);
+    }
+  };
+
+  const exportSelectionWav = () => {
+    if (!decoded || !selection) return;
+    const startSample = Math.max(0, Math.floor(selection.startSec * decoded.sampleRate));
+    const endSample = Math.min(decoded.channelData[0].length, Math.floor(selection.endSec * decoded.sampleRate));
+    if (endSample - startSample < 1) {
+      toast.error("Selection too short to export");
+      return;
+    }
+    const sliced = decoded.channelData.map((c) => c.slice(startSample, endSample));
+    const blob = encodeWavPCM16(sliced, decoded.sampleRate);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const safe = (file?.name || "track").replace(/\.[a-z0-9]+$/i, "").replace(/[^a-z0-9_-]+/gi, "_");
+    a.href = url;
+    a.download = `${safe}_${selection.startSec.toFixed(2)}s-${selection.endSec.toFixed(2)}s.wav`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success("Selection exported as WAV");
+  };
+
   const effectiveBpm = result?.metrics.bpm != null ? Math.max(20, result.metrics.bpm + bpmNudge) : null;
+
+  // Recompute analysis timeline live whenever BPM nudge or downbeat offset changes.
+  const beatInfo = useMemo(() => {
+    const dur = result?.metrics.durationSec ?? decoded?.duration ?? 0;
+    if (!effectiveBpm || dur <= 0) return null;
+    const beatSec = 60 / effectiveBpm;
+    const offset = ((downbeatOffsetSec % beatSec) + beatSec) % beatSec;
+    const total = Math.max(0, Math.floor((dur - offset) / beatSec) + 1);
+    const bars = Math.floor(total / 4);
+    return {
+      beatSec,
+      offset,
+      total,
+      bars,
+      msPerBeat: beatSec * 1000,
+    };
+  }, [effectiveBpm, downbeatOffsetSec, result?.metrics.durationSec, decoded?.duration]);
+
 
   const senseiAudioContext = result
     ? {
