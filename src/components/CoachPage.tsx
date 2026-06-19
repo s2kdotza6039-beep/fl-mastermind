@@ -20,6 +20,8 @@ export const CoachPage = ({ eyebrow, title, description, icon: Icon, topics }: C
   return (
     <div className="container max-w-6xl py-8 px-4 md:px-8">
       <PageHeader eyebrow={eyebrow} title={title} description={description} icon={<Icon className="w-6 h-6" />} />
+      <ActiveTrackChip />
+
 
       {!prompt ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
