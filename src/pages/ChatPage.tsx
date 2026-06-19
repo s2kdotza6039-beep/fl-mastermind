@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { SenseiChat } from "@/components/SenseiChat";
 import { Card } from "@/components/ui/card";
 import { MessageCircle } from "lucide-react";
+import { ActiveTrackChip } from "@/components/ActiveTrackChip";
 
 export default function ChatPage() {
   return (
