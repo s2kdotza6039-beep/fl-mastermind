@@ -514,17 +514,23 @@ export default function UploadPage() {
       return;
     }
     const sliced = decoded.channelData.map((c) => c.slice(startSample, endSample));
-    const blob = encodeWavPCM16(sliced, decoded.sampleRate);
+    const targetRate = wavSampleRate === "original" ? decoded.sampleRate : parseInt(wavSampleRate, 10);
+    const resampled = resampleChannels(sliced, decoded.sampleRate, targetRate);
+    const blob = encodeWav(resampled, targetRate, wavBitDepth);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     const safe = (file?.name || "track").replace(/\.[a-z0-9]+$/i, "").replace(/[^a-z0-9_-]+/gi, "_");
+    const suffix = `${wavBitDepth}_${targetRate}`;
     a.href = url;
-    a.download = `${safe}_${selection.startSec.toFixed(2)}s-${selection.endSec.toFixed(2)}s.wav`;
+    a.download = `${safe}_${selection.startSec.toFixed(2)}s-${selection.endSec.toFixed(2)}s_${suffix}.wav`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    toast.success("Selection exported as WAV");
+    const label = wavBitDepth === "float32" ? "32-bit float" : wavBitDepth === "pcm24" ? "24-bit PCM" : "16-bit PCM";
+    toast.success(`Selection exported as ${label} WAV @ ${targetRate} Hz`, {
+      description: `${(selection.endSec - selection.startSec).toFixed(2)}s · ${(blob.size / 1024).toFixed(1)} KB`,
+    });
   };
 
   const effectiveBpm = result?.metrics.bpm != null ? Math.max(20, result.metrics.bpm + bpmNudge) : null;
