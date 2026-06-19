@@ -214,7 +214,13 @@ async function exportReportPdf(result: AudioAnalysisResult, waveformDataUrl?: st
   }
 }
 
-export function AudioReportCard({ result }: { result: AudioAnalysisResult }) {
+interface AudioReportCardProps {
+  result: AudioAnalysisResult;
+  /** Optional getter so the PDF export can embed a waveform snapshot. */
+  getWaveformSnapshot?: () => string | null;
+}
+
+export function AudioReportCard({ result, getWaveformSnapshot }: AudioReportCardProps) {
   const { metrics: m, issues } = result;
   const durStr = `${Math.floor(m.durationSec / 60)}:${String(Math.floor(m.durationSec % 60)).padStart(2, "0")}`;
 
@@ -231,7 +237,7 @@ export function AudioReportCard({ result }: { result: AudioAnalysisResult }) {
             <Badge variant="outline" className="text-[10px]">
               {m.fileFormat.toUpperCase()} · {m.sampleRate} Hz · {m.isStereo ? "stereo" : "mono"}
             </Badge>
-            <Button size="sm" variant="outline" onClick={() => exportReportPdf(result)}>
+            <Button size="sm" variant="outline" onClick={() => exportReportPdf(result, getWaveformSnapshot?.())}>
               <Download className="w-3.5 h-3.5 mr-1.5" /> Export PDF
             </Button>
           </div>
