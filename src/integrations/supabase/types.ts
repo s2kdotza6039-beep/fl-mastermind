@@ -188,6 +188,41 @@ export type Database = {
         }
         Relationships: []
       }
+      user_active_track_session: {
+        Row: {
+          audio_analysis_report_id: string
+          created_at: string
+          id: string
+          track_name: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          audio_analysis_report_id: string
+          created_at?: string
+          id?: string
+          track_name?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          audio_analysis_report_id?: string
+          created_at?: string
+          id?: string
+          track_name?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_active_track_session_audio_analysis_report_id_fkey"
+            columns: ["audio_analysis_report_id"]
+            isOneToOne: false
+            referencedRelation: "audio_analysis_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_plugin_inventory: {
         Row: {
           created_at: string
