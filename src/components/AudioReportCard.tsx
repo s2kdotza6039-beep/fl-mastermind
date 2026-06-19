@@ -61,7 +61,21 @@ function BandBar({ label, db }: { label: string; db: number }) {
   );
 }
 
-async function exportReportPdf(result: AudioAnalysisResult) {
+function buildStepSummary(result: AudioAnalysisResult): { title: string; detail: string }[] {
+  const { metrics: m, issues } = result;
+  return [
+    { title: "Decoded file", detail: `${m.fileFormat.toUpperCase()} · ${m.sampleRate} Hz · ${m.channels} ch · ${(m.fileSizeBytes / 1024 / 1024).toFixed(2)} MB.` },
+    { title: "Measured levels", detail: `Peak ${m.peakDb.toFixed(1)} dBFS, RMS ${m.rmsDb.toFixed(1)} dBFS — headroom check complete.` },
+    { title: "Estimated loudness", detail: `LUFS≈ ${m.lufsEstimate.toFixed(1)} (top-30% block mean). Dynamic range ≈ ${m.dynamicRangeDb.toFixed(1)} dB.` },
+    { title: "Stereo image", detail: `Side/mid ratio ${m.stereoWidth.toFixed(2)} — classified as ${m.stereoWidthLabel}.` },
+    { title: "Frequency balance", detail: `Low ${m.bands.low.toFixed(1)} · LM ${m.bands.lowMid.toFixed(1)} · Mid ${m.bands.mid.toFixed(1)} · HM ${m.bands.highMid.toFixed(1)} · High ${m.bands.high.toFixed(1)} dB (rel total).` },
+    { title: "Tempo detection", detail: `Onset-envelope autocorrelation → ${m.bpm ?? "no stable pulse"} BPM (${m.bpmConfidence.label} ${Math.round(m.bpmConfidence.value * 100)}%).` },
+    { title: "Key detection", detail: `Krumhansl–Schmuckler chroma matching → ${m.detectedKey ?? "no tonal centre"} (${m.keyConfidence.label} ${Math.round(m.keyConfidence.value * 100)}%).` },
+    { title: "Diagnostics", detail: `${issues.length} issue${issues.length === 1 ? "" : "s"} flagged based on commercial-mix thresholds.` },
+  ];
+}
+
+async function exportReportPdf(result: AudioAnalysisResult, waveformDataUrl?: string | null) {
   try {
     const { jsPDF } = await import("jspdf");
     const { metrics: m, issues } = result;
@@ -72,10 +86,7 @@ async function exportReportPdf(result: AudioAnalysisResult) {
     let y = margin;
 
     const ensureRoom = (h: number) => {
-      if (y + h > pageHeight - margin) {
-        doc.addPage();
-        y = margin;
-      }
+      if (y + h > pageHeight - margin) { doc.addPage(); y = margin; }
     };
 
     const writeLine = (text: string, size = 10, opts: { bold?: boolean; color?: [number, number, number] } = {}) => {
@@ -98,6 +109,23 @@ async function exportReportPdf(result: AudioAnalysisResult) {
       y += 12;
     };
 
+    const drawConfidenceBadge = (label: string, value: number, x: number) => {
+      const fill: [number, number, number] =
+        label === "high" ? [34, 139, 87] :
+        label === "medium" ? [180, 140, 30] :
+        label === "low" ? [180, 90, 30] :
+        [180, 50, 50];
+      const text = `${label.toUpperCase()} ${Math.round(value * 100)}%`;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      const w = doc.getTextWidth(text) + 10;
+      doc.setFillColor(...fill);
+      doc.roundedRect(x, y - 9, w, 12, 3, 3, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.text(text, x + 5, y);
+      doc.setTextColor(20, 20, 20);
+    };
+
     writeLine("Studio Sensei — Audio Analysis Report", 18, { bold: true });
     writeLine(new Date().toLocaleString(), 9, { color: [110, 110, 110] });
     y += 6;
@@ -110,16 +138,38 @@ async function exportReportPdf(result: AudioAnalysisResult) {
     y += 6;
     hr();
 
+    if (waveformDataUrl) {
+      writeLine("Waveform Snapshot", 12, { bold: true });
+      const imgW = pageWidth - margin * 2;
+      const imgH = 80;
+      ensureRoom(imgH + 8);
+      try {
+        doc.addImage(waveformDataUrl, "PNG", margin, y, imgW, imgH);
+        y += imgH + 8;
+      } catch (e) {
+        console.warn("Could not embed waveform image", e);
+      }
+      hr();
+    }
+
     writeLine("Levels & Loudness", 12, { bold: true });
     writeLine(`Peak: ${m.peakDb.toFixed(1)} dBFS    RMS: ${m.rmsDb.toFixed(1)} dBFS    LUFS≈ ${m.lufsEstimate.toFixed(1)}`);
     writeLine(`Dynamic range: ${m.dynamicRangeDb.toFixed(1)} dB    Stereo width: ${m.stereoWidth.toFixed(2)} (${m.stereoWidthLabel})`);
     y += 6;
     hr();
 
-    writeLine("Tempo & Key (with confidence)", 12, { bold: true });
-    writeLine(`BPM: ${m.bpm ?? "—"}    Confidence: ${m.bpmConfidence.label} (${Math.round(m.bpmConfidence.value * 100)}%)`);
+    writeLine("Tempo & Key", 12, { bold: true });
+    ensureRoom(20);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+    doc.text(`BPM: ${m.bpm ?? "—"}`, margin, y);
+    drawConfidenceBadge(m.bpmConfidence.label, m.bpmConfidence.value, margin + 130);
+    y += 14;
     if (m.bpmConfidence.note) writeLine(`  ↳ ${m.bpmConfidence.note}`, 9, { color: [110, 110, 110] });
-    writeLine(`Key: ${m.detectedKey ?? "—"}    Confidence: ${m.keyConfidence.label} (${Math.round(m.keyConfidence.value * 100)}%)`);
+    ensureRoom(20);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+    doc.text(`Key: ${m.detectedKey ?? "—"}`, margin, y);
+    drawConfidenceBadge(m.keyConfidence.label, m.keyConfidence.value, margin + 130);
+    y += 14;
     if (m.keyConfidence.note) writeLine(`  ↳ ${m.keyConfidence.note}`, 9, { color: [110, 110, 110] });
     y += 6;
     hr();
@@ -130,6 +180,15 @@ async function exportReportPdf(result: AudioAnalysisResult) {
     writeLine(`Mid (500 Hz–2 kHz):    ${m.bands.mid.toFixed(1)}`);
     writeLine(`High-Mid (2–6 kHz):    ${m.bands.highMid.toFixed(1)}`);
     writeLine(`High (6 kHz+):         ${m.bands.high.toFixed(1)}`);
+    y += 6;
+    hr();
+
+    writeLine("Step-by-Step Analysis", 12, { bold: true });
+    const steps = buildStepSummary(result);
+    steps.forEach((step, idx) => {
+      writeLine(`${idx + 1}. ${step.title}`, 10, { bold: true });
+      writeLine(`   ${step.detail}`, 9, { color: [70, 70, 70] });
+    });
     y += 6;
     hr();
 
@@ -155,7 +214,13 @@ async function exportReportPdf(result: AudioAnalysisResult) {
   }
 }
 
-export function AudioReportCard({ result }: { result: AudioAnalysisResult }) {
+interface AudioReportCardProps {
+  result: AudioAnalysisResult;
+  /** Optional getter so the PDF export can embed a waveform snapshot. */
+  getWaveformSnapshot?: () => string | null;
+}
+
+export function AudioReportCard({ result, getWaveformSnapshot }: AudioReportCardProps) {
   const { metrics: m, issues } = result;
   const durStr = `${Math.floor(m.durationSec / 60)}:${String(Math.floor(m.durationSec % 60)).padStart(2, "0")}`;
 
@@ -172,7 +237,7 @@ export function AudioReportCard({ result }: { result: AudioAnalysisResult }) {
             <Badge variant="outline" className="text-[10px]">
               {m.fileFormat.toUpperCase()} · {m.sampleRate} Hz · {m.isStereo ? "stereo" : "mono"}
             </Badge>
-            <Button size="sm" variant="outline" onClick={() => exportReportPdf(result)}>
+            <Button size="sm" variant="outline" onClick={() => exportReportPdf(result, getWaveformSnapshot?.())}>
               <Download className="w-3.5 h-3.5 mr-1.5" /> Export PDF
             </Button>
           </div>

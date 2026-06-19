@@ -1,44 +1,81 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { UploadCloud, FileAudio, X, Sparkles, Loader2, MessageCircle, RefreshCcw } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  UploadCloud, FileAudio, X, Sparkles, Loader2, MessageCircle, RefreshCcw, AlertTriangle, Scissors,
+} from "lucide-react";
 import { SenseiChat } from "@/components/SenseiChat";
 import { AudioReportCard } from "@/components/AudioReportCard";
-import { WaveformPlayer } from "@/components/WaveformPlayer";
+import { WaveformPlayer, type WaveformSelection } from "@/components/WaveformPlayer";
 import {
   analyzeAudioFileInWorker,
   computeWaveformPeaks,
+  decodeAudioToChannels,
+  detectFormat,
+  runAnalysisOnDecoded,
   type AudioAnalysisResult,
+  type DecodedAudio,
   formatMetricsForPrompt,
 } from "@/lib/audio-analysis";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 
+const MAX_FILE_MB = 50;
+
+interface StatusEntry {
+  pct: number;
+  label: string;
+  at: number;
+}
+
 export default function UploadPage() {
   const { user } = useAuth();
   const [file, setFile] = useState<File | null>(null);
+  const [decoded, setDecoded] = useState<DecodedAudio | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState("");
+  const [statusLog, setStatusLog] = useState<StatusEntry[]>([]);
   const [result, setResult] = useState<AudioAnalysisResult | null>(null);
   const [peaks, setPeaks] = useState<Float32Array | null>(null);
   const [askSensei, setAskSensei] = useState(false);
+  const [selection, setSelection] = useState<WaveformSelection | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const waveformCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const audioUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
   useEffect(() => () => { if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
 
   const reset = () => {
     setFile(null);
+    setDecoded(null);
     setResult(null);
     setPeaks(null);
     setAskSensei(false);
     setProgress(0);
     setProgressLabel("");
+    setStatusLog([]);
+    setSelection(null);
+    setError(null);
+    setRetryCount(0);
   };
+
+  const pushStatus = useCallback((pct: number, label: string) => {
+    setProgress(pct);
+    setProgressLabel(label);
+    setStatusLog((prev) => {
+      // De-dupe same label adjacent
+      if (prev.length && prev[prev.length - 1].label === label) return prev;
+      const next = [...prev, { pct, label, at: Date.now() }];
+      return next.slice(-6);
+    });
+  }, []);
 
   const onFiles = (files: FileList | null) => {
     const f = files?.[0];
@@ -47,63 +84,97 @@ export default function UploadPage() {
       toast.error("Please upload a WAV or MP3 file");
       return;
     }
-    if (f.size > 50 * 1024 * 1024) {
-      toast.error("File too large (max 50MB)");
+    if (f.size > MAX_FILE_MB * 1024 * 1024) {
+      toast.error(`File too large (max ${MAX_FILE_MB}MB)`);
       return;
     }
     setFile(f);
+    setDecoded(null);
     setResult(null);
+    setPeaks(null);
     setAskSensei(false);
+    setSelection(null);
+    setError(null);
+  };
+
+  const persistReport = async (res: AudioAnalysisResult) => {
+    if (!user) return;
+    const { error: insertErr } = await supabase.from("audio_analysis_reports").insert({
+      user_id: user.id,
+      file_name: res.metrics.fileName,
+      file_format: res.metrics.fileFormat,
+      file_size_bytes: res.metrics.fileSizeBytes,
+      duration_sec: res.metrics.durationSec,
+      sample_rate: res.metrics.sampleRate,
+      bit_rate: res.metrics.bitRate,
+      channels: res.metrics.channels,
+      peak_db: res.metrics.peakDb,
+      rms_db: res.metrics.rmsDb,
+      lufs_estimate: res.metrics.lufsEstimate,
+      dynamic_range_db: res.metrics.dynamicRangeDb,
+      stereo_width: res.metrics.stereoWidth,
+      bpm: res.metrics.bpm,
+      detected_key: res.metrics.detectedKey,
+      band_low_db: res.metrics.bands.low,
+      band_lowmid_db: res.metrics.bands.lowMid,
+      band_mid_db: res.metrics.bands.mid,
+      band_highmid_db: res.metrics.bands.highMid,
+      band_high_db: res.metrics.bands.high,
+      detected_issues: res.issues as unknown as any,
+      recommendations: res.recommendations as unknown as any,
+    });
+    if (insertErr) console.warn("Failed to save analysis report:", insertErr.message);
   };
 
   const runAnalysis = async () => {
     if (!file) return;
     setAnalyzing(true);
+    setError(null);
     setProgress(0);
-    setProgressLabel("Starting…");
+    setStatusLog([]);
+    pushStatus(2, selection ? `Re-analyzing selection (${selection.startSec.toFixed(1)}s–${selection.endSec.toFixed(1)}s)…` : "Starting full-track analysis…");
     try {
-      const { result: res, decoded } = await analyzeAudioFileInWorker(file, (p, label) => {
-        setProgress(p);
-        setProgressLabel(label);
-      });
+      let workingDecoded = decoded;
+      if (!workingDecoded) {
+        pushStatus(5, "Decoding audio in browser…");
+        workingDecoded = await decodeAudioToChannels(file);
+        setDecoded(workingDecoded);
+        try { setPeaks(computeWaveformPeaks(workingDecoded.channelData[0], 600)); } catch (e) { console.warn(e); }
+      }
+      const res = await runAnalysisOnDecoded(
+        workingDecoded,
+        { name: file.name, format: detectFormat(file), sizeBytes: file.size },
+        selection ?? undefined,
+        pushStatus,
+      );
       setResult(res);
-      // Build waveform peaks from the already-decoded channel data.
-      try {
-        setPeaks(computeWaveformPeaks(decoded.channelData[0], 600));
-      } catch (e) {
-        console.warn("Waveform peaks failed:", e);
-      }
-      // Persist (best-effort)
-      if (user) {
-        const { error } = await supabase.from("audio_analysis_reports").insert({
-          user_id: user.id,
-          file_name: res.metrics.fileName,
-          file_format: res.metrics.fileFormat,
-          file_size_bytes: res.metrics.fileSizeBytes,
-          duration_sec: res.metrics.durationSec,
-          sample_rate: res.metrics.sampleRate,
-          bit_rate: res.metrics.bitRate,
-          channels: res.metrics.channels,
-          peak_db: res.metrics.peakDb,
-          rms_db: res.metrics.rmsDb,
-          lufs_estimate: res.metrics.lufsEstimate,
-          dynamic_range_db: res.metrics.dynamicRangeDb,
-          stereo_width: res.metrics.stereoWidth,
-          bpm: res.metrics.bpm,
-          detected_key: res.metrics.detectedKey,
-          band_low_db: res.metrics.bands.low,
-          band_lowmid_db: res.metrics.bands.lowMid,
-          band_mid_db: res.metrics.bands.mid,
-          band_highmid_db: res.metrics.bands.highMid,
-          band_high_db: res.metrics.bands.high,
-          detected_issues: res.issues as unknown as any,
-          recommendations: res.recommendations as unknown as any,
-        });
-        if (error) console.warn("Failed to save analysis report:", error.message);
-      }
-      toast.success("Analysis complete");
+      await persistReport(res);
+      toast.success(selection ? "Selection analyzed" : "Analysis complete");
     } catch (e: any) {
-      toast.error(e?.message || "Failed to analyze audio");
+      const msg = e?.message || "Failed to analyze audio";
+      console.error("[analysis]", e);
+      setError(msg);
+      // Auto-retry once for transient worker failures.
+      if (retryCount === 0 && /worker|timed out|crashed/i.test(msg)) {
+        setRetryCount(1);
+        toast.message("Worker failed — retrying on main thread…");
+        try {
+          if (file) {
+            const { result: res, decoded: d } = await analyzeAudioFileInWorker(file, pushStatus);
+            setResult(res);
+            setDecoded(d);
+            setPeaks(computeWaveformPeaks(d.channelData[0], 600));
+            await persistReport(res);
+            setError(null);
+            toast.success("Analysis complete (recovered)");
+          }
+        } catch (e2: any) {
+          setError(e2?.message || msg);
+          toast.error("Analysis failed — see error below");
+        }
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setAnalyzing(false);
     }
@@ -139,12 +210,20 @@ export default function UploadPage() {
     ? `Diagnose my mix from the audio analysis below and walk me through the top three fixes in priority order.\n\n${formatMetricsForPrompt(result.metrics, result.issues)}`
     : undefined;
 
+  const getWaveformSnapshot = useCallback((): string | null => {
+    const c = waveformCanvasRef.current;
+    if (!c) return null;
+    try { return c.toDataURL("image/png"); } catch { return null; }
+  }, []);
+
+  const bpmConfidenceValue = result?.metrics.bpmConfidence.value;
+
   return (
     <div className="container max-w-4xl py-8 px-4 md:px-8">
       <PageHeader
         eyebrow="Audio Analysis"
         title="Upload & Analyze Your Track"
-        description="Drop a WAV or MP3 and Sensei will measure loudness, dynamics, key, BPM, stereo width and frequency balance — then diagnose what to fix."
+        description="Drop a WAV or MP3 and Sensei will measure loudness, dynamics, key, BPM, stereo width and frequency balance — then diagnose what to fix. Drag on the waveform to analyze a specific section."
         icon={<UploadCloud className="w-6 h-6" />}
       />
 
@@ -164,7 +243,7 @@ export default function UploadPage() {
           />
           <UploadCloud className="w-14 h-14 mx-auto mb-4 text-primary" />
           <h3 className="font-display text-xl font-bold mb-2">Drop your audio file here</h3>
-          <p className="text-sm text-muted-foreground mb-4">WAV, MP3, AIFF, FLAC, M4A, OGG — up to 50MB</p>
+          <p className="text-sm text-muted-foreground mb-4">WAV, MP3, AIFF, FLAC, M4A, OGG — up to {MAX_FILE_MB}MB</p>
           <Button className="bg-gradient-gold text-primary-foreground hover:opacity-90">Choose file</Button>
         </Card>
       ) : (
@@ -189,11 +268,16 @@ export default function UploadPage() {
               <WaveformPlayer
                 src={audioUrl}
                 peaks={peaks}
-                durationSec={result?.metrics.durationSec ?? 0}
+                durationSec={result?.metrics.durationSec ?? decoded?.duration ?? 0}
+                bpm={result?.metrics.bpm ?? null}
+                bpmConfidence={bpmConfidenceValue}
+                selection={selection}
+                onSelectionChange={setSelection}
+                onCanvasRef={(c) => { waveformCanvasRef.current = c; }}
               />
             )}
 
-            {!result && !analyzing && (
+            {!result && !analyzing && !error && (
               <Button
                 onClick={runAnalysis}
                 className="w-full mt-4 bg-gradient-gold text-primary-foreground hover:opacity-90"
@@ -210,7 +294,38 @@ export default function UploadPage() {
                   <span className="ml-auto tabular-nums text-xs text-muted-foreground">{progress}%</span>
                 </div>
                 <Progress value={progress} className="h-2 bg-secondary" />
+                {statusLog.length > 0 && (
+                  <ul className="text-[10px] text-muted-foreground/80 mt-2 space-y-0.5 max-h-20 overflow-y-auto">
+                    {statusLog.map((s, i) => (
+                      <li key={i} className="flex gap-2">
+                        <span className="tabular-nums opacity-60 w-7">{s.pct}%</span>
+                        <span>{s.label}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
+            )}
+
+            {error && !analyzing && (
+              <Alert variant="destructive" className="mt-4">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Analysis failed</AlertTitle>
+                <AlertDescription>
+                  <p className="mb-2">{error}</p>
+                  <div className="flex gap-2 flex-wrap">
+                    <Button size="sm" variant="outline" onClick={() => { setError(null); runAnalysis(); }}>
+                      <RefreshCcw className="w-3.5 h-3.5 mr-1.5" /> Retry
+                    </Button>
+                    {selection && (
+                      <Button size="sm" variant="outline" onClick={() => { setSelection(null); setError(null); runAnalysis(); }}>
+                        <X className="w-3.5 h-3.5 mr-1.5" /> Clear selection & retry full track
+                      </Button>
+                    )}
+                    <Button size="sm" variant="ghost" onClick={reset}>Choose a different file</Button>
+                  </div>
+                </AlertDescription>
+              </Alert>
             )}
 
             {result && (
@@ -223,13 +338,19 @@ export default function UploadPage() {
                   <MessageCircle className="w-4 h-4 mr-2" /> Ask Sensei About This Mix
                 </Button>
                 <Button variant="outline" onClick={runAnalysis}>
-                  <RefreshCcw className="w-4 h-4 mr-2" /> Re-analyze
+                  {selection ? <Scissors className="w-4 h-4 mr-2" /> : <RefreshCcw className="w-4 h-4 mr-2" />}
+                  {selection ? `Analyze selection (${(selection.endSec - selection.startSec).toFixed(1)}s)` : "Re-analyze full track"}
                 </Button>
+                {selection && (
+                  <Button variant="ghost" onClick={() => setSelection(null)}>
+                    <X className="w-4 h-4 mr-2" /> Clear selection
+                  </Button>
+                )}
               </div>
             )}
           </Card>
 
-          {result && <AudioReportCard result={result} />}
+          {result && <AudioReportCard result={result} getWaveformSnapshot={getWaveformSnapshot} />}
 
           {result && askSensei && (
             <Card className="studio-card overflow-hidden h-[60vh] flex flex-col mt-6">
