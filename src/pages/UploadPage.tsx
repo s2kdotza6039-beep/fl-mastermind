@@ -591,6 +591,59 @@ export default function UploadPage() {
 
   const bpmConfidenceValue = result?.metrics.bpmConfidence.value;
 
+  // Keyboard shortcuts: Space play/pause · +/− zoom · ←/→ nudge BPM · [/] nudge downbeat.
+  useEffect(() => {
+    if (!file) return;
+    const handler = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && /input|textarea|select/i.test(t.tagName)) return;
+      if (t && t.isContentEditable) return;
+      const wf = waveformRef.current;
+      switch (e.key) {
+        case " ": // play/pause
+        case "Spacebar":
+          e.preventDefault();
+          wf?.togglePlay();
+          break;
+        case "+":
+        case "=":
+          e.preventDefault();
+          wf?.zoomIn();
+          break;
+        case "-":
+        case "_":
+          e.preventDefault();
+          wf?.zoomOut();
+          break;
+        case "0":
+          if (e.shiftKey) { e.preventDefault(); wf?.resetZoom(); }
+          break;
+        case "ArrowLeft":
+          if (result?.metrics.bpm == null) return;
+          e.preventDefault();
+          setBpmNudge((n) => Math.round((n - (e.shiftKey ? 1 : 0.1)) * 10) / 10);
+          break;
+        case "ArrowRight":
+          if (result?.metrics.bpm == null) return;
+          e.preventDefault();
+          setBpmNudge((n) => Math.round((n + (e.shiftKey ? 1 : 0.1)) * 10) / 10);
+          break;
+        case "[":
+          if (result?.metrics.bpm == null) return;
+          e.preventDefault();
+          setDownbeatOffsetSec((o) => Math.max(0, o - (e.shiftKey ? 0.1 : 0.01)));
+          break;
+        case "]":
+          if (result?.metrics.bpm == null) return;
+          e.preventDefault();
+          setDownbeatOffsetSec((o) => o + (e.shiftKey ? 0.1 : 0.01));
+          break;
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [file, result?.metrics.bpm]);
+
   return (
     <div className="container max-w-4xl py-8 px-4 md:px-8">
       <PageHeader
