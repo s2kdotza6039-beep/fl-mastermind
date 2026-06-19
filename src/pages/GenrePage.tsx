@@ -38,6 +38,8 @@ export default function GenrePage() {
         description="Lock in your genre. Sensei adjusts mixing, mastering, and arrangement advice to match the sound of the culture."
         icon={<Music2 className="w-6 h-6" />}
       />
+      <ActiveTrackChip />
+
 
       {!active ? (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
