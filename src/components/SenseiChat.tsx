@@ -387,6 +387,21 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
         )}
       </div>
 
+      {rateLimit && (
+        <div className="px-4 pb-2">
+          <RateLimitNotice
+            retryAfterSec={rateLimit.retryAfterSec}
+            message={rateLimit.message}
+            onRetry={() => {
+              const text = rateLimit.lastInput;
+              setRateLimit(null);
+              send(text);
+            }}
+            onDismiss={() => setRateLimit(null)}
+          />
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="border-t border-border p-4 bg-card/50 backdrop-blur">
         <div className="flex gap-2 items-end">
           <Textarea
