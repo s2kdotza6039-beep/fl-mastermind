@@ -181,9 +181,17 @@ export default function UploadPage() {
   const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
   const [wavBitDepth, setWavBitDepth] = useState<WavBitDepth>("pcm16");
   const [wavSampleRate, setWavSampleRate] = useState<"original" | "44100" | "48000" | "96000">("original");
+  const [savedRegion, setSavedRegion] = useState<RegionPreset | null>(null);
+  const [exportState, setExportState] = useState<{
+    active: boolean; pct: number; etaMs: number; sizeBytes: number; startedAt: number;
+  } | null>(null);
+  const exportCancelRef = useRef<{ cancelled: boolean } | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [waveformFocused, setWaveformFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const waveformCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const waveformRef = useRef<WaveformPlayerHandle | null>(null);
+  const waveformWrapperRef = useRef<HTMLDivElement | null>(null);
 
   const audioUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
   useEffect(() => () => { if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
