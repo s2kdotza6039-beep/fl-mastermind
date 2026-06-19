@@ -4,6 +4,7 @@ import { SenseiChat } from "@/components/SenseiChat";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Disc3 } from "lucide-react";
+import { ActiveTrackChip } from "@/components/ActiveTrackChip";
 
 const PROBLEMS = [
   { label: "Vocal muddy", prompt: "My vocal sounds muddy. Diagnose and fix with FL Studio's Fruity Parametric EQ 2." },
