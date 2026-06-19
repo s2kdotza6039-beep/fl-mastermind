@@ -4,6 +4,7 @@ import { SenseiChat } from "@/components/SenseiChat";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Layers, Mic, Speaker, Drum, Music, Sliders, Crown, Disc, Zap } from "lucide-react";
+import { ActiveTrackChip } from "@/components/ActiveTrackChip";
 
 const TRACKS = [
   { id: "lead-vocal", label: "Lead Vocal", icon: Mic, prompt: "Give me a complete FL Studio plugin chain for a LEAD VOCAL — exact plugins in order, settings, and explain when to use Patcher for advanced routing." },
@@ -28,6 +29,8 @@ export default function ChainBuilderPage() {
         description="Pick a track type. Get the exact chain, order, and settings — including Patcher, Mid/Side, and parallel routing."
         icon={<Layers className="w-6 h-6" />}
       />
+
+      <ActiveTrackChip />
 
       {!prompt ? (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">

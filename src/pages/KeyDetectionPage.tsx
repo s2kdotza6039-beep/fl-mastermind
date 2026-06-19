@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Slider } from "@/components/ui/slider";
 import { SenseiChat } from "@/components/SenseiChat";
+import { ActiveTrackChip } from "@/components/ActiveTrackChip";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { decodeToMonoWav } from "@/lib/audio-decode";
@@ -299,6 +300,8 @@ export default function KeyDetectionPage() {
           )
         }
       />
+
+      <ActiveTrackChip />
 
       {/* Stepper */}
       <Card className="studio-card p-4 mb-6">

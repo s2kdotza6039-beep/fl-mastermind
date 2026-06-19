@@ -9,6 +9,7 @@ import {
   Scissors, Minus, Plus, Target, FileJson, FileAudio2, Clipboard,
 } from "lucide-react";
 import { SenseiChat } from "@/components/SenseiChat";
+import { ActiveTrackChip } from "@/components/ActiveTrackChip";
 import { AudioReportCard } from "@/components/AudioReportCard";
 import { WaveformPlayer, type WaveformSelection, type WaveformPlayerHandle } from "@/components/WaveformPlayer";
 import {
@@ -784,6 +785,8 @@ export default function UploadPage() {
         description="Drop a WAV or MP3 and Sensei will measure loudness, dynamics, key, BPM, stereo width and frequency balance — then diagnose what to fix. Drag on the waveform to analyze a specific section."
         icon={<UploadCloud className="w-6 h-6" />}
       />
+
+      <ActiveTrackChip />
 
       {!file ? (
         <Card
