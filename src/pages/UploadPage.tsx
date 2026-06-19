@@ -684,6 +684,11 @@ export default function UploadPage() {
                     <FileJson className="w-4 h-4 mr-2" /> Download diagnostics
                   </Button>
                 )}
+                {diagnostics && (
+                  <Button variant="outline" onClick={copyDiagnostics} title="Copy diagnostics JSON to clipboard for easy sharing">
+                    <Clipboard className="w-4 h-4 mr-2" /> Copy diagnostics
+                  </Button>
+                )}
               </div>
             )}
           </Card>
