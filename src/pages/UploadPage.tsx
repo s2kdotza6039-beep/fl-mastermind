@@ -756,7 +756,7 @@ export default function UploadPage() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [file, result?.metrics.bpm]);
+  }, [file, result?.metrics.bpm, waveformFocused]);
 
   return (
     <div className="container max-w-4xl py-8 px-4 md:px-8">
