@@ -290,6 +290,10 @@ export default function AdminPage() {
         <TabsContent value="audio">
           <AdminAudioReportsTab />
         </TabsContent>
+
+        <TabsContent value="sessions">
+          <AdminTrackSessionsTab />
+        </TabsContent>
       </Tabs>
     </div>
   );
