@@ -4,6 +4,7 @@ import { SenseiChat } from "@/components/SenseiChat";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Layers, Mic, Speaker, Drum, Music, Sliders, Crown, Disc, Zap } from "lucide-react";
+import { ActiveTrackChip } from "@/components/ActiveTrackChip";
 
 const TRACKS = [
   { id: "lead-vocal", label: "Lead Vocal", icon: Mic, prompt: "Give me a complete FL Studio plugin chain for a LEAD VOCAL — exact plugins in order, settings, and explain when to use Patcher for advanced routing." },
