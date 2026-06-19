@@ -301,6 +301,8 @@ export default function KeyDetectionPage() {
         }
       />
 
+      <ActiveTrackChip />
+
       {/* Stepper */}
       <Card className="studio-card p-4 mb-6">
         <div className="flex items-center justify-between mb-3">
