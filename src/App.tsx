@@ -34,6 +34,9 @@ import AdminPage from "./pages/AdminPage";
 import TermsPage from "./pages/TermsPage";
 import PrivacyPage from "./pages/PrivacyPage";
 import UpgradePage from "./pages/UpgradePage";
+import OwnershipPage from "./pages/OwnershipPage";
+import SecurityPage from "./pages/SecurityPage";
+import FeedbackPage from "./pages/FeedbackPage";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -53,6 +56,9 @@ function AppShell() {
       <Route path="/oauth-check" element={<OAuthCheckPage />} />
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/ownership" element={<OwnershipPage />} />
+      <Route path="/security" element={<SecurityPage />} />
+      <Route path="/feedback" element={<ProtectedRoute><FeedbackPage /></ProtectedRoute>} />
 
       {/* Authed */}
       <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
