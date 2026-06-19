@@ -13,6 +13,7 @@ export function Footer() {
         <div className="flex flex-wrap gap-4">
           <Link to="/ownership" className="hover:text-primary">Ownership</Link>
           <Link to="/security" className="hover:text-primary">Security</Link>
+          <Link to="/status" className="hover:text-primary">Status</Link>
           <Link to="/privacy" className="hover:text-primary">Privacy (POPIA)</Link>
           <Link to="/terms" className="hover:text-primary">Terms</Link>
           <Link to="/feedback" className="hover:text-primary">Feedback</Link>

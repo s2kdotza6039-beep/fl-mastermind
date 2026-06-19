@@ -286,6 +286,7 @@ function SignUpForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function submit(e: React.FormEvent) {
@@ -297,12 +298,30 @@ function SignUpForm() {
     const nv = displayNameSchema.safeParse(name || undefined);
     if (!nv.success) return toast.error("Invalid display name");
     setBusy(true);
+
+    // Closed beta: validate invite (email allowlist OR code) before signing up.
+    const { data: allowed, error: checkErr } = await supabase.rpc("check_beta_invite", {
+      _email: ev.data,
+      _code: code.trim() || null,
+    });
+    if (checkErr) {
+      setBusy(false);
+      return toast.error("Could not verify invite. Please try again.");
+    }
+    if (!allowed) {
+      setBusy(false);
+      return toast.error("Studio Sensei is in closed beta. Your email isn't on the invite list and the code didn't match.");
+    }
+
     const { error } = await supabase.auth.signUp({
       email: ev.data,
       password: pv.data,
       options: {
         emailRedirectTo: window.location.origin,
-        data: { display_name: nv.data || ev.data.split("@")[0] },
+        data: {
+          display_name: nv.data || ev.data.split("@")[0],
+          invite_code: code.trim() || undefined,
+        },
       },
     });
     setBusy(false);
@@ -324,6 +343,11 @@ function SignUpForm() {
         <Label htmlFor="su-pass">Password</Label>
         <PasswordInput id="su-pass" value={password} onChange={(e) => setPassword(e.target.value)} maxLength={128} autoComplete="new-password" required />
         <p className="text-[10px] text-muted-foreground mt-1">8+ chars, upper, lower, number. Checked against known breaches.</p>
+      </div>
+      <div>
+        <Label htmlFor="su-code">Invite code <span className="text-muted-foreground/70">(optional if your email is invited)</span></Label>
+        <Input id="su-code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} maxLength={32} placeholder="BETA-XXXXXX" autoComplete="off" />
+        <p className="text-[10px] text-muted-foreground mt-1">Studio Sensei is in closed beta. Need access? Email <a className="underline" href="mailto:studiosensei@s2kdotza.com">studiosensei@s2kdotza.com</a>.</p>
       </div>
       <Button type="submit" className="w-full bg-gradient-gold text-primary-foreground" disabled={busy}>
         {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Create account
