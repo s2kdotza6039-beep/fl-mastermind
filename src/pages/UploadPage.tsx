@@ -1074,6 +1074,30 @@ export default function UploadPage() {
             />
           )}
 
+          {result && lastReportId && (
+            <Card className="studio-card-gold p-4 mt-6 flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Track session ready
+                </div>
+                <div className="font-semibold text-sm text-foreground">
+                  Sensei is now coaching about {result.metrics.fileName}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Every page (Chat, Mixing, Mastering, Quick Fix, Problems, Genre) will use this analysis until you change or clear it.
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => navigate("/chat")}
+                  className="bg-gradient-gold text-primary-foreground hover:opacity-90"
+                >
+                  <MessageCircle className="w-4 h-4 mr-2" /> Start coaching this track
+                </Button>
+              </div>
+            </Card>
+          )}
+
           {result && askSensei && (
             <Card className="studio-card overflow-hidden h-[60vh] flex flex-col mt-6">
               <SenseiChat initialPrompt={senseiPrompt} audioContext={senseiAudioContext} />
