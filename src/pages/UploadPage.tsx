@@ -805,18 +805,81 @@ export default function UploadPage() {
             </div>
 
             {audioUrl && (
-              <WaveformPlayer
-                ref={waveformRef}
-                src={audioUrl}
-                peaks={peaks}
-                durationSec={result?.metrics.durationSec ?? decoded?.duration ?? 0}
-                bpm={effectiveBpm}
-                bpmConfidence={bpmConfidenceValue}
-                bpmOffsetSec={downbeatOffsetSec}
-                selection={selection}
-                onSelectionChange={setSelection}
-                onCanvasRef={(c) => { waveformCanvasRef.current = c; }}
-              />
+              <div
+                ref={waveformWrapperRef}
+                tabIndex={0}
+                role="region"
+                aria-label="Waveform — focus this area to use keyboard shortcuts (Space, +/-, arrows, [, ])"
+                onFocus={() => setWaveformFocused(true)}
+                onBlur={(e) => {
+                  // Stay "focused" if the new focus target is still inside the wrapper.
+                  if (!waveformWrapperRef.current?.contains(e.relatedTarget as Node)) setWaveformFocused(false);
+                }}
+                onMouseDown={() => waveformWrapperRef.current?.focus()}
+                className={`rounded-md outline-none transition ring-offset-background ${waveformFocused ? "ring-2 ring-primary/40" : ""}`}
+              >
+                <WaveformPlayer
+                  ref={waveformRef}
+                  src={audioUrl}
+                  peaks={peaks}
+                  durationSec={result?.metrics.durationSec ?? decoded?.duration ?? 0}
+                  bpm={effectiveBpm}
+                  bpmConfidence={bpmConfidenceValue}
+                  bpmOffsetSec={downbeatOffsetSec}
+                  selection={selection}
+                  onSelectionChange={setSelection}
+                  onCanvasRef={(c) => { waveformCanvasRef.current = c; }}
+                />
+                <div className="mt-1 px-1 flex items-center justify-between text-[10px] text-muted-foreground">
+                  <span>
+                    {waveformFocused
+                      ? "⌨ Waveform focused — Space / +/− / ←→ / [ ] active"
+                      : "Click the waveform to enable keyboard shortcuts"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowShortcuts((s) => !s)}
+                    className="underline hover:text-foreground"
+                    aria-label="Show keyboard shortcuts"
+                  >
+                    Press ? for shortcuts
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {savedRegion && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 px-2 py-1.5 rounded-md bg-secondary/30 border border-border text-[11px]">
+                <span className="text-muted-foreground">Saved region:</span>
+                <span className="tabular-nums text-foreground">
+                  {savedRegion.startSec.toFixed(2)}s – {savedRegion.endSec.toFixed(2)}s
+                </span>
+                <span className="text-muted-foreground">
+                  ({(savedRegion.endSec - savedRegion.startSec).toFixed(2)}s)
+                </span>
+                {selection && (selection.startSec !== savedRegion.startSec || selection.endSec !== savedRegion.endSec) && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 ml-1 text-[11px]"
+                    onClick={revertToSavedRegion}
+                  >
+                    <RefreshCcw className="w-3 h-3 mr-1" /> Revert to saved region
+                  </Button>
+                )}
+                {!selection && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 ml-1 text-[11px]"
+                    onClick={revertToSavedRegion}
+                  >
+                    <RefreshCcw className="w-3 h-3 mr-1" /> Apply saved region
+                  </Button>
+                )}
+              </div>
             )}
 
             {result?.metrics.bpm != null && (
