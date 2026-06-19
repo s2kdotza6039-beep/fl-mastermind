@@ -33,6 +33,31 @@ interface StatusEntry {
   at: number;
 }
 
+interface Diagnostics {
+  startedAt: string;
+  fileName: string;
+  fileSizeBytes: number;
+  fileFormat: string;
+  decodedReused: boolean;
+  decodeMs: number;
+  dspMs: number;
+  totalMs: number;
+  fallbackToMainThread: boolean;
+  retryAttempted: boolean;
+  range: { startSec: number; endSec: number } | null;
+  workerSupported: boolean;
+  hardwareConcurrency: number;
+  userAgent: string;
+  bpm: number | null;
+  bpmConfidence: number;
+  bpmConfidenceLabel: string;
+  detectedKey: string | null;
+  keyConfidence: number;
+  keyConfidenceLabel: string;
+  statusLog: StatusEntry[];
+  errorMessage?: string;
+}
+
 export default function UploadPage() {
   const { user } = useAuth();
   const [file, setFile] = useState<File | null>(null);
@@ -42,11 +67,15 @@ export default function UploadPage() {
   const [progressLabel, setProgressLabel] = useState("");
   const [statusLog, setStatusLog] = useState<StatusEntry[]>([]);
   const [result, setResult] = useState<AudioAnalysisResult | null>(null);
+  const [analyzedRange, setAnalyzedRange] = useState<WaveformSelection | null>(null);
   const [peaks, setPeaks] = useState<Float32Array | null>(null);
   const [askSensei, setAskSensei] = useState(false);
   const [selection, setSelection] = useState<WaveformSelection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [bpmNudge, setBpmNudge] = useState(0); // ± offset on top of detected BPM
+  const [downbeatOffsetSec, setDownbeatOffsetSec] = useState(0);
+  const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const waveformCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
