@@ -10,6 +10,7 @@ import { usePluginInventory } from "@/context/PluginInventoryContext";
 import { useTrackSession } from "@/context/TrackSessionContext";
 import { streamSenseiChat, type ChatMsg } from "@/lib/sensei-api";
 import { SenseiMarkdown } from "./SenseiMarkdown";
+import { RateLimitNotice } from "./RateLimitNotice";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { editionToTier, forbiddenPlugins, eligiblePlugins, tierLabel } from "@/lib/fl-plugin-eligibility";
@@ -63,6 +64,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string; lastInput: string } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentInitial = useRef(false);
 
@@ -117,6 +119,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
+    setRateLimit(null);
     const userMsg: ChatMsg = { role: "user", content: trimmed };
     const next = [...messages, userMsg];
     setMessages(next);
@@ -154,6 +157,12 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
       onError: (msg) => {
         setLoading(false);
         toast.error(msg);
+      },
+      onRateLimit: ({ retryAfterSec, message }) => {
+        setLoading(false);
+        // Roll back the user message so the retry button can resend it cleanly.
+        setMessages((prev) => prev.slice(0, -1));
+        setRateLimit({ retryAfterSec, message, lastInput: trimmed });
       },
     });
   };
@@ -377,6 +386,21 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
           </div>
         )}
       </div>
+
+      {rateLimit && (
+        <div className="px-4 pb-2">
+          <RateLimitNotice
+            retryAfterSec={rateLimit.retryAfterSec}
+            message={rateLimit.message}
+            onRetry={() => {
+              const text = rateLimit.lastInput;
+              setRateLimit(null);
+              send(text);
+            }}
+            onDismiss={() => setRateLimit(null)}
+          />
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="border-t border-border p-4 bg-card/50 backdrop-blur">
         <div className="flex gap-2 items-end">

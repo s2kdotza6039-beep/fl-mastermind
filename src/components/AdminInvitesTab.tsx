@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Mail, KeyRound, Loader2, Trash2, Plus, Copy } from "lucide-react";
+import { Mail, KeyRound, Loader2, Trash2, Plus, Copy, RotateCw, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 interface Invite {
@@ -70,21 +70,62 @@ export function AdminInvitesTab() {
     load();
   }
 
+  async function rotateAllCodes() {
+    if (!confirm("Revoke ALL unused invite codes and mint one fresh replacement code? Email allowlist entries are not affected.")) return;
+    const { data, error } = await supabase.rpc("admin_rotate_beta_codes");
+    if (error) return toast.error(error.message);
+    const row = Array.isArray(data) ? data[0] : data;
+    toast.success(`Revoked ${row?.revoked_count ?? 0} code${row?.revoked_count === 1 ? "" : "s"} · New code: ${row?.new_code}`);
+    load();
+  }
+
+
   function copyCode(code: string) {
     navigator.clipboard.writeText(code).then(() => toast.success("Code copied"));
   }
 
   const pending = rows.filter((r) => !r.used_at);
   const used = rows.filter((r) => r.used_at);
+  const validCodes = pending.filter((r) => r.code);
 
   return (
     <Card className="studio-card p-4 mt-4 space-y-4">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <Mail className="w-4 h-4 text-primary" />
         <h3 className="font-semibold">Beta Invites</h3>
         <Badge variant="outline" className="text-[10px]">{pending.length} pending</Badge>
         <Badge variant="secondary" className="text-[10px]">{used.length} used</Badge>
+        <Button
+          size="sm"
+          variant="destructive"
+          className="ml-auto"
+          onClick={rotateAllCodes}
+          disabled={validCodes.length === 0}
+          aria-label="Revoke all unused codes and mint a fresh one"
+        >
+          <RotateCw className="w-3.5 h-3.5 mr-1" /> Rotate &amp; revoke codes
+        </Button>
       </div>
+
+      {validCodes.length > 0 && (
+        <Card className="p-3 border border-emerald-500/30 bg-emerald-500/5">
+          <h4 className="font-semibold text-sm mb-2 flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Currently valid codes ({validCodes.length})
+          </h4>
+          <div className="flex flex-wrap gap-1.5">
+            {validCodes.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => copyCode(c.code!)}
+                className="font-mono text-xs px-2 py-1 rounded border border-emerald-500/30 bg-background hover:bg-emerald-500/10 transition"
+                title="Click to copy"
+              >
+                {c.code} <Copy className="w-3 h-3 inline ml-1 opacity-60" />
+              </button>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <div className="grid sm:grid-cols-2 gap-3">
         <Card className="p-3 border-dashed">
@@ -110,6 +151,7 @@ export function AdminInvitesTab() {
           <p className="text-[10px] text-muted-foreground mt-1">One-time code. Any email may sign up with it.</p>
         </Card>
       </div>
+
 
       {loading ? (
         <Loader2 className="w-5 h-5 animate-spin" />

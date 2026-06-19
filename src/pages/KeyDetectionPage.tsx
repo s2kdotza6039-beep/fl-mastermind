@@ -12,6 +12,7 @@ import { Progress } from "@/components/ui/progress";
 import { Slider } from "@/components/ui/slider";
 import { SenseiChat } from "@/components/SenseiChat";
 import { ActiveTrackChip } from "@/components/ActiveTrackChip";
+import { RateLimitNotice } from "@/components/RateLimitNotice";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { decodeToMonoWav } from "@/lib/audio-decode";
@@ -125,6 +126,8 @@ export default function KeyDetectionPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [lowConfidenceAck, setLowConfidenceAck] = useState(false);
+  const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string } | null>(null);
+  const lastFileRef = useRef<File | null>(null);
   const [allLists, setAllLists] = useState<ChecklistByKey>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -180,6 +183,8 @@ export default function KeyDetectionPage() {
       toast.error("File too large. Max 30 MB. Try a shorter loop.");
       return;
     }
+    lastFileRef.current = file;
+    setRateLimit(null);
     setUploading(true);
     setLowConfidenceAck(false);
     if (uploadResult?.previewUrl) URL.revokeObjectURL(uploadResult.previewUrl);
@@ -204,9 +209,9 @@ export default function KeyDetectionPage() {
       if (!resp.ok) {
         URL.revokeObjectURL(previewUrl);
         if (resp.status === 429) {
-          const retry = Number(resp.headers.get("Retry-After")) || undefined;
+          const retry = Number(resp.headers.get("Retry-After")) || 30;
           const { friendlyRateLimitMessage } = await import("@/lib/beta-config");
-          toast.error(friendlyRateLimitMessage(retry));
+          setRateLimit({ retryAfterSec: retry, message: friendlyRateLimitMessage(retry) });
         } else {
           toast.error(data.error ?? "Detection failed.");
         }
@@ -308,6 +313,22 @@ export default function KeyDetectionPage() {
       />
 
       <ActiveTrackChip />
+
+      {rateLimit && (
+        <div className="mb-4">
+          <RateLimitNotice
+            retryAfterSec={rateLimit.retryAfterSec}
+            message={rateLimit.message}
+            onRetry={() => {
+              const f = lastFileRef.current;
+              setRateLimit(null);
+              if (f) handleUpload(f);
+            }}
+            onDismiss={() => setRateLimit(null)}
+          />
+        </div>
+      )}
+
 
       {/* Stepper */}
       <Card className="studio-card p-4 mb-6">
