@@ -14,7 +14,8 @@ interface WaveformPlayerProps {
   /** Detected BPM — when set, a beat grid is drawn across the waveform. */
   bpm?: number | null;
   /** Confidence 0–1 controls beat-grid opacity (low conf = faint). */
-  bpmConfidence?: number;
+  /** Phase offset (seconds) — where the first downbeat sits. */
+  bpmOffsetSec?: number;
   selection?: WaveformSelection | null;
   onSelectionChange?: (sel: WaveformSelection | null) => void;
   /** Receives the underlying canvas so the parent can snapshot it (e.g. for PDF export). */
