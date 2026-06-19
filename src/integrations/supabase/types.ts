@@ -128,6 +128,45 @@ export type Database = {
         }
         Relationships: []
       }
+      beta_feedback: {
+        Row: {
+          admin_notes: string | null
+          created_at: string
+          id: string
+          message: string
+          page_url: string | null
+          rating: number | null
+          status: Database["public"]["Enums"]["feedback_status"]
+          type: Database["public"]["Enums"]["feedback_type"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          created_at?: string
+          id?: string
+          message: string
+          page_url?: string | null
+          rating?: number | null
+          status?: Database["public"]["Enums"]["feedback_status"]
+          type?: Database["public"]["Enums"]["feedback_type"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          admin_notes?: string | null
+          created_at?: string
+          id?: string
+          message?: string
+          page_url?: string | null
+          rating?: number | null
+          status?: Database["public"]["Enums"]["feedback_status"]
+          type?: Database["public"]["Enums"]["feedback_type"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -416,6 +455,8 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "paid" | "free"
+      feedback_status: "open" | "in_progress" | "resolved"
+      feedback_type: "bug" | "feature" | "general"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -544,6 +585,8 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "paid", "free"],
+      feedback_status: ["open", "in_progress", "resolved"],
+      feedback_type: ["bug", "feature", "general"],
     },
   },
 } as const

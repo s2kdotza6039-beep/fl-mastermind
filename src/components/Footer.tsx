@@ -11,9 +11,11 @@ export function Footer() {
           <span>© {year} Studio Sensei. All rights reserved.</span>
         </div>
         <div className="flex flex-wrap gap-4">
-          <Link to="/terms" className="hover:text-primary">Terms</Link>
+          <Link to="/ownership" className="hover:text-primary">Ownership</Link>
+          <Link to="/security" className="hover:text-primary">Security</Link>
           <Link to="/privacy" className="hover:text-primary">Privacy (POPIA)</Link>
-          <span className="hidden sm:inline">No copying · No resale · No reverse engineering</span>
+          <Link to="/terms" className="hover:text-primary">Terms</Link>
+          <Link to="/feedback" className="hover:text-primary">Feedback</Link>
         </div>
       </div>
     </footer>

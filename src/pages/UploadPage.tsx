@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { SenseiChat } from "@/components/SenseiChat";
 import { ActiveTrackChip } from "@/components/ActiveTrackChip";
+import { UploadTrustPanel } from "@/components/UploadTrustPanel";
 import { AudioReportCard } from "@/components/AudioReportCard";
 import { WaveformPlayer, type WaveformSelection, type WaveformPlayerHandle } from "@/components/WaveformPlayer";
 import {
@@ -786,6 +787,7 @@ export default function UploadPage() {
         icon={<UploadCloud className="w-6 h-6" />}
       />
 
+      <UploadTrustPanel />
       <ActiveTrackChip />
 
       {!file ? (

@@ -17,6 +17,8 @@ import { PluginInventoryCard } from "@/components/PluginInventoryCard";
 import { ActiveTrackChip } from "@/components/ActiveTrackChip";
 import { CoachThisTrackButton } from "@/components/CoachThisTrackButton";
 import { AnalysisHistoryPanel } from "@/components/AnalysisHistoryPanel";
+import { BetaNotice } from "@/components/BetaNotice";
+import { TrustScorecard } from "@/components/TrustScorecard";
 import { supabase } from "@/integrations/supabase/client";
 
 const FEATURES = [
@@ -80,6 +82,8 @@ export default function Dashboard() {
         }
       />
 
+      <BetaNotice />
+      <TrustScorecard />
       <StudioSetupCard />
       <SetupChecklistCard />
       <PluginInventoryCard />

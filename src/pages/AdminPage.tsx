@@ -17,6 +17,8 @@ import { AdminActivityTab } from "@/components/AdminActivityTab";
 import { SecurityIssuesPanel } from "@/components/SecurityIssuesPanel";
 import { AdminAudioReportsTab } from "@/components/AdminAudioReportsTab";
 import { AdminTrackSessionsTab } from "@/components/AdminTrackSessionsTab";
+import { AdminFeedbackTab } from "@/components/AdminFeedbackTab";
+import { BetaLaunchChecklist } from "@/components/BetaLaunchChecklist";
 
 
 interface UserRow {
@@ -165,6 +167,8 @@ export default function AdminPage() {
           <TabsTrigger value="security">Security</TabsTrigger>
           <TabsTrigger value="audio">Audio Reports</TabsTrigger>
           <TabsTrigger value="sessions">Track Sessions</TabsTrigger>
+          <TabsTrigger value="feedback">Beta Feedback</TabsTrigger>
+          <TabsTrigger value="beta">Beta Checklist</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users">
@@ -293,6 +297,14 @@ export default function AdminPage() {
 
         <TabsContent value="sessions">
           <AdminTrackSessionsTab />
+        </TabsContent>
+
+        <TabsContent value="feedback">
+          <AdminFeedbackTab users={users} />
+        </TabsContent>
+
+        <TabsContent value="beta">
+          <BetaLaunchChecklist />
         </TabsContent>
       </Tabs>
     </div>
