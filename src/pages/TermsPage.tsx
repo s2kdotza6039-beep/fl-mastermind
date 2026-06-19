@@ -74,6 +74,61 @@ export default function TermsPage() {
 
       <h2>11. Contact</h2>
       <p>For questions, contact the Studio Sensei administrators inside the app.</p>
+
+      <h2>12. Acceptable Use</h2>
+      <p>You agree to use Studio Sensei only for lawful music production purposes. You must not:</p>
+      <ul>
+        <li>Upload audio you do not have the right to upload.</li>
+        <li>Upload illegal, harmful, hateful or infringing content.</li>
+        <li>Use the service to harass, abuse, defame or threaten any person.</li>
+      </ul>
+
+      <h2>13. Abuse Prevention &amp; Fair Usage</h2>
+      <p>
+        We apply rate limits, anti-abuse checks and reasonable usage caps to keep the service
+        fast and fair for everyone. Excessive automated traffic, scraping, or attempts to circumvent
+        these limits may be throttled or blocked.
+      </p>
+
+      <h2>14. Account Suspension</h2>
+      <p>
+        We may suspend or terminate accounts that breach these Terms, abuse the service, attempt
+        to compromise its security, or pose a risk to other users. Where possible we will give
+        notice; in serious cases we may act immediately.
+      </p>
+
+      <h2>15. Subscription Rules</h2>
+      <p>
+        Paid features are available only on an active paid subscription. Subscriptions renew
+        according to the terms shown at checkout. Downgrading or cancellation removes access to
+        paid features at the end of the current billing period.
+      </p>
+
+      <h2>16. Beta Program Terms</h2>
+      <p>
+        While Studio Sensei is in beta, features may change, be added, or be removed. Beta features
+        are provided "as-is" without any guarantee of availability, accuracy, or fitness for any
+        particular purpose. You are encouraged to keep backups of important audio and to submit
+        bug reports via the in-app feedback page.
+      </p>
+
+      <h2>17. Ownership Confirmation</h2>
+      <p>
+        You retain 100% ownership of all music, beats, stems and projects you upload. Studio Sensei
+        does not claim copyright, publishing or master rights in your content. By uploading audio
+        you grant Studio Sensei a limited, revocable, non-exclusive licence to process that audio
+        solely to provide the analysis and coaching services to you. See the full
+        <a href="/ownership"> Ownership Policy</a>.
+      </p>
+
+      <h2>18. Limitation of Warranty &amp; Liability</h2>
+      <p>
+        The service is provided "as-is" and "as-available" without warranties of any kind, whether
+        express or implied, including merchantability, fitness for a particular purpose, and
+        non-infringement. To the maximum extent permitted by law, Studio Sensei will not be liable
+        for indirect, incidental, special, consequential, or punitive damages, or for any loss of
+        revenue, profits, goodwill, or data, arising from your use of the service.
+      </p>
     </LegalLayout>
   );
 }

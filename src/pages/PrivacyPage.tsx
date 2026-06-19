@@ -66,6 +66,64 @@ export default function PrivacyPage() {
         For data requests, contact the Studio Sensei admin team in-app. Information Regulator:
         inforeg@justice.gov.za
       </p>
+
+      <h2>10. How uploaded audio is used</h2>
+      <p>
+        Uploaded audio is processed solely to deliver the analysis and coaching features you
+        actively use (loudness, dynamics, key, BPM, stereo width, frequency balance, coaching).
+        Studio Sensei does not publish, distribute, sell, or use your audio to train external AI
+        systems. Ownership remains with you — see the <a href="/ownership">Ownership Policy</a>.
+      </p>
+
+      <h2>11. How analysis reports are stored</h2>
+      <p>
+        Analysis reports are stored against your account in our encrypted database and protected
+        by Row-Level Security so only you (and Studio Sensei admins, for support and abuse
+        investigations) can read them. Deleting a report removes it from your account.
+      </p>
+
+      <h2>12. How profile data is stored</h2>
+      <p>
+        Profile data (display name, role, studio setup, plugin inventory) is stored in our
+        encrypted database, protected by Row-Level Security and accessible only to you and
+        Studio Sensei admins where strictly necessary for support.
+      </p>
+
+      <h2>13. What we collect — and what we don't</h2>
+      <p>We collect:</p>
+      <ul>
+        <li>Account: email, display name, hashed password.</li>
+        <li>Uploaded audio you choose to analyze, plus the resulting analysis report.</li>
+        <li>Usage events used to keep the product working and detect abuse.</li>
+      </ul>
+      <p>We do <strong>not</strong> collect:</p>
+      <ul>
+        <li>Payment-card numbers directly (handled by payment provider when applicable).</li>
+        <li>Contact lists, microphone outside of uploads, location, or device identifiers.</li>
+        <li>Browsing activity outside Studio Sensei.</li>
+      </ul>
+
+      <h2>14. Data retention</h2>
+      <p>
+        Account data is kept while your account is active. Uploaded audio and analysis reports
+        are kept until you delete them or close your account. Security/audit logs are kept for
+        up to 12 months.
+      </p>
+
+      <h2>15. Account deletion</h2>
+      <p>
+        You may request deletion of your account at any time from within the app or by
+        contacting the admin team. Deletion removes your profile, uploaded audio references,
+        analysis reports, track sessions, and feedback. Some security/audit logs may be retained
+        for the period above to comply with legal obligations.
+      </p>
+
+      <h2>16. Beta testing disclaimer</h2>
+      <p>
+        Studio Sensei is currently in beta. Features may change, and occasional issues are
+        expected. Please avoid uploading your only copy of irreplaceable audio. Use the in-app
+        <a href="/feedback"> Feedback</a> page to report problems.
+      </p>
     </LegalLayout>
   );
 }
