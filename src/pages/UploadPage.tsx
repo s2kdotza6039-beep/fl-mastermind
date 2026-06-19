@@ -241,20 +241,41 @@ export default function UploadPage() {
   // Load saved region selection per file once we know its duration (decoded ready).
   useEffect(() => {
     const key = regionKey(file);
-    if (!key || !decoded || selection) return;
+    if (!key || !decoded) return;
     try {
       const raw = localStorage.getItem(key);
-      if (!raw) return;
+      if (!raw) { setSavedRegion(null); return; }
       const r = JSON.parse(raw) as RegionPreset;
-      if (typeof r.startSec === "number" && typeof r.endSec === "number" && r.endSec > r.startSec) {
-        const clampedEnd = Math.min(r.endSec, decoded.duration);
-        const clampedStart = Math.max(0, Math.min(r.startSec, clampedEnd - 0.05));
-        if (clampedEnd - clampedStart >= 0.25) {
-          setSelection({ startSec: clampedStart, endSec: clampedEnd });
-          toast.message("Restored saved selection", {
-            description: `${clampedStart.toFixed(2)}s – ${clampedEnd.toFixed(2)}s`,
+      if (typeof r.startSec !== "number" || typeof r.endSec !== "number" || r.endSec <= r.startSec) {
+        setSavedRegion(null); return;
+      }
+      // Auto-clamp to valid bounds.
+      const origStart = r.startSec, origEnd = r.endSec;
+      const clampedEnd = Math.max(0.25, Math.min(origEnd, decoded.duration));
+      const clampedStart = Math.max(0, Math.min(origStart, clampedEnd - 0.05));
+      const adjusted = clampedStart !== origStart || clampedEnd !== origEnd;
+      if (clampedEnd - clampedStart < 0.25) {
+        // Region became invalid after clamp — drop it.
+        localStorage.removeItem(key);
+        setSavedRegion(null);
+        if (adjusted) {
+          toast.warning("Saved region was outside this file and was discarded", {
+            description: `Original ${origStart.toFixed(2)}s – ${origEnd.toFixed(2)}s exceeded ${decoded.duration.toFixed(2)}s.`,
           });
         }
+        return;
+      }
+      const finalRegion: RegionPreset = { startSec: clampedStart, endSec: clampedEnd, savedAt: r.savedAt };
+      setSavedRegion(finalRegion);
+      if (!selection) setSelection({ startSec: clampedStart, endSec: clampedEnd });
+      if (adjusted) {
+        toast.warning("Saved region was clamped to valid bounds", {
+          description: `Adjusted from ${origStart.toFixed(2)}–${origEnd.toFixed(2)}s to ${clampedStart.toFixed(2)}–${clampedEnd.toFixed(2)}s.`,
+        });
+      } else {
+        toast.message("Restored saved selection", {
+          description: `${clampedStart.toFixed(2)}s – ${clampedEnd.toFixed(2)}s`,
+        });
       }
     } catch (e) {
       console.warn("Failed to load region preset", e);
@@ -268,10 +289,13 @@ export default function UploadPage() {
     if (!key) return;
     const handle = setTimeout(() => {
       try {
-        if (!selection) localStorage.removeItem(key);
-        else {
+        if (!selection) {
+          localStorage.removeItem(key);
+          setSavedRegion(null);
+        } else {
           const p: RegionPreset = { startSec: selection.startSec, endSec: selection.endSec, savedAt: new Date().toISOString() };
           localStorage.setItem(key, JSON.stringify(p));
+          setSavedRegion(p);
         }
       } catch (e) { console.warn("Failed to save region preset", e); }
     }, 400);
