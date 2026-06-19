@@ -147,7 +147,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
         nativePlugins: inventoryComplete ? inventory?.native_plugins ?? undefined : undefined,
         thirdPartyPlugins: inventoryComplete ? inventory?.third_party_plugins ?? undefined : undefined,
         customPlugins: inventoryComplete ? inventory?.custom_plugins ?? undefined : undefined,
-        audio: audioContext,
+        audio: audioContext ?? toChatAudio(),
       },
       onDelta: upsert,
       onDone: () => setLoading(false),
