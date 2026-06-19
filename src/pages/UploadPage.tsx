@@ -122,6 +122,49 @@ export default function UploadPage() {
   const audioUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
   useEffect(() => () => { if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
 
+  // Load saved BPM preset for this file (if any) when it's selected.
+  useEffect(() => {
+    const key = presetKey(file);
+    if (!key) return;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const p = JSON.parse(raw) as BpmPreset;
+      if (typeof p.nudge === "number") setBpmNudge(p.nudge);
+      if (typeof p.offsetSec === "number") setDownbeatOffsetSec(p.offsetSec);
+      toast.message(`Restored saved BPM alignment for ${file!.name}`, {
+        description: `nudge ${p.nudge >= 0 ? "+" : ""}${p.nudge.toFixed(1)} BPM · offset ${p.offsetSec.toFixed(2)}s`,
+      });
+    } catch (e) {
+      console.warn("Failed to load BPM preset", e);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file]);
+
+  // Auto-save BPM preset when alignment changes (debounced via timer).
+  useEffect(() => {
+    const key = presetKey(file);
+    if (!key) return;
+    const handle = setTimeout(() => {
+      try {
+        if (bpmNudge === 0 && downbeatOffsetSec === 0) {
+          localStorage.removeItem(key);
+        } else {
+          const preset: BpmPreset = {
+            nudge: bpmNudge,
+            offsetSec: downbeatOffsetSec,
+            savedAt: new Date().toISOString(),
+          };
+          localStorage.setItem(key, JSON.stringify(preset));
+        }
+      } catch (e) {
+        console.warn("Failed to save BPM preset", e);
+      }
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [file, bpmNudge, downbeatOffsetSec]);
+
+
   const reset = () => {
     setFile(null);
     setDecoded(null);
