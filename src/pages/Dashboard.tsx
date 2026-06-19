@@ -15,6 +15,7 @@ import { StudioSetupCard } from "@/components/StudioSetupCard";
 import { SetupChecklistCard } from "@/components/SetupChecklistCard";
 import { PluginInventoryCard } from "@/components/PluginInventoryCard";
 import { ActiveTrackChip } from "@/components/ActiveTrackChip";
+import { CoachThisTrackButton } from "@/components/CoachThisTrackButton";
 import { supabase } from "@/integrations/supabase/client";
 
 const FEATURES = [
