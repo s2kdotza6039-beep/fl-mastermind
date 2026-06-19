@@ -229,13 +229,15 @@ async function exportReportPdf(
 
 interface AudioReportCardProps {
   result: AudioAnalysisResult;
-  /** Optional getter so the PDF export can embed a waveform snapshot. */
   getWaveformSnapshot?: () => string | null;
+  /** When set, indicates the report covers only this region of the original file. */
+  analyzedRange?: { startSec: number; endSec: number } | null;
 }
 
-export function AudioReportCard({ result, getWaveformSnapshot }: AudioReportCardProps) {
+export function AudioReportCard({ result, getWaveformSnapshot, analyzedRange }: AudioReportCardProps) {
   const { metrics: m, issues } = result;
   const durStr = `${Math.floor(m.durationSec / 60)}:${String(Math.floor(m.durationSec % 60)).padStart(2, "0")}`;
+  const fmtT = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
 
   return (
     <div className="space-y-4">
@@ -245,13 +247,19 @@ export function AudioReportCard({ result, getWaveformSnapshot }: AudioReportCard
           <div className="flex items-center gap-2">
             <AudioLines className="w-5 h-5 text-primary" />
             <h3 className="font-display text-lg font-bold">Audio Analysis Report</h3>
+            {analyzedRange && (
+              <Badge variant="default" className="text-[10px]">
+                Region {fmtT(analyzedRange.startSec)}–{fmtT(analyzedRange.endSec)}
+              </Badge>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="text-[10px]">
               {m.fileFormat.toUpperCase()} · {m.sampleRate} Hz · {m.isStereo ? "stereo" : "mono"}
             </Badge>
-            <Button size="sm" variant="outline" onClick={() => exportReportPdf(result, getWaveformSnapshot?.())}>
-              <Download className="w-3.5 h-3.5 mr-1.5" /> Export PDF
+            <Button size="sm" variant="outline" onClick={() => exportReportPdf(result, getWaveformSnapshot?.(), analyzedRange)}>
+              <Download className="w-3.5 h-3.5 mr-1.5" />
+              {analyzedRange ? "Export PDF (region)" : "Export PDF"}
             </Button>
           </div>
         </div>
