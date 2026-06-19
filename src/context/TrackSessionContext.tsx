@@ -198,6 +198,9 @@ export const TrackSessionProvider = ({ children }: { children: ReactNode }) => {
         detail: String(i?.detail ?? ""),
         recommendation: String(i?.recommendation ?? ""),
       })),
+      recommendations: Array.isArray(active.recommendations)
+        ? active.recommendations.map((r: any) => String(r)).filter(Boolean)
+        : [],
     };
   }, [active]);
 
