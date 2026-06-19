@@ -86,6 +86,7 @@ export default function UploadPage() {
     setFile(null);
     setDecoded(null);
     setResult(null);
+    setAnalyzedRange(null);
     setPeaks(null);
     setAskSensei(false);
     setProgress(0);
@@ -94,6 +95,9 @@ export default function UploadPage() {
     setSelection(null);
     setError(null);
     setRetryCount(0);
+    setBpmNudge(0);
+    setDownbeatOffsetSec(0);
+    setDiagnostics(null);
   };
 
   const pushStatus = useCallback((pct: number, label: string) => {
