@@ -590,6 +590,26 @@ export default function UploadPage() {
               </div>
             )}
 
+            {beatInfo && (
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-muted-foreground px-1">
+                <span>Timeline: <span className="text-foreground tabular-nums">{beatInfo.total}</span> beats · <span className="text-foreground tabular-nums">{beatInfo.bars}</span> bars (4/4)</span>
+                <span>Beat interval: <span className="text-foreground tabular-nums">{beatInfo.msPerBeat.toFixed(1)} ms</span></span>
+                <span>First downbeat: <span className="text-foreground tabular-nums">{beatInfo.offset.toFixed(3)}s</span></span>
+                {(bpmNudge !== 0 || downbeatOffsetSec !== 0) && (
+                  <span className="text-primary/80">↳ saved per-file preset</span>
+                )}
+              </div>
+            )}
+
+            {selection && (
+              <div className="mt-3">
+                <Button type="button" size="sm" variant="outline" onClick={exportSelectionWav} title="Download the selected region as a WAV file">
+                  <FileAudio2 className="w-3.5 h-3.5 mr-1.5" />
+                  Export selection as WAV ({(selection.endSec - selection.startSec).toFixed(2)}s)
+                </Button>
+              </div>
+            )}
+
             {!result && !analyzing && !error && (
               <Button
                 onClick={runAnalysis}
