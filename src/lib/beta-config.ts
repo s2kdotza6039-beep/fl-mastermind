@@ -4,9 +4,9 @@
 export const BETA_CONFIG = {
   /** Retention window for soft-deleted audio reports before permanent purge. */
   deletedAudioRetentionDays: 7,
-  /** Public rate-limit thresholds we publish to users (per minute). */
+  /** Public rate-limit thresholds we publish to users (per minute). Match edge-function constants. */
   rateLimits: {
-    chat: { free: 20, paid: 60, admin: 200 },
+    chat: { free: 12, paid: 60, admin: 200 },
     keyDetect: { free: 6, paid: 30, admin: 100 },
   },
   /** Email used for the seeded initial admin account. */

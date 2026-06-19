@@ -203,7 +203,13 @@ export default function KeyDetectionPage() {
       const data = await resp.json();
       if (!resp.ok) {
         URL.revokeObjectURL(previewUrl);
-        toast.error(data.error ?? "Detection failed.");
+        if (resp.status === 429) {
+          const retry = Number(resp.headers.get("Retry-After")) || undefined;
+          const { friendlyRateLimitMessage } = await import("@/lib/beta-config");
+          toast.error(friendlyRateLimitMessage(retry));
+        } else {
+          toast.error(data.error ?? "Detection failed.");
+        }
         return;
       }
       setRoot(data.root as Note);
