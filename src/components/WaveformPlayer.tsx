@@ -15,6 +15,8 @@ interface WaveformPlayerProps {
   bpm?: number | null;
   /** Confidence 0–1 controls beat-grid opacity (low conf = faint). */
   bpmConfidence?: number;
+  /** Phase offset (seconds) — where the first downbeat sits. */
+  bpmOffsetSec?: number;
   selection?: WaveformSelection | null;
   onSelectionChange?: (sel: WaveformSelection | null) => void;
   /** Receives the underlying canvas so the parent can snapshot it (e.g. for PDF export). */
@@ -35,6 +37,7 @@ export function WaveformPlayer({
   durationSec,
   bpm,
   bpmConfidence = 1,
+  bpmOffsetSec = 0,
   selection,
   onSelectionChange,
   onCanvasRef,
@@ -100,10 +103,12 @@ export function WaveformPlayer({
       const alpha = Math.max(0.15, Math.min(0.7, bpmConfidence));
       const beatColor = `hsl(${root.getPropertyValue("--primary").trim() || "45 95% 55%"} / ${alpha})`;
       const downbeatColor = `hsl(${root.getPropertyValue("--primary").trim() || "45 95% 55%"} / ${Math.min(1, alpha + 0.25)})`;
-      const totalBeats = Math.floor(dur / beatSec);
+      const offset = ((bpmOffsetSec % beatSec) + beatSec) % beatSec;
+      const totalBeats = Math.floor((dur - offset) / beatSec);
       const maxBeats = Math.min(totalBeats, 512);
       for (let i = 0; i <= maxBeats; i++) {
-        const t = i * beatSec;
+        const t = offset + i * beatSec;
+        if (t > dur) break;
         const x = (t / dur) * cssW;
         const isDownbeat = i % 4 === 0;
         ctx.fillStyle = isDownbeat ? downbeatColor : beatColor;
@@ -129,7 +134,7 @@ export function WaveformPlayer({
     // Playhead
     ctx.fillStyle = primary;
     ctx.fillRect(Math.max(0, playedX - 1), 0, 2, cssH);
-  }, [peaks, pos, actualDuration, durationSec, bpm, bpmConfidence, selection]);
+  }, [peaks, pos, actualDuration, durationSec, bpm, bpmConfidence, bpmOffsetSec, selection]);
 
   useEffect(() => {
     const a = audioRef.current;

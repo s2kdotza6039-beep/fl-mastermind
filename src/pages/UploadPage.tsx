@@ -5,13 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
-  UploadCloud, FileAudio, X, Sparkles, Loader2, MessageCircle, RefreshCcw, AlertTriangle, Scissors,
+  UploadCloud, FileAudio, X, Sparkles, Loader2, MessageCircle, RefreshCcw, AlertTriangle,
+  Scissors, Minus, Plus, Target, FileJson,
 } from "lucide-react";
 import { SenseiChat } from "@/components/SenseiChat";
 import { AudioReportCard } from "@/components/AudioReportCard";
 import { WaveformPlayer, type WaveformSelection } from "@/components/WaveformPlayer";
 import {
-  analyzeAudioFileInWorker,
   computeWaveformPeaks,
   decodeAudioToChannels,
   detectFormat,
@@ -32,6 +32,31 @@ interface StatusEntry {
   at: number;
 }
 
+interface Diagnostics {
+  startedAt: string;
+  fileName: string;
+  fileSizeBytes: number;
+  fileFormat: string;
+  decodedReused: boolean;
+  decodeMs: number;
+  dspMs: number;
+  totalMs: number;
+  fallbackToMainThread: boolean;
+  retryAttempted: boolean;
+  range: { startSec: number; endSec: number } | null;
+  workerSupported: boolean;
+  hardwareConcurrency: number;
+  userAgent: string;
+  bpm: number | null;
+  bpmConfidence: number;
+  bpmConfidenceLabel: string;
+  detectedKey: string | null;
+  keyConfidence: number;
+  keyConfidenceLabel: string;
+  statusLog: StatusEntry[];
+  errorMessage?: string;
+}
+
 export default function UploadPage() {
   const { user } = useAuth();
   const [file, setFile] = useState<File | null>(null);
@@ -41,11 +66,15 @@ export default function UploadPage() {
   const [progressLabel, setProgressLabel] = useState("");
   const [statusLog, setStatusLog] = useState<StatusEntry[]>([]);
   const [result, setResult] = useState<AudioAnalysisResult | null>(null);
+  const [analyzedRange, setAnalyzedRange] = useState<WaveformSelection | null>(null);
   const [peaks, setPeaks] = useState<Float32Array | null>(null);
   const [askSensei, setAskSensei] = useState(false);
   const [selection, setSelection] = useState<WaveformSelection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [bpmNudge, setBpmNudge] = useState(0); // ± offset on top of detected BPM
+  const [downbeatOffsetSec, setDownbeatOffsetSec] = useState(0);
+  const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const waveformCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -56,6 +85,7 @@ export default function UploadPage() {
     setFile(null);
     setDecoded(null);
     setResult(null);
+    setAnalyzedRange(null);
     setPeaks(null);
     setAskSensei(false);
     setProgress(0);
@@ -64,6 +94,9 @@ export default function UploadPage() {
     setSelection(null);
     setError(null);
     setRetryCount(0);
+    setBpmNudge(0);
+    setDownbeatOffsetSec(0);
+    setDiagnostics(null);
   };
 
   const pushStatus = useCallback((pct: number, label: string) => {
@@ -132,42 +165,114 @@ export default function UploadPage() {
     setError(null);
     setProgress(0);
     setStatusLog([]);
-    pushStatus(2, selection ? `Re-analyzing selection (${selection.startSec.toFixed(1)}s–${selection.endSec.toFixed(1)}s)…` : "Starting full-track analysis…");
+    const collectedLog: StatusEntry[] = [];
+    let sawFallback = false;
+    const trackingPush = (pct: number, label: string) => {
+      if (/main thread|worker unavailable/i.test(label)) sawFallback = true;
+      collectedLog.push({ pct, label, at: Date.now() });
+      pushStatus(pct, label);
+    };
+    const t0 = performance.now();
+    const startedAt = new Date().toISOString();
+    let decodeMs = 0, decodedReused = !!decoded;
+    trackingPush(2, selection
+      ? `Re-analyzing selection (${selection.startSec.toFixed(1)}s–${selection.endSec.toFixed(1)}s)…`
+      : decoded ? "Reusing cached decoded buffer — re-running DSP only…" : "Starting full-track analysis…");
     try {
       let workingDecoded = decoded;
       if (!workingDecoded) {
-        pushStatus(5, "Decoding audio in browser…");
+        trackingPush(5, "Decoding audio in browser…");
+        const tDec = performance.now();
         workingDecoded = await decodeAudioToChannels(file);
+        decodeMs = performance.now() - tDec;
         setDecoded(workingDecoded);
         try { setPeaks(computeWaveformPeaks(workingDecoded.channelData[0], 600)); } catch (e) { console.warn(e); }
       }
+      const tDsp = performance.now();
       const res = await runAnalysisOnDecoded(
         workingDecoded,
         { name: file.name, format: detectFormat(file), sizeBytes: file.size },
         selection ?? undefined,
-        pushStatus,
+        trackingPush,
       );
+      const dspMs = performance.now() - tDsp;
       setResult(res);
+      setAnalyzedRange(selection ?? null);
+      // Reset visual BPM tweaks when a fresh detection lands.
+      setBpmNudge(0);
+      setDownbeatOffsetSec(0);
+      setDiagnostics({
+        startedAt,
+        fileName: file.name,
+        fileSizeBytes: file.size,
+        fileFormat: detectFormat(file),
+        decodedReused,
+        decodeMs: Math.round(decodeMs),
+        dspMs: Math.round(dspMs),
+        totalMs: Math.round(performance.now() - t0),
+        fallbackToMainThread: sawFallback,
+        retryAttempted: retryCount > 0,
+        range: selection ?? null,
+        workerSupported: typeof Worker !== "undefined",
+        hardwareConcurrency: navigator.hardwareConcurrency || 0,
+        userAgent: navigator.userAgent,
+        bpm: res.metrics.bpm,
+        bpmConfidence: res.metrics.bpmConfidence.value,
+        bpmConfidenceLabel: res.metrics.bpmConfidence.label,
+        detectedKey: res.metrics.detectedKey,
+        keyConfidence: res.metrics.keyConfidence.value,
+        keyConfidenceLabel: res.metrics.keyConfidence.label,
+        statusLog: collectedLog.slice(-30),
+      });
       await persistReport(res);
       toast.success(selection ? "Selection analyzed" : "Analysis complete");
     } catch (e: any) {
       const msg = e?.message || "Failed to analyze audio";
       console.error("[analysis]", e);
       setError(msg);
-      // Auto-retry once for transient worker failures.
+      setDiagnostics({
+        startedAt,
+        fileName: file.name,
+        fileSizeBytes: file.size,
+        fileFormat: detectFormat(file),
+        decodedReused,
+        decodeMs: Math.round(decodeMs),
+        dspMs: 0,
+        totalMs: Math.round(performance.now() - t0),
+        fallbackToMainThread: sawFallback,
+        retryAttempted: retryCount > 0,
+        range: selection ?? null,
+        workerSupported: typeof Worker !== "undefined",
+        hardwareConcurrency: navigator.hardwareConcurrency || 0,
+        userAgent: navigator.userAgent,
+        bpm: null, bpmConfidence: 0, bpmConfidenceLabel: "unreliable",
+        detectedKey: null, keyConfidence: 0, keyConfidenceLabel: "unreliable",
+        statusLog: collectedLog.slice(-30),
+        errorMessage: msg,
+      });
+      // Auto-retry once for transient worker failures — reuse the cached decoded buffer.
       if (retryCount === 0 && /worker|timed out|crashed/i.test(msg)) {
         setRetryCount(1);
-        toast.message("Worker failed — retrying on main thread…");
+        toast.message("Worker failed — retrying with cached buffer on main thread…");
         try {
-          if (file) {
-            const { result: res, decoded: d } = await analyzeAudioFileInWorker(file, pushStatus);
-            setResult(res);
-            setDecoded(d);
-            setPeaks(computeWaveformPeaks(d.channelData[0], 600));
-            await persistReport(res);
-            setError(null);
-            toast.success("Analysis complete (recovered)");
+          let working = decoded;
+          if (!working && file) {
+            working = await decodeAudioToChannels(file);
+            setDecoded(working);
+            setPeaks(computeWaveformPeaks(working.channelData[0], 600));
           }
+          if (!working) throw new Error("No decoded buffer available for retry.");
+          const res = await runAnalysisOnDecoded(
+            working,
+            { name: file!.name, format: detectFormat(file!), sizeBytes: file!.size },
+            selection ?? undefined,
+            trackingPush,
+          );
+          setResult(res);
+          setAnalyzedRange(selection ?? null);
+          await persistReport(res);
+          setError(null);
+          toast.success("Analysis complete (recovered from cache)");
         } catch (e2: any) {
           setError(e2?.message || msg);
           toast.error("Analysis failed — see error below");
@@ -179,6 +284,38 @@ export default function UploadPage() {
       setAnalyzing(false);
     }
   };
+
+  /** Snap the beat grid's downbeat to the first prominent onset detected in the waveform peaks. */
+  const snapToDownbeat = () => {
+    if (!peaks || peaks.length === 0) return;
+    const dur = result?.metrics.durationSec ?? decoded?.duration ?? 0;
+    if (dur <= 0) return;
+    // Scan first ~6s for the loudest peak; use it as downbeat anchor.
+    const window = Math.min(peaks.length, Math.floor((6 / dur) * peaks.length));
+    let maxIdx = 0, maxVal = 0;
+    for (let i = 0; i < window; i++) {
+      if (peaks[i] > maxVal) { maxVal = peaks[i]; maxIdx = i; }
+    }
+    const t = (maxIdx / peaks.length) * dur;
+    setDownbeatOffsetSec(t);
+    toast.success(`Downbeat snapped to ${t.toFixed(2)}s`);
+  };
+
+  const downloadDiagnostics = () => {
+    if (!diagnostics) return;
+    const blob = new Blob([JSON.stringify(diagnostics, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const safe = (file?.name || "track").replace(/\.[a-z0-9]+$/i, "").replace(/[^a-z0-9_-]+/gi, "_");
+    a.href = url;
+    a.download = `audio-diagnostics-${safe}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const effectiveBpm = result?.metrics.bpm != null ? Math.max(20, result.metrics.bpm + bpmNudge) : null;
 
   const senseiAudioContext = result
     ? {
@@ -269,12 +406,43 @@ export default function UploadPage() {
                 src={audioUrl}
                 peaks={peaks}
                 durationSec={result?.metrics.durationSec ?? decoded?.duration ?? 0}
-                bpm={result?.metrics.bpm ?? null}
+                bpm={effectiveBpm}
                 bpmConfidence={bpmConfidenceValue}
+                bpmOffsetSec={downbeatOffsetSec}
                 selection={selection}
                 onSelectionChange={setSelection}
                 onCanvasRef={(c) => { waveformCanvasRef.current = c; }}
               />
+            )}
+
+            {result?.metrics.bpm != null && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 p-2 rounded-md bg-secondary/40 border border-border text-xs">
+                <span className="text-muted-foreground">Beat grid:</span>
+                <Button type="button" size="icon" variant="outline" className="h-7 w-7" aria-label="Nudge BPM −1" onClick={() => setBpmNudge((n) => Math.round((n - 1) * 10) / 10)}>
+                  <Minus className="w-3 h-3" />
+                </Button>
+                <Button type="button" size="sm" variant="outline" className="h-7 px-2" onClick={() => setBpmNudge((n) => Math.round((n - 0.1) * 10) / 10)}>−0.1</Button>
+                <span className="tabular-nums font-semibold min-w-[60px] text-center">
+                  {effectiveBpm?.toFixed(1)} BPM
+                </span>
+                <Button type="button" size="sm" variant="outline" className="h-7 px-2" onClick={() => setBpmNudge((n) => Math.round((n + 0.1) * 10) / 10)}>+0.1</Button>
+                <Button type="button" size="icon" variant="outline" className="h-7 w-7" aria-label="Nudge BPM +1" onClick={() => setBpmNudge((n) => Math.round((n + 1) * 10) / 10)}>
+                  <Plus className="w-3 h-3" />
+                </Button>
+                {bpmNudge !== 0 && (
+                  <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[10px]" onClick={() => setBpmNudge(0)}>Reset</Button>
+                )}
+                <span className="text-muted-foreground ml-2">Downbeat:</span>
+                <Button type="button" size="sm" variant="outline" className="h-7 px-2" onClick={() => setDownbeatOffsetSec((o) => Math.max(0, o - 0.01))}>−10ms</Button>
+                <span className="tabular-nums min-w-[55px] text-center">{downbeatOffsetSec.toFixed(2)}s</span>
+                <Button type="button" size="sm" variant="outline" className="h-7 px-2" onClick={() => setDownbeatOffsetSec((o) => o + 0.01)}>+10ms</Button>
+                <Button type="button" size="sm" variant="outline" className="h-7 px-2" onClick={snapToDownbeat}>
+                  <Target className="w-3 h-3 mr-1" /> Snap to onset
+                </Button>
+                {downbeatOffsetSec !== 0 && (
+                  <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[10px]" onClick={() => setDownbeatOffsetSec(0)}>Reset offset</Button>
+                )}
+              </div>
             )}
 
             {!result && !analyzing && !error && (
@@ -346,11 +514,22 @@ export default function UploadPage() {
                     <X className="w-4 h-4 mr-2" /> Clear selection
                   </Button>
                 )}
+                {diagnostics && (
+                  <Button variant="outline" onClick={downloadDiagnostics} title="Download analysis diagnostics (timings, fallback path, confidence values) as JSON">
+                    <FileJson className="w-4 h-4 mr-2" /> Download diagnostics
+                  </Button>
+                )}
               </div>
             )}
           </Card>
 
-          {result && <AudioReportCard result={result} getWaveformSnapshot={getWaveformSnapshot} />}
+          {result && (
+            <AudioReportCard
+              result={result}
+              getWaveformSnapshot={getWaveformSnapshot}
+              analyzedRange={analyzedRange}
+            />
+          )}
 
           {result && askSensei && (
             <Card className="studio-card overflow-hidden h-[60vh] flex flex-col mt-6">
