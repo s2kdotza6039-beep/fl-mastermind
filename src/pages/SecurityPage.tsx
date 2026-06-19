@@ -3,6 +3,8 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Shield, Lock, KeyRound, Users, Activity, EyeOff, Gauge, FileLock2, Database, ShieldCheck } from "lucide-react";
 
+import { BETA_CONFIG } from "@/lib/beta-config";
+
 const ITEMS = [
   { icon: KeyRound, title: "Authentication", body: "Sign in with email + password or Google. Passwords are never stored in plain text — they are hashed using industry-standard algorithms." },
   { icon: Lock, title: "Encryption", body: "Everything in transit is protected by TLS 1.2+. Stored data is encrypted at rest by our cloud infrastructure (AES-256)." },
@@ -12,8 +14,9 @@ const ITEMS = [
   { icon: Activity, title: "Audit Logging", body: "Account events (sign-ins, role changes, security alerts) are logged so suspicious activity can be detected and reviewed." },
   { icon: EyeOff, title: "Private by Default", body: "Your uploads, analyses and sessions are private to your account. Nothing is published, indexed or shared without you explicitly choosing to." },
   { icon: FileLock2, title: "Signed Access", body: "When private files need to be loaded, they are served via short-lived signed URLs — links expire and cannot be guessed or replayed." },
-  { icon: Gauge, title: "Rate Limiting & Abuse Protection", body: "Automated traffic, scraping, and credential-stuffing attempts are throttled and flagged before they reach your data." },
-  { icon: Shield, title: "Admin Monitoring", body: "A small admin team reviews security alerts and abuse reports. We disclose material incidents to affected users in line with applicable law." },
+  { icon: Gauge, title: "Rate Limiting & Abuse Protection", body: `Automated traffic and credential-stuffing attempts are throttled. Beta limits per minute: chat ${BETA_CONFIG.rateLimits.chat.free}/${BETA_CONFIG.rateLimits.chat.paid} (free/paid), key detection ${BETA_CONFIG.rateLimits.keyDetect.free}/${BETA_CONFIG.rateLimits.keyDetect.paid}. Hitting a limit shows a friendly retry message.` },
+  { icon: Database, title: "Data Retention", body: `Deleted audio analyses are kept in a recoverable state for ${BETA_CONFIG.deletedAudioRetentionDays} days, then permanently purged. Account deletion removes your data immediately.` },
+  { icon: Shield, title: "Admin Monitoring", body: "A small admin team reviews security alerts and abuse reports. We disclose material incidents on the public status page in line with applicable law." },
 ];
 
 export default function SecurityPage() {
@@ -48,7 +51,8 @@ export default function SecurityPage() {
       <p className="text-xs text-muted-foreground mt-6">
         See also: <Link to="/ownership" className="text-primary hover:underline">Ownership Policy</Link>{" · "}
         <Link to="/privacy" className="text-primary hover:underline">Privacy Policy</Link>{" · "}
-        <Link to="/terms" className="text-primary hover:underline">Terms</Link>
+        <Link to="/terms" className="text-primary hover:underline">Terms</Link>{" · "}
+        <Link to="/status" className="text-primary hover:underline">System Status</Link>
       </p>
     </div>
   );

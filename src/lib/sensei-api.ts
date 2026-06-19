@@ -81,7 +81,11 @@ export async function streamSenseiChat({
       const data = await resp.json();
       if (data?.error) msg = data.error;
     } catch {}
-    if (resp.status === 429) msg = "Too many requests. Wait a moment and try again.";
+    if (resp.status === 429) {
+      const retry = Number(resp.headers.get("Retry-After")) || undefined;
+      const { friendlyRateLimitMessage } = await import("./beta-config");
+      msg = friendlyRateLimitMessage(retry);
+    }
     if (resp.status === 402) msg = "AI credits exhausted. Add funds in Lovable Cloud workspace settings.";
     onError(msg);
     return;

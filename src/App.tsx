@@ -37,6 +37,7 @@ import UpgradePage from "./pages/UpgradePage";
 import OwnershipPage from "./pages/OwnershipPage";
 import SecurityPage from "./pages/SecurityPage";
 import FeedbackPage from "./pages/FeedbackPage";
+import StatusPage from "./pages/StatusPage";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -58,6 +59,7 @@ function AppShell() {
       <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/ownership" element={<OwnershipPage />} />
       <Route path="/security" element={<SecurityPage />} />
+      <Route path="/status" element={<StatusPage />} />
       <Route path="/feedback" element={<ProtectedRoute><FeedbackPage /></ProtectedRoute>} />
 
       {/* Authed */}

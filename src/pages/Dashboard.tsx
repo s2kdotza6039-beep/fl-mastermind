@@ -18,6 +18,7 @@ import { ActiveTrackChip } from "@/components/ActiveTrackChip";
 import { CoachThisTrackButton } from "@/components/CoachThisTrackButton";
 import { AnalysisHistoryPanel } from "@/components/AnalysisHistoryPanel";
 import { BetaNotice } from "@/components/BetaNotice";
+import { StatusBanner } from "@/components/StatusBanner";
 import { TrustScorecard } from "@/components/TrustScorecard";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -82,6 +83,7 @@ export default function Dashboard() {
         }
       />
 
+      <StatusBanner />
       <BetaNotice />
       <TrustScorecard />
       <StudioSetupCard />
