@@ -359,31 +359,44 @@ export default function UploadPage() {
 
   const persistReport = async (res: AudioAnalysisResult) => {
     if (!user) return;
-    const { error: insertErr } = await supabase.from("audio_analysis_reports").insert({
-      user_id: user.id,
-      file_name: res.metrics.fileName,
-      file_format: res.metrics.fileFormat,
-      file_size_bytes: res.metrics.fileSizeBytes,
-      duration_sec: res.metrics.durationSec,
-      sample_rate: res.metrics.sampleRate,
-      bit_rate: res.metrics.bitRate,
-      channels: res.metrics.channels,
-      peak_db: res.metrics.peakDb,
-      rms_db: res.metrics.rmsDb,
-      lufs_estimate: res.metrics.lufsEstimate,
-      dynamic_range_db: res.metrics.dynamicRangeDb,
-      stereo_width: res.metrics.stereoWidth,
-      bpm: res.metrics.bpm,
-      detected_key: res.metrics.detectedKey,
-      band_low_db: res.metrics.bands.low,
-      band_lowmid_db: res.metrics.bands.lowMid,
-      band_mid_db: res.metrics.bands.mid,
-      band_highmid_db: res.metrics.bands.highMid,
-      band_high_db: res.metrics.bands.high,
-      detected_issues: res.issues as unknown as any,
-      recommendations: res.recommendations as unknown as any,
-    });
-    if (insertErr) console.warn("Failed to save analysis report:", insertErr.message);
+    const { data: inserted, error: insertErr } = await supabase
+      .from("audio_analysis_reports")
+      .insert({
+        user_id: user.id,
+        file_name: res.metrics.fileName,
+        file_format: res.metrics.fileFormat,
+        file_size_bytes: res.metrics.fileSizeBytes,
+        duration_sec: res.metrics.durationSec,
+        sample_rate: res.metrics.sampleRate,
+        bit_rate: res.metrics.bitRate,
+        channels: res.metrics.channels,
+        peak_db: res.metrics.peakDb,
+        rms_db: res.metrics.rmsDb,
+        lufs_estimate: res.metrics.lufsEstimate,
+        dynamic_range_db: res.metrics.dynamicRangeDb,
+        stereo_width: res.metrics.stereoWidth,
+        bpm: res.metrics.bpm,
+        detected_key: res.metrics.detectedKey,
+        band_low_db: res.metrics.bands.low,
+        band_lowmid_db: res.metrics.bands.lowMid,
+        band_mid_db: res.metrics.bands.mid,
+        band_highmid_db: res.metrics.bands.highMid,
+        band_high_db: res.metrics.bands.high,
+        detected_issues: res.issues as unknown as any,
+        recommendations: res.recommendations as unknown as any,
+      })
+      .select("id")
+      .maybeSingle();
+    if (insertErr) {
+      console.warn("Failed to save analysis report:", insertErr.message);
+      return;
+    }
+    if (inserted?.id) {
+      setLastReportId(inserted.id);
+      // Auto-activate this report as the coaching session
+      await setActiveReport(inserted.id);
+      await refreshRecent();
+    }
   };
 
   const runAnalysis = async () => {
