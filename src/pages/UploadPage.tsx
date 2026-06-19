@@ -9,6 +9,7 @@ import {
   Scissors, Minus, Plus, Target, FileJson, FileAudio2, Clipboard,
 } from "lucide-react";
 import { SenseiChat } from "@/components/SenseiChat";
+import { ActiveTrackChip } from "@/components/ActiveTrackChip";
 import { AudioReportCard } from "@/components/AudioReportCard";
 import { WaveformPlayer, type WaveformSelection, type WaveformPlayerHandle } from "@/components/WaveformPlayer";
 import {
