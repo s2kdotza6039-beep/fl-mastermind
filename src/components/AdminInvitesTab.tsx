@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Mail, KeyRound, Loader2, Trash2, Plus, Copy } from "lucide-react";
+import { Mail, KeyRound, Loader2, Trash2, Plus, Copy, RotateCw, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 interface Invite {
@@ -69,6 +69,16 @@ export function AdminInvitesTab() {
     if (error) return toast.error(error.message);
     load();
   }
+
+  async function rotateAllCodes() {
+    if (!confirm("Revoke ALL unused invite codes and mint one fresh replacement code? Email allowlist entries are not affected.")) return;
+    const { data, error } = await supabase.rpc("admin_rotate_beta_codes");
+    if (error) return toast.error(error.message);
+    const row = Array.isArray(data) ? data[0] : data;
+    toast.success(`Revoked ${row?.revoked_count ?? 0} code${row?.revoked_count === 1 ? "" : "s"} · New code: ${row?.new_code}`);
+    load();
+  }
+
 
   function copyCode(code: string) {
     navigator.clipboard.writeText(code).then(() => toast.success("Code copied"));
