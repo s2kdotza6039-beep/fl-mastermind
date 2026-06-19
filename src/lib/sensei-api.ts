@@ -33,6 +33,7 @@ export interface ChatContext {
     detectedKey?: string | null;
     bands?: { low: number; lowMid: number; mid: number; highMid: number; high: number };
     issues?: Array<{ severity: string; title: string; detail: string; recommendation: string }>;
+    recommendations?: string[];
   };
 }
 
