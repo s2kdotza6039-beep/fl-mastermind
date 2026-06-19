@@ -515,11 +515,22 @@ export default function UploadPage() {
                     <X className="w-4 h-4 mr-2" /> Clear selection
                   </Button>
                 )}
+                {diagnostics && (
+                  <Button variant="outline" onClick={downloadDiagnostics} title="Download analysis diagnostics (timings, fallback path, confidence values) as JSON">
+                    <FileJson className="w-4 h-4 mr-2" /> Download diagnostics
+                  </Button>
+                )}
               </div>
             )}
           </Card>
 
-          {result && <AudioReportCard result={result} getWaveformSnapshot={getWaveformSnapshot} />}
+          {result && (
+            <AudioReportCard
+              result={result}
+              getWaveformSnapshot={getWaveformSnapshot}
+              analyzedRange={analyzedRange}
+            />
+          )}
 
           {result && askSensei && (
             <Card className="studio-card overflow-hidden h-[60vh] flex flex-col mt-6">
