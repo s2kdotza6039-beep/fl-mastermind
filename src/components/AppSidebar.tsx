@@ -35,6 +35,7 @@ const NAV: NavItem[] = [
   { title: "FL Studio Setup", url: "/studio-setup", icon: Settings2, group: "Tools" },
   { title: "Plugin Inventory", url: "/plugin-inventory", icon: Boxes, group: "Tools" },
   { title: "Beta Feedback", url: "/feedback", icon: MessageSquare, group: "Tools" },
+  { title: "Settings", url: "/settings", icon: Settings2, group: "Tools" },
   { title: "Admin", url: "/admin", icon: Shield, group: "Admin", adminOnly: true },
 ];
 
