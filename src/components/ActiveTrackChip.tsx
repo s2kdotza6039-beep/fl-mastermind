@@ -125,16 +125,35 @@ export const ActiveTrackChip = ({ className }: { className?: string }) => {
             triggerLabel="Change track"
             triggerIcon={<Repeat className="w-3 h-3" />}
           />
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={async () => {
-              await clearActive();
-              toast("Active track cleared — chat returned to general mode");
-            }}
-          >
-            <X className="w-3 h-3 mr-1" /> Clear
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button size="sm" variant="ghost">
+                <X className="w-3 h-3 mr-1" /> Clear
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Clear active coaching session?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Sensei will stop using <span className="font-semibold">{active.file_name}</span> as
+                  context across Chat, Mixing, Mastering, Quick Fix, Problems and Genre. The
+                  analysis report itself stays in your history — you can re-activate it from
+                  Analysis History at any time.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={async () => {
+                    await clearActive();
+                    toast("Active track cleared — chat returned to general mode");
+                  }}
+                >
+                  Clear session
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
     </Card>
