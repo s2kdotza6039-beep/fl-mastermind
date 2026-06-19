@@ -97,8 +97,10 @@ const App = () => {
             <StudioSetupProvider>
               <PluginInventoryProvider>
                 <SessionProvider>
-                  <ScrollToTop />
-                  <AppShell />
+                  <TrackSessionProvider>
+                    <ScrollToTop />
+                    <AppShell />
+                  </TrackSessionProvider>
                 </SessionProvider>
               </PluginInventoryProvider>
             </StudioSetupProvider>
