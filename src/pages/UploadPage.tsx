@@ -282,9 +282,7 @@ export default function UploadPage() {
       const dspMs = performance.now() - tDsp;
       setResult(res);
       setAnalyzedRange(selection ?? null);
-      // Reset visual BPM tweaks when a fresh detection lands.
-      setBpmNudge(0);
-      setDownbeatOffsetSec(0);
+      // Keep the user's BPM nudge / downbeat offset — they're per-file presets now.
       setDiagnostics({
         startedAt,
         fileName: file.name,
