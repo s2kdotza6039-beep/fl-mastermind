@@ -314,6 +314,22 @@ export default function KeyDetectionPage() {
 
       <ActiveTrackChip />
 
+      {rateLimit && (
+        <div className="mb-4">
+          <RateLimitNotice
+            retryAfterSec={rateLimit.retryAfterSec}
+            message={rateLimit.message}
+            onRetry={() => {
+              const f = lastFileRef.current;
+              setRateLimit(null);
+              if (f) handleUpload(f);
+            }}
+            onDismiss={() => setRateLimit(null)}
+          />
+        </div>
+      )}
+
+
       {/* Stepper */}
       <Card className="studio-card p-4 mb-6">
         <div className="flex items-center justify-between mb-3">
