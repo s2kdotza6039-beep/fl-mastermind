@@ -131,6 +131,30 @@ export type Database = {
         }
         Relationships: []
       }
+      audio_purge_runs: {
+        Row: {
+          id: string
+          purged_count: number
+          ran_at: string
+          source: string
+          triggered_by: string | null
+        }
+        Insert: {
+          id?: string
+          purged_count?: number
+          ran_at?: string
+          source?: string
+          triggered_by?: string | null
+        }
+        Update: {
+          id?: string
+          purged_count?: number
+          ran_at?: string
+          source?: string
+          triggered_by?: string | null
+        }
+        Relationships: []
+      }
       beta_feedback: {
         Row: {
           admin_notes: string | null
@@ -536,6 +560,13 @@ export type Database = {
         Returns: {
           email: string
           user_id: string
+        }[]
+      }
+      admin_rotate_beta_codes: {
+        Args: never
+        Returns: {
+          new_code: string
+          revoked_count: number
         }[]
       }
       check_beta_invite: {
