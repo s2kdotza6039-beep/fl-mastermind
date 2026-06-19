@@ -103,10 +103,12 @@ export function WaveformPlayer({
       const alpha = Math.max(0.15, Math.min(0.7, bpmConfidence));
       const beatColor = `hsl(${root.getPropertyValue("--primary").trim() || "45 95% 55%"} / ${alpha})`;
       const downbeatColor = `hsl(${root.getPropertyValue("--primary").trim() || "45 95% 55%"} / ${Math.min(1, alpha + 0.25)})`;
-      const totalBeats = Math.floor(dur / beatSec);
+      const offset = ((bpmOffsetSec % beatSec) + beatSec) % beatSec;
+      const totalBeats = Math.floor((dur - offset) / beatSec);
       const maxBeats = Math.min(totalBeats, 512);
       for (let i = 0; i <= maxBeats; i++) {
-        const t = i * beatSec;
+        const t = offset + i * beatSec;
+        if (t > dur) break;
         const x = (t / dur) * cssW;
         const isDownbeat = i % 4 === 0;
         ctx.fillStyle = isDownbeat ? downbeatColor : beatColor;
