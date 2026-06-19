@@ -4,6 +4,7 @@ import { SenseiChat } from "@/components/SenseiChat";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Wrench, Mic, Speaker, Sparkles, Volume2, Scale, Crown } from "lucide-react";
+import { ActiveTrackChip } from "@/components/ActiveTrackChip";
 
 const ACTIONS = [
   { label: "Fix My Vocal", icon: Mic, prompt: "Help me fix my vocal. It needs to sit professionally in the mix. Walk me through the FL Studio chain step by step." },
