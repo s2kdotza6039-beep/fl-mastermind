@@ -55,6 +55,7 @@ export type Database = {
           bpm: number | null
           channels: number | null
           created_at: string
+          deleted_at: string | null
           detected_issues: Json
           detected_key: string | null
           duration_sec: number | null
@@ -82,6 +83,7 @@ export type Database = {
           bpm?: number | null
           channels?: number | null
           created_at?: string
+          deleted_at?: string | null
           detected_issues?: Json
           detected_key?: string | null
           duration_sec?: number | null
@@ -109,6 +111,7 @@ export type Database = {
           bpm?: number | null
           channels?: number | null
           created_at?: string
+          deleted_at?: string | null
           detected_issues?: Json
           detected_key?: string | null
           duration_sec?: number | null
@@ -164,6 +167,96 @@ export type Database = {
           type?: Database["public"]["Enums"]["feedback_type"]
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      beta_invites: {
+        Row: {
+          code: string | null
+          created_at: string
+          created_by: string | null
+          email: string | null
+          expires_at: string | null
+          id: string
+          updated_at: string
+          used_at: string | null
+          used_by: string | null
+        }
+        Insert: {
+          code?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          expires_at?: string | null
+          id?: string
+          updated_at?: string
+          used_at?: string | null
+          used_by?: string | null
+        }
+        Update: {
+          code?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          expires_at?: string | null
+          id?: string
+          updated_at?: string
+          used_at?: string | null
+          used_by?: string | null
+        }
+        Relationships: []
+      }
+      incidents: {
+        Row: {
+          body: string
+          created_at: string
+          created_by: string | null
+          id: string
+          resolved_at: string | null
+          severity: Database["public"]["Enums"]["incident_severity"]
+          started_at: string
+          status: Database["public"]["Enums"]["incident_status"]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          resolved_at?: string | null
+          severity?: Database["public"]["Enums"]["incident_severity"]
+          started_at?: string
+          status?: Database["public"]["Enums"]["incident_status"]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          resolved_at?: string | null
+          severity?: Database["public"]["Enums"]["incident_severity"]
+          started_at?: string
+          status?: Database["public"]["Enums"]["incident_status"]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      pending_admin_emails: {
+        Row: {
+          created_at: string
+          email: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
         }
         Relationships: []
       }
@@ -445,6 +538,10 @@ export type Database = {
           user_id: string
         }[]
       }
+      check_beta_invite: {
+        Args: { _code?: string; _email: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -452,11 +549,18 @@ export type Database = {
         }
         Returns: boolean
       }
+      purge_deleted_audio_reports: { Args: never; Returns: number }
     }
     Enums: {
       app_role: "admin" | "paid" | "free"
       feedback_status: "open" | "in_progress" | "resolved"
       feedback_type: "bug" | "feature" | "general"
+      incident_severity: "info" | "minor" | "major" | "critical"
+      incident_status:
+        | "investigating"
+        | "identified"
+        | "monitoring"
+        | "resolved"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -587,6 +691,13 @@ export const Constants = {
       app_role: ["admin", "paid", "free"],
       feedback_status: ["open", "in_progress", "resolved"],
       feedback_type: ["bug", "feature", "general"],
+      incident_severity: ["info", "minor", "major", "critical"],
+      incident_status: [
+        "investigating",
+        "identified",
+        "monitoring",
+        "resolved",
+      ],
     },
   },
 } as const
