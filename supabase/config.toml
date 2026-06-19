@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.detect-key]
 verify_jwt = false
+
+[functions.status-feed]
+verify_jwt = false
