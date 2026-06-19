@@ -60,18 +60,47 @@ interface Diagnostics {
   errorMessage?: string;
 }
 const PRESET_PREFIX = "studio-sensei:bpm-preset:v1:";
+const REGION_PREFIX = "studio-sensei:region-preset:v1:";
 
 function presetKey(file: File | null): string | null {
   if (!file) return null;
   return `${PRESET_PREFIX}${file.name}:${file.size}`;
 }
+function regionKey(file: File | null): string | null {
+  if (!file) return null;
+  return `${REGION_PREFIX}${file.name}:${file.size}`;
+}
 
 interface BpmPreset { nudge: number; offsetSec: number; savedAt: string }
+interface RegionPreset { startSec: number; endSec: number; savedAt: string }
 
-function encodeWavPCM16(channels: Float32Array[], sampleRate: number): Blob {
+export type WavBitDepth = "pcm16" | "pcm24" | "float32";
+
+/** Linear resampler (per-channel). For MVP — fine for export, not pristine quality. */
+function resampleChannels(channels: Float32Array[], fromRate: number, toRate: number): Float32Array[] {
+  if (fromRate === toRate) return channels.map((c) => new Float32Array(c));
+  const ratio = fromRate / toRate;
+  const newLen = Math.floor(channels[0].length / ratio);
+  return channels.map((src) => {
+    const out = new Float32Array(newLen);
+    for (let i = 0; i < newLen; i++) {
+      const srcIdx = i * ratio;
+      const i0 = Math.floor(srcIdx);
+      const i1 = Math.min(src.length - 1, i0 + 1);
+      const t = srcIdx - i0;
+      out[i] = src[i0] * (1 - t) + src[i1] * t;
+    }
+    return out;
+  });
+}
+
+function encodeWav(channels: Float32Array[], sampleRate: number, depth: WavBitDepth): Blob {
   const numCh = channels.length;
   const numFrames = channels[0]?.length ?? 0;
-  const dataLen = numFrames * numCh * 2;
+  const bytesPerSample = depth === "pcm16" ? 2 : depth === "pcm24" ? 3 : 4;
+  const isFloat = depth === "float32";
+  const formatTag = isFloat ? 3 : 1; // 1 = PCM, 3 = IEEE float
+  const dataLen = numFrames * numCh * bytesPerSample;
   const buf = new ArrayBuffer(44 + dataLen);
   const view = new DataView(buf);
   const writeStr = (off: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
@@ -80,21 +109,31 @@ function encodeWavPCM16(channels: Float32Array[], sampleRate: number): Blob {
   writeStr(8, "WAVE");
   writeStr(12, "fmt ");
   view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);             // PCM
+  view.setUint16(20, formatTag, true);
   view.setUint16(22, numCh, true);
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * numCh * 2, true);
-  view.setUint16(32, numCh * 2, true);
-  view.setUint16(34, 16, true);
+  view.setUint32(28, sampleRate * numCh * bytesPerSample, true);
+  view.setUint16(32, numCh * bytesPerSample, true);
+  view.setUint16(34, bytesPerSample * 8, true);
   writeStr(36, "data");
   view.setUint32(40, dataLen, true);
   let off = 44;
   for (let f = 0; f < numFrames; f++) {
     for (let c = 0; c < numCh; c++) {
-      let s = Math.max(-1, Math.min(1, channels[c][f]));
-      s = s < 0 ? s * 0x8000 : s * 0x7fff;
-      view.setInt16(off, s, true);
-      off += 2;
+      const sample = Math.max(-1, Math.min(1, channels[c][f]));
+      if (depth === "pcm16") {
+        view.setInt16(off, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+        off += 2;
+      } else if (depth === "pcm24") {
+        const v = Math.round((sample < 0 ? sample * 0x800000 : sample * 0x7fffff)) | 0;
+        view.setUint8(off, v & 0xff);
+        view.setUint8(off + 1, (v >> 8) & 0xff);
+        view.setUint8(off + 2, (v >> 16) & 0xff);
+        off += 3;
+      } else {
+        view.setFloat32(off, sample, true);
+        off += 4;
+      }
     }
   }
   return new Blob([buf], { type: "audio/wav" });
