@@ -7,6 +7,7 @@ import { useSession } from "@/context/SessionContext";
 import { useAuth } from "@/context/AuthContext";
 import { useStudioSetup } from "@/context/StudioSetupContext";
 import { usePluginInventory } from "@/context/PluginInventoryContext";
+import { useTrackSession } from "@/context/TrackSessionContext";
 import { streamSenseiChat, type ChatMsg } from "@/lib/sensei-api";
 import { SenseiMarkdown } from "./SenseiMarkdown";
 import { toast } from "sonner";
