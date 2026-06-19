@@ -164,6 +164,7 @@ export default function AdminPage() {
           <TabsTrigger value="alerts">Alerts {unresolved > 0 && <Badge variant="destructive" className="ml-2">{unresolved}</Badge>}</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
           <TabsTrigger value="audio">Audio Reports</TabsTrigger>
+          <TabsTrigger value="sessions">Track Sessions</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users">
