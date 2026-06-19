@@ -286,6 +286,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          audio_startup_scope: string | null
           avatar_url: string | null
           created_at: string
           display_name: string | null
@@ -294,6 +295,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          audio_startup_scope?: string | null
           avatar_url?: string | null
           created_at?: string
           display_name?: string | null
@@ -302,6 +304,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          audio_startup_scope?: string | null
           avatar_url?: string | null
           created_at?: string
           display_name?: string | null
