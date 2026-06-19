@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Activity, CheckCircle2, AlertTriangle, Info, Loader2, ArrowLeft } from "lucide-react";
+import { Activity, CheckCircle2, AlertTriangle, Info, Loader2, ArrowLeft, Rss, Code2 } from "lucide-react";
 
 interface Incident {
   id: string;
@@ -52,6 +52,24 @@ export default function StatusPage() {
         <p className="text-sm text-muted-foreground mt-1">
           Current operational status and recent incidents during beta. Maintained by the Studio Sensei team.
         </p>
+        <div className="flex items-center gap-3 mt-3 text-xs">
+          <a
+            href={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/status-feed?format=rss`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border hover:border-primary/40 hover:text-primary"
+          >
+            <Rss className="w-3 h-3" /> RSS feed
+          </a>
+          <a
+            href={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/status-feed?format=json`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border hover:border-primary/40 hover:text-primary"
+          >
+            <Code2 className="w-3 h-3" /> JSON Feed
+          </a>
+        </div>
       </header>
 
       {rows === null ? (

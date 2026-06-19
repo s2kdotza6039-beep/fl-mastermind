@@ -21,6 +21,7 @@ import { AdminFeedbackTab } from "@/components/AdminFeedbackTab";
 import { BetaLaunchChecklist } from "@/components/BetaLaunchChecklist";
 import { AdminIncidentsTab } from "@/components/AdminIncidentsTab";
 import { AdminInvitesTab } from "@/components/AdminInvitesTab";
+import { AdminPurgeAuditTab } from "@/components/AdminPurgeAuditTab";
 
 
 interface UserRow {
@@ -172,6 +173,7 @@ export default function AdminPage() {
           <TabsTrigger value="feedback">Beta Feedback</TabsTrigger>
           <TabsTrigger value="invites">Invites</TabsTrigger>
           <TabsTrigger value="incidents">Status</TabsTrigger>
+          <TabsTrigger value="purge">Purge Audit</TabsTrigger>
           <TabsTrigger value="beta">Beta Checklist</TabsTrigger>
         </TabsList>
 
@@ -314,6 +316,11 @@ export default function AdminPage() {
         <TabsContent value="incidents">
           <AdminIncidentsTab />
         </TabsContent>
+
+        <TabsContent value="purge">
+          <AdminPurgeAuditTab />
+        </TabsContent>
+
 
         <TabsContent value="beta">
           <BetaLaunchChecklist />
