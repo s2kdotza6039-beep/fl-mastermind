@@ -41,6 +41,8 @@ import SecurityPage from "./pages/SecurityPage";
 import FeedbackPage from "./pages/FeedbackPage";
 import StatusPage from "./pages/StatusPage";
 import SettingsPage from "./pages/SettingsPage";
+import ProjectsPage from "./pages/ProjectsPage";
+import ProjectDetailPage from "./pages/ProjectDetailPage";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
