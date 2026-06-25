@@ -263,6 +263,11 @@ export default function AdminPage() {
           <SetupsTab setups={setups} users={users} loading={loading} />
         </TabsContent>
 
+        <TabsContent value="projects">
+          <AdminProjectsTab />
+        </TabsContent>
+
+
         <TabsContent value="inventories">
           <InventoriesTab users={users} />
         </TabsContent>
