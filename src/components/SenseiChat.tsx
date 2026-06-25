@@ -397,11 +397,18 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
                       size="sm"
                       variant="ghost"
                       className="mt-2 h-7 text-xs text-primary hover:bg-primary/10"
-                      onClick={() => {
-                        saveAdvice({
-                          title: messages[i - 1]?.content.slice(0, 60) ?? "Saved advice",
-                          content: m.content,
-                        });
+                      onClick={async () => {
+                        const title = messages[i - 1]?.content.slice(0, 60) ?? "Saved advice";
+                        saveAdvice({ title, content: m.content });
+                        if (activeProject && user) {
+                          try {
+                            await addAdvice(user.id, activeProject.id, {
+                              title, content: m.content, source_page: "chat",
+                            });
+                            toast.success(`Saved to "${activeProject.name}"`);
+                            return;
+                          } catch {/* fall through */}
+                        }
                         toast.success("Saved to your dashboard");
                       }}
                     >
