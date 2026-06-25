@@ -83,6 +83,9 @@ function AppShell() {
       <Route path="/studio-setup" element={<ProtectedRoute><StudioSetupPage /></ProtectedRoute>} />
       <Route path="/plugin-inventory" element={<ProtectedRoute><PluginInventoryPage /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+      <Route path="/projects" element={<ProtectedRoute><ProjectsPage /></ProtectedRoute>} />
+      <Route path="/projects/:id" element={<ProtectedRoute><ProjectDetailPage /></ProtectedRoute>} />
+
 
       {/* Paid only */}
       <Route path="/chains" element={<ProtectedRoute requirePaid><ChainBuilderPage /></ProtectedRoute>} />
