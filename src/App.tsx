@@ -9,6 +9,7 @@ import { AuthProvider } from "@/context/AuthContext";
 import { StudioSetupProvider } from "@/context/StudioSetupContext";
 import { PluginInventoryProvider } from "@/context/PluginInventoryContext";
 import { TrackSessionProvider } from "@/context/TrackSessionContext";
+import { ProjectProvider } from "@/context/ProjectContext";
 import StudioSetupPage from "./pages/StudioSetupPage";
 import PluginInventoryPage from "./pages/PluginInventoryPage";
 import { StudioLayout } from "@/components/StudioLayout";
