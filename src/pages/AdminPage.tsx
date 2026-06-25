@@ -22,6 +22,7 @@ import { BetaLaunchChecklist } from "@/components/BetaLaunchChecklist";
 import { AdminIncidentsTab } from "@/components/AdminIncidentsTab";
 import { AdminInvitesTab } from "@/components/AdminInvitesTab";
 import { AdminPurgeAuditTab } from "@/components/AdminPurgeAuditTab";
+import { AdminProjectsTab } from "@/components/AdminProjectsTab";
 
 
 interface UserRow {
@@ -163,6 +164,7 @@ export default function AdminPage() {
       <Tabs defaultValue="users">
         <TabsList>
           <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="projects">Projects</TabsTrigger>
           <TabsTrigger value="setups">FL Setups</TabsTrigger>
           <TabsTrigger value="inventories">Plugin Inventories</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
@@ -260,6 +262,11 @@ export default function AdminPage() {
         <TabsContent value="setups">
           <SetupsTab setups={setups} users={users} loading={loading} />
         </TabsContent>
+
+        <TabsContent value="projects">
+          <AdminProjectsTab />
+        </TabsContent>
+
 
         <TabsContent value="inventories">
           <InventoriesTab users={users} />

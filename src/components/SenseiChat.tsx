@@ -8,12 +8,14 @@ import { useAuth } from "@/context/AuthContext";
 import { useStudioSetup } from "@/context/StudioSetupContext";
 import { usePluginInventory } from "@/context/PluginInventoryContext";
 import { useTrackSession } from "@/context/TrackSessionContext";
+import { useProject } from "@/context/ProjectContext";
 import { streamSenseiChat, type ChatMsg } from "@/lib/sensei-api";
 import { SenseiMarkdown } from "./SenseiMarkdown";
 import { RateLimitNotice } from "./RateLimitNotice";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { editionToTier, forbiddenPlugins, eligiblePlugins, tierLabel } from "@/lib/fl-plugin-eligibility";
+import { addAdvice, appendChatMessage, buildProjectAiContext, listChatMessages } from "@/lib/project-memory";
 
 // Detect mentions of owned plugins in assistant text.
 // Short brand names (≤3 chars) use word-boundary to avoid false matches.
@@ -57,13 +59,15 @@ interface SenseiChatProps {
 
 export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatProps) => {
   const { genre, stage, projectName, saveAdvice } = useSession();
-  const { isPaid } = useAuth();
+  const { isPaid, user } = useAuth();
   const { setup } = useStudioSetup();
   const { inventory, isComplete: inventoryComplete } = usePluginInventory();
   const { toChatAudio } = useTrackSession();
+  const { activeProject } = useProject();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string; lastInput: string } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentInitial = useRef(false);
@@ -104,13 +108,28 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
     };
   }, [setup?.fl_edition]);
 
+  // Load persisted chat history for the active project (only when not in compact embed mode).
   useEffect(() => {
-    if (initialPrompt && !sentInitial.current) {
+    if (compact || !activeProject) { setHistoryLoaded(true); return; }
+    let cancelled = false;
+    setHistoryLoaded(false);
+    listChatMessages(activeProject.id, 100)
+      .then((msgs) => {
+        if (cancelled) return;
+        setMessages(msgs.map((m) => ({ role: m.role === "system" ? "assistant" : m.role, content: m.content })));
+        setHistoryLoaded(true);
+      })
+      .catch(() => setHistoryLoaded(true));
+    return () => { cancelled = true; };
+  }, [activeProject?.id, compact]);
+
+  useEffect(() => {
+    if (initialPrompt && !sentInitial.current && historyLoaded) {
       sentInitial.current = true;
       send(initialPrompt);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialPrompt]);
+  }, [initialPrompt, historyLoaded]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -125,6 +144,17 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
     setMessages(next);
     setInput("");
     setLoading(true);
+
+    // Persist user turn to project memory.
+    if (activeProject && user) {
+      appendChatMessage(user.id, activeProject.id, { role: "user", content: trimmed, source_page: "chat" }).catch(() => {});
+    }
+
+    // Build long-term project memory for the AI (don't block on failure).
+    let projectMemory: any = undefined;
+    if (activeProject) {
+      try { projectMemory = await buildProjectAiContext(activeProject); } catch {/* ignore */}
+    }
 
     let acc = "";
     const upsert = (chunk: string) => {
@@ -141,7 +171,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
     await streamSenseiChat({
       messages: next,
       context: {
-        genre, stage, projectName,
+        genre, stage, projectName: activeProject?.name ?? projectName,
         flVersion: setup?.fl_version ?? undefined,
         flEdition: setup?.fl_edition ?? undefined,
         mainUse: setup?.main_use ?? undefined,
@@ -151,9 +181,16 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
         thirdPartyPlugins: inventoryComplete ? inventory?.third_party_plugins ?? undefined : undefined,
         customPlugins: inventoryComplete ? inventory?.custom_plugins ?? undefined : undefined,
         audio: audioContext ?? toChatAudio(),
+        projectMemory,
       },
       onDelta: upsert,
-      onDone: () => setLoading(false),
+      onDone: () => {
+        setLoading(false);
+        // Persist the assistant turn once streaming finishes.
+        if (activeProject && user && acc.trim()) {
+          appendChatMessage(user.id, activeProject.id, { role: "assistant", content: acc, source_page: "chat" }).catch(() => {});
+        }
+      },
       onError: (msg) => {
         setLoading(false);
         toast.error(msg);
@@ -360,11 +397,18 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
                       size="sm"
                       variant="ghost"
                       className="mt-2 h-7 text-xs text-primary hover:bg-primary/10"
-                      onClick={() => {
-                        saveAdvice({
-                          title: messages[i - 1]?.content.slice(0, 60) ?? "Saved advice",
-                          content: m.content,
-                        });
+                      onClick={async () => {
+                        const title = messages[i - 1]?.content.slice(0, 60) ?? "Saved advice";
+                        saveAdvice({ title, content: m.content });
+                        if (activeProject && user) {
+                          try {
+                            await addAdvice(user.id, activeProject.id, {
+                              title, content: m.content, source_page: "chat",
+                            });
+                            toast.success(`Saved to "${activeProject.name}"`);
+                            return;
+                          } catch {/* fall through */}
+                        }
                         toast.success("Saved to your dashboard");
                       }}
                     >

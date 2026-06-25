@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, MessageCircle, Wrench, Disc3, Music2,
-  Sliders, Volume2, Layers, ListChecks, UploadCloud, Crown, KeyRound, Shield, Lock, Settings2, Boxes, MessageSquare,
+  Sliders, Volume2, Layers, ListChecks, UploadCloud, Crown, KeyRound, Shield, Lock, Settings2, Boxes, MessageSquare, FolderOpen,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
@@ -21,6 +21,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard, group: "Studio" },
+  { title: "My Projects", url: "/projects", icon: FolderOpen, group: "Studio" },
   { title: "Sensei Chat", url: "/chat", icon: MessageCircle, group: "Studio" },
   { title: "Quick Fixes", url: "/quick", icon: Wrench, group: "Coach" },
   { title: "Mix Problems", url: "/problems", icon: Disc3, group: "Coach" },

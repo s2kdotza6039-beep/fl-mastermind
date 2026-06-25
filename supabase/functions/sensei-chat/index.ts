@@ -318,6 +318,40 @@ AUDIO COACHING RULES (MANDATORY):
 - For every fix give Option 1 (recommended), Option 2 (alternative), Option 3 (creative).`;
     }
 
+    // ---------- PROJECT MEMORY CONTEXT ----------
+    // Long-term memory of the producer's current song: pending advice, resolved items,
+    // track versions, and prior coaching outcomes. Keeps Sensei from re-recommending fixed problems.
+    const pm = ctx?.projectMemory;
+    if (pm && typeof pm === "object" && typeof pm.projectName === "string") {
+      const strSafe = (v: unknown, max = 80) => (typeof v === "string" ? v.slice(0, max) : "");
+      const pendingList = Array.isArray(pm.pendingAdviceTitles)
+        ? pm.pendingAdviceTitles.filter((t: any) => typeof t === "string").slice(0, 8)
+        : [];
+      const recent = Array.isArray(pm.recentAdvice)
+        ? pm.recentAdvice.filter((r: any) => r && typeof r.title === "string").slice(0, 10)
+        : [];
+      system += `\n\nPROJECT MEMORY (long-term context for THIS song — reference it explicitly to feel like a mentor who remembers):
+- Project name: ${strSafe(pm.projectName, 80)}
+- Genre: ${strSafe(pm.projectGenre, 40) || "(not set)"}
+- Description: ${strSafe(pm.projectDescription, 200) || "(none)"}
+- Current track: ${strSafe(pm.currentTrackFileName, 80) || "(none uploaded yet)"}
+- Track versions on record: ${typeof pm.trackVersionCount === "number" ? pm.trackVersionCount : 0}
+- Open issues remaining: ${typeof pm.openIssueCount === "number" ? pm.openIssueCount : 0}
+- Resolved/applied advice so far: ${typeof pm.resolvedAdviceCount === "number" ? pm.resolvedAdviceCount : 0}
+
+PENDING ADVICE NOT YET ADDRESSED:
+${pendingList.length ? pendingList.map((t: string) => `- ${strSafe(t, 120)}`).join("\n") : "- (none)"}
+
+RECENT ADVICE HISTORY (newest first, with status):
+${recent.length ? recent.map((r: any) => `- [${strSafe(r.status, 12).toUpperCase()}] ${strSafe(r.title, 120)}`).join("\n") : "- (no prior advice on this project)"}
+
+MEMORY RULES (MANDATORY):
+- Refer to the project by name when natural ("On ${strSafe(pm.projectName, 60)}…").
+- Do NOT re-recommend advice already marked RESOLVED or APPLIED — acknowledge the user did it.
+- Build on pending advice; ask if they tried it before moving on.
+- Treat this like ongoing mentorship of a single song, not a one-off chat.`;
+    }
+
     // Tier-gated detail level
     if (!isPaid) {
       system += `\n\nFREE TIER NOTE: Keep responses focused and educational. Mention that advanced multi-stage plug-in chains (Trap, Amapiano, Drill, R&B, Afrobeat full mix templates) are available to paid members and suggest upgrading at /upgrade when relevant.`;

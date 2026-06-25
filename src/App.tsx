@@ -9,6 +9,7 @@ import { AuthProvider } from "@/context/AuthContext";
 import { StudioSetupProvider } from "@/context/StudioSetupContext";
 import { PluginInventoryProvider } from "@/context/PluginInventoryContext";
 import { TrackSessionProvider } from "@/context/TrackSessionContext";
+import { ProjectProvider } from "@/context/ProjectContext";
 import StudioSetupPage from "./pages/StudioSetupPage";
 import PluginInventoryPage from "./pages/PluginInventoryPage";
 import { StudioLayout } from "@/components/StudioLayout";
@@ -40,6 +41,8 @@ import SecurityPage from "./pages/SecurityPage";
 import FeedbackPage from "./pages/FeedbackPage";
 import StatusPage from "./pages/StatusPage";
 import SettingsPage from "./pages/SettingsPage";
+import ProjectsPage from "./pages/ProjectsPage";
+import ProjectDetailPage from "./pages/ProjectDetailPage";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -80,6 +83,9 @@ function AppShell() {
       <Route path="/studio-setup" element={<ProtectedRoute><StudioSetupPage /></ProtectedRoute>} />
       <Route path="/plugin-inventory" element={<ProtectedRoute><PluginInventoryPage /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+      <Route path="/projects" element={<ProtectedRoute><ProjectsPage /></ProtectedRoute>} />
+      <Route path="/projects/:id" element={<ProtectedRoute><ProjectDetailPage /></ProtectedRoute>} />
+
 
       {/* Paid only */}
       <Route path="/chains" element={<ProtectedRoute requirePaid><ChainBuilderPage /></ProtectedRoute>} />
@@ -109,9 +115,11 @@ const App = () => {
               <PluginInventoryProvider>
                 <SessionProvider>
                   <TrackSessionProvider>
-                    <ScrollToTop />
-                    <AudioGlobalBindings />
-                    <AppShell />
+                    <ProjectProvider>
+                      <ScrollToTop />
+                      <AudioGlobalBindings />
+                      <AppShell />
+                    </ProjectProvider>
                   </TrackSessionProvider>
                 </SessionProvider>
               </PluginInventoryProvider>

@@ -20,6 +20,7 @@ import { AnalysisHistoryPanel } from "@/components/AnalysisHistoryPanel";
 import { BetaNotice } from "@/components/BetaNotice";
 import { StatusBanner } from "@/components/StatusBanner";
 import { TrustScorecard } from "@/components/TrustScorecard";
+import { ContinueProjectBanner } from "@/components/ContinueProjectBanner";
 import { supabase } from "@/integrations/supabase/client";
 
 const FEATURES = [
@@ -83,6 +84,7 @@ export default function Dashboard() {
         }
       />
 
+      <ContinueProjectBanner />
       <StatusBanner />
       <BetaNotice />
       <TrustScorecard />
