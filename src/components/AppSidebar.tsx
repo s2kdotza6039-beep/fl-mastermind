@@ -21,6 +21,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard, group: "Studio" },
+  { title: "My Projects", url: "/projects", icon: FolderOpen, group: "Studio" },
   { title: "Sensei Chat", url: "/chat", icon: MessageCircle, group: "Studio" },
   { title: "Quick Fixes", url: "/quick", icon: Wrench, group: "Coach" },
   { title: "Mix Problems", url: "/problems", icon: Disc3, group: "Coach" },
