@@ -8,12 +8,14 @@ import { useAuth } from "@/context/AuthContext";
 import { useStudioSetup } from "@/context/StudioSetupContext";
 import { usePluginInventory } from "@/context/PluginInventoryContext";
 import { useTrackSession } from "@/context/TrackSessionContext";
+import { useProject } from "@/context/ProjectContext";
 import { streamSenseiChat, type ChatMsg } from "@/lib/sensei-api";
 import { SenseiMarkdown } from "./SenseiMarkdown";
 import { RateLimitNotice } from "./RateLimitNotice";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { editionToTier, forbiddenPlugins, eligiblePlugins, tierLabel } from "@/lib/fl-plugin-eligibility";
+import { addAdvice, appendChatMessage, buildProjectAiContext, listChatMessages } from "@/lib/project-memory";
 
 // Detect mentions of owned plugins in assistant text.
 // Short brand names (≤3 chars) use word-boundary to avoid false matches.
