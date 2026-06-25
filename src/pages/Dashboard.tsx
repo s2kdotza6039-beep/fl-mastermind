@@ -84,6 +84,7 @@ export default function Dashboard() {
         }
       />
 
+      <ContinueProjectBanner />
       <StatusBanner />
       <BetaNotice />
       <TrustScorecard />
