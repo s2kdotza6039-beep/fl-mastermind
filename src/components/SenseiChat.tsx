@@ -145,6 +145,17 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
     setInput("");
     setLoading(true);
 
+    // Persist user turn to project memory.
+    if (activeProject && user) {
+      appendChatMessage(user.id, activeProject.id, { role: "user", content: trimmed, source_page: "chat" }).catch(() => {});
+    }
+
+    // Build long-term project memory for the AI (don't block on failure).
+    let projectMemory: any = undefined;
+    if (activeProject) {
+      try { projectMemory = await buildProjectAiContext(activeProject); } catch {/* ignore */}
+    }
+
     let acc = "";
     const upsert = (chunk: string) => {
       acc += chunk;
@@ -160,7 +171,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
     await streamSenseiChat({
       messages: next,
       context: {
-        genre, stage, projectName,
+        genre, stage, projectName: activeProject?.name ?? projectName,
         flVersion: setup?.fl_version ?? undefined,
         flEdition: setup?.fl_edition ?? undefined,
         mainUse: setup?.main_use ?? undefined,
@@ -170,9 +181,16 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
         thirdPartyPlugins: inventoryComplete ? inventory?.third_party_plugins ?? undefined : undefined,
         customPlugins: inventoryComplete ? inventory?.custom_plugins ?? undefined : undefined,
         audio: audioContext ?? toChatAudio(),
+        projectMemory,
       },
       onDelta: upsert,
-      onDone: () => setLoading(false),
+      onDone: () => {
+        setLoading(false);
+        // Persist the assistant turn once streaming finishes.
+        if (activeProject && user && acc.trim()) {
+          appendChatMessage(user.id, activeProject.id, { role: "assistant", content: acc, source_page: "chat" }).catch(() => {});
+        }
+      },
       onError: (msg) => {
         setLoading(false);
         toast.error(msg);
