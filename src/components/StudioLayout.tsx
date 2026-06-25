@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { SessionHeader } from "./SessionHeader";
+import { ActiveProjectChip } from "./ActiveProjectChip";
 import { UserMenu } from "./UserMenu";
 import { Footer } from "./Footer";
 
