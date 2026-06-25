@@ -115,9 +115,11 @@ const App = () => {
               <PluginInventoryProvider>
                 <SessionProvider>
                   <TrackSessionProvider>
-                    <ScrollToTop />
-                    <AudioGlobalBindings />
-                    <AppShell />
+                    <ProjectProvider>
+                      <ScrollToTop />
+                      <AudioGlobalBindings />
+                      <AppShell />
+                    </ProjectProvider>
                   </TrackSessionProvider>
                 </SessionProvider>
               </PluginInventoryProvider>
