@@ -66,10 +66,12 @@ export type Database = {
           id: string
           lufs_estimate: number | null
           peak_db: number | null
+          project_id: string | null
           recommendations: Json
           rms_db: number | null
           sample_rate: number | null
           stereo_width: number | null
+          track_version_id: string | null
           updated_at: string
           user_id: string
         }
@@ -94,10 +96,12 @@ export type Database = {
           id?: string
           lufs_estimate?: number | null
           peak_db?: number | null
+          project_id?: string | null
           recommendations?: Json
           rms_db?: number | null
           sample_rate?: number | null
           stereo_width?: number | null
+          track_version_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -122,14 +126,31 @@ export type Database = {
           id?: string
           lufs_estimate?: number | null
           peak_db?: number | null
+          project_id?: string | null
           recommendations?: Json
           rms_db?: number | null
           sample_rate?: number | null
           stereo_width?: number | null
+          track_version_id?: string | null
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "audio_analysis_reports_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audio_analysis_reports_track_version_id_fkey"
+            columns: ["track_version_id"]
+            isOneToOne: false
+            referencedRelation: "project_track_versions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       audio_purge_runs: {
         Row: {
@@ -309,6 +330,193 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      project_advice: {
+        Row: {
+          category: string | null
+          content: string
+          created_at: string
+          id: string
+          project_id: string
+          source_page: string | null
+          status: Database["public"]["Enums"]["advice_status"]
+          title: string
+          track_version_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category?: string | null
+          content: string
+          created_at?: string
+          id?: string
+          project_id: string
+          source_page?: string | null
+          status?: Database["public"]["Enums"]["advice_status"]
+          title: string
+          track_version_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string | null
+          content?: string
+          created_at?: string
+          id?: string
+          project_id?: string
+          source_page?: string | null
+          status?: Database["public"]["Enums"]["advice_status"]
+          title?: string
+          track_version_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_advice_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_advice_track_version_id_fkey"
+            columns: ["track_version_id"]
+            isOneToOne: false
+            referencedRelation: "project_track_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_chat_messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          parts: Json | null
+          project_id: string
+          role: Database["public"]["Enums"]["chat_role"]
+          source_page: string | null
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          parts?: Json | null
+          project_id: string
+          role: Database["public"]["Enums"]["chat_role"]
+          source_page?: string | null
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          parts?: Json | null
+          project_id?: string
+          role?: Database["public"]["Enums"]["chat_role"]
+          source_page?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_chat_messages_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_track_versions: {
+        Row: {
+          audio_report_id: string | null
+          created_at: string
+          file_name: string
+          id: string
+          notes: string | null
+          project_id: string
+          updated_at: string
+          user_id: string
+          version_number: number
+        }
+        Insert: {
+          audio_report_id?: string | null
+          created_at?: string
+          file_name: string
+          id?: string
+          notes?: string | null
+          project_id: string
+          updated_at?: string
+          user_id: string
+          version_number: number
+        }
+        Update: {
+          audio_report_id?: string | null
+          created_at?: string
+          file_name?: string
+          id?: string
+          notes?: string | null
+          project_id?: string
+          updated_at?: string
+          user_id?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_track_versions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      projects: {
+        Row: {
+          created_at: string
+          description: string | null
+          genre: string | null
+          id: string
+          last_activity_at: string
+          last_opened_audio_report_id: string | null
+          last_opened_page: string | null
+          last_opened_track_version_id: string | null
+          name: string
+          status: Database["public"]["Enums"]["project_status"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          genre?: string | null
+          id?: string
+          last_activity_at?: string
+          last_opened_audio_report_id?: string | null
+          last_opened_page?: string | null
+          last_opened_track_version_id?: string | null
+          name: string
+          status?: Database["public"]["Enums"]["project_status"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          genre?: string | null
+          id?: string
+          last_activity_at?: string
+          last_opened_audio_report_id?: string | null
+          last_opened_page?: string | null
+          last_opened_track_version_id?: string | null
+          name?: string
+          status?: Database["public"]["Enums"]["project_status"]
           updated_at?: string
           user_id?: string
         }
@@ -586,7 +794,9 @@ export type Database = {
       purge_deleted_audio_reports: { Args: never; Returns: number }
     }
     Enums: {
+      advice_status: "pending" | "applied" | "ignored" | "resolved"
       app_role: "admin" | "paid" | "free"
+      chat_role: "user" | "assistant" | "system"
       feedback_status: "open" | "in_progress" | "resolved"
       feedback_type: "bug" | "feature" | "general"
       incident_severity: "info" | "minor" | "major" | "critical"
@@ -595,6 +805,7 @@ export type Database = {
         | "identified"
         | "monitoring"
         | "resolved"
+      project_status: "active" | "paused" | "completed" | "archived"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -722,7 +933,9 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      advice_status: ["pending", "applied", "ignored", "resolved"],
       app_role: ["admin", "paid", "free"],
+      chat_role: ["user", "assistant", "system"],
       feedback_status: ["open", "in_progress", "resolved"],
       feedback_type: ["bug", "feature", "general"],
       incident_severity: ["info", "minor", "major", "critical"],
@@ -732,6 +945,7 @@ export const Constants = {
         "monitoring",
         "resolved",
       ],
+      project_status: ["active", "paused", "completed", "archived"],
     },
   },
 } as const
