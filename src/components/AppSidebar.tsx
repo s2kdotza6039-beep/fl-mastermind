@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, MessageCircle, Wrench, Disc3, Music2,
-  Sliders, Volume2, Layers, ListChecks, UploadCloud, Crown, KeyRound, Shield, Lock, Settings2, Boxes, MessageSquare,
+  Sliders, Volume2, Layers, ListChecks, UploadCloud, Crown, KeyRound, Shield, Lock, Settings2, Boxes, MessageSquare, FolderOpen,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
