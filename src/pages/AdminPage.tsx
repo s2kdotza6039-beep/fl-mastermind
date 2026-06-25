@@ -22,6 +22,7 @@ import { BetaLaunchChecklist } from "@/components/BetaLaunchChecklist";
 import { AdminIncidentsTab } from "@/components/AdminIncidentsTab";
 import { AdminInvitesTab } from "@/components/AdminInvitesTab";
 import { AdminPurgeAuditTab } from "@/components/AdminPurgeAuditTab";
+import { AdminProjectsTab } from "@/components/AdminProjectsTab";
 
 
 interface UserRow {
