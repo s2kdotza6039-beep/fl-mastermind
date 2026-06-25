@@ -17,7 +17,8 @@ export const StudioLayout = ({ children }: { children: ReactNode }) => {
             <div className="ml-3 flex-1 min-w-0">
               <SessionHeader />
             </div>
-            <div className="ml-3 flex-shrink-0">
+            <div className="ml-3 flex-shrink-0 flex items-center gap-2">
+              <ActiveProjectChip />
               <UserMenu />
             </div>
           </header>
