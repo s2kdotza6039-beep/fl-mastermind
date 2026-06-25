@@ -35,6 +35,18 @@ export interface ChatContext {
     issues?: Array<{ severity: string; title: string; detail: string; recommendation: string }>;
     recommendations?: string[];
   };
+  // Long-term project memory passed to Sensei so it remembers the song.
+  projectMemory?: {
+    projectName: string;
+    projectGenre: string | null;
+    projectDescription: string | null;
+    openIssueCount: number;
+    resolvedAdviceCount: number;
+    trackVersionCount: number;
+    currentTrackFileName: string | null;
+    pendingAdviceTitles: string[];
+    recentAdvice: Array<{ title: string; status: string; created_at: string }>;
+  };
 }
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sensei-chat`;
