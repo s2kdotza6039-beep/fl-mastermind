@@ -164,6 +164,7 @@ export default function AdminPage() {
       <Tabs defaultValue="users">
         <TabsList>
           <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="projects">Projects</TabsTrigger>
           <TabsTrigger value="setups">FL Setups</TabsTrigger>
           <TabsTrigger value="inventories">Plugin Inventories</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
