@@ -108,13 +108,28 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
     };
   }, [setup?.fl_edition]);
 
+  // Load persisted chat history for the active project (only when not in compact embed mode).
   useEffect(() => {
-    if (initialPrompt && !sentInitial.current) {
+    if (compact || !activeProject) { setHistoryLoaded(true); return; }
+    let cancelled = false;
+    setHistoryLoaded(false);
+    listChatMessages(activeProject.id, 100)
+      .then((msgs) => {
+        if (cancelled) return;
+        setMessages(msgs.map((m) => ({ role: m.role === "system" ? "assistant" : m.role, content: m.content })));
+        setHistoryLoaded(true);
+      })
+      .catch(() => setHistoryLoaded(true));
+    return () => { cancelled = true; };
+  }, [activeProject?.id, compact]);
+
+  useEffect(() => {
+    if (initialPrompt && !sentInitial.current && historyLoaded) {
       sentInitial.current = true;
       send(initialPrompt);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialPrompt]);
+  }, [initialPrompt, historyLoaded]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
