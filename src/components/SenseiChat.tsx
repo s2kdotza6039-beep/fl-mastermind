@@ -59,13 +59,15 @@ interface SenseiChatProps {
 
 export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatProps) => {
   const { genre, stage, projectName, saveAdvice } = useSession();
-  const { isPaid } = useAuth();
+  const { isPaid, user } = useAuth();
   const { setup } = useStudioSetup();
   const { inventory, isComplete: inventoryComplete } = usePluginInventory();
   const { toChatAudio } = useTrackSession();
+  const { activeProject } = useProject();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string; lastInput: string } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentInitial = useRef(false);
