@@ -131,10 +131,11 @@ export default function AdminPage() {
     const { data, error } = await supabase.functions.invoke("admin-set-role", {
       body: { user_id: userId, role, action },
     });
-    if (error || (data as any)?.error) {
-      return toast.error(error?.message || (data as any)?.error || "Failed to update role");
+    const errMsg = error?.message || (data as any)?.error;
+    if (errMsg) {
+      return toast.error(friendlyRoleAssignmentError(errMsg));
     }
-    toast.success("Updated");
+    toast.success("Role updated");
     load();
   }
 
