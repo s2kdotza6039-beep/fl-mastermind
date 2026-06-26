@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Shield, Users, Activity, AlertTriangle, Crown, Loader2, Search, X, Sliders, Download, Eye } from "lucide-react";
 import { toast } from "sonner";
+import { friendlyRoleAssignmentError } from "@/lib/friendly-errors";
 import { editionToTier, tierLabel, eligiblePlugins, forbiddenPlugins, type FlEditionTier } from "@/lib/fl-plugin-eligibility";
 import { AdminActivityTab } from "@/components/AdminActivityTab";
 import { SecurityIssuesPanel } from "@/components/SecurityIssuesPanel";
@@ -130,10 +131,11 @@ export default function AdminPage() {
     const { data, error } = await supabase.functions.invoke("admin-set-role", {
       body: { user_id: userId, role, action },
     });
-    if (error || (data as any)?.error) {
-      return toast.error(error?.message || (data as any)?.error || "Failed to update role");
+    const errMsg = error?.message || (data as any)?.error;
+    if (errMsg) {
+      return toast.error(friendlyRoleAssignmentError(errMsg));
     }
-    toast.success("Updated");
+    toast.success("Role updated");
     load();
   }
 

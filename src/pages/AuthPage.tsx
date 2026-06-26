@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Crown, Loader2, Eye, EyeOff, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
+import { friendlySignupError } from "@/lib/friendly-errors";
 
 type ProviderStatus = {
   google: "enabled" | "disabled" | "unknown";
@@ -325,7 +326,7 @@ function SignUpForm() {
       },
     });
     setBusy(false);
-    if (error) toast.error(error.message);
+    if (error) toast.error(friendlySignupError(error.message));
     else toast.success("Account created — check your email to verify.");
   }
 
