@@ -127,12 +127,11 @@ export default function AdminPage() {
   useEffect(() => { load(); }, []);
 
   async function setRole(userId: string, role: "paid" | "free" | "admin", action: "add" | "remove") {
-    if (action === "add") {
-      const { error } = await supabase.from("user_roles").insert({ user_id: userId, role });
-      if (error) return toast.error(error.message);
-    } else {
-      const { error } = await supabase.from("user_roles").delete().eq("user_id", userId).eq("role", role);
-      if (error) return toast.error(error.message);
+    const { data, error } = await supabase.functions.invoke("admin-set-role", {
+      body: { user_id: userId, role, action },
+    });
+    if (error || (data as any)?.error) {
+      return toast.error(error?.message || (data as any)?.error || "Failed to update role");
     }
     toast.success("Updated");
     load();
