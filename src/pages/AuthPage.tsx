@@ -325,7 +325,7 @@ function SignUpForm() {
       },
     });
     setBusy(false);
-    if (error) toast.error(error.message);
+    if (error) toast.error(friendlySignupError(error.message));
     else toast.success("Account created — check your email to verify.");
   }
 
