@@ -11,7 +11,17 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Crown, Loader2, Eye, EyeOff, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
-import { friendlySignupError, friendlySignInError } from "@/lib/friendly-errors";
+import {
+  friendlySignupError,
+  friendlySignInError,
+  friendlyPasswordResetError,
+  isRateLimited,
+  isCaptchaFailure,
+  parseRetryAfterSec,
+} from "@/lib/friendly-errors";
+import { logAuthRateEvent } from "@/lib/auth-telemetry";
+import { RateLimitNotice } from "@/components/RateLimitNotice";
+
 
 type ProviderStatus = {
   google: "enabled" | "disabled" | "unknown";
@@ -209,26 +219,51 @@ function SignInForm() {
     setProbing(false);
   }
 
+  const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string } | null>(null);
+
+  async function handleAuthFailure(
+    error: any,
+    surface: "signin" | "password_reset",
+    friendly: string,
+  ) {
+    if (isRateLimited(error)) {
+      const retryAfterSec = parseRetryAfterSec(error);
+      setRateLimit({ retryAfterSec, message: friendly });
+      logAuthRateEvent(`${surface === "signin" ? "signin" : "password_reset"}_rate_limited` as any, {
+        retryAfterSec,
+        surface,
+      });
+    } else if (isCaptchaFailure(error)) {
+      logAuthRateEvent(`${surface === "signin" ? "signin" : "password_reset"}_captcha_failed` as any, { surface });
+      toast.error(friendly);
+    } else {
+      toast.error(friendly);
+    }
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const ev = emailSchema.safeParse(email);
     if (!ev.success) return toast.error(ev.error.issues[0].message);
     if (!password) return toast.error("Password required");
     setBusy(true);
+    setRateLimit(null);
     const { error } = await supabase.auth.signInWithPassword({ email: ev.data, password });
     setBusy(false);
     if (error) {
-      // log suspicious if too many: handled in edge function later. Here just surface.
-      toast.error(friendlySignInError(error));
-
-      try {
-        await supabase.from("security_alerts").insert({
-          severity: "low",
-          alert_type: "failed_signin",
-          message: `Failed sign-in for ${ev.data}`,
-          metadata: { email: ev.data },
-        });
-      } catch {}
+      await handleAuthFailure(error, "signin", friendlySignInError(error));
+      // Only insert a failed_signin alert for non-rate-limit auth failures, to avoid
+      // double-logging (rate events are already captured by logAuthRateEvent).
+      if (!isRateLimited(error) && !isCaptchaFailure(error)) {
+        try {
+          await supabase.from("security_alerts").insert({
+            severity: "low",
+            alert_type: "failed_signin",
+            message: `Failed sign-in for ${ev.data}`,
+            metadata: { email: ev.data },
+          });
+        } catch {}
+      }
     } else {
       toast.success("Welcome back");
     }
@@ -237,12 +272,14 @@ function SignInForm() {
   async function reset() {
     const ev = emailSchema.safeParse(email);
     if (!ev.success) return toast.error("Enter your email first");
+    setRateLimit(null);
     const { error } = await supabase.auth.resetPasswordForEmail(ev.data, {
       redirectTo: `${window.location.origin}/reset-password`,
     });
-    if (error) toast.error(friendlySignInError(error));
+    if (error) await handleAuthFailure(error, "password_reset", friendlyPasswordResetError(error));
     else toast.success("Reset link sent — check your inbox");
   }
+
 
   async function google() {
     setOauthError(null);
@@ -259,6 +296,14 @@ function SignInForm() {
 
   return (
     <form onSubmit={submit} className="space-y-4">
+      {rateLimit && (
+        <RateLimitNotice
+          retryAfterSec={rateLimit.retryAfterSec}
+          message={rateLimit.message}
+          onRetry={() => setRateLimit(null)}
+          onDismiss={() => setRateLimit(null)}
+        />
+      )}
       <div>
         <Label htmlFor="si-email">Email</Label>
         <Input id="si-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={255} autoComplete="email" required />
@@ -267,9 +312,10 @@ function SignInForm() {
         <Label htmlFor="si-pass">Password</Label>
         <PasswordInput id="si-pass" value={password} onChange={(e) => setPassword(e.target.value)} maxLength={128} autoComplete="current-password" required />
       </div>
-      <Button type="submit" className="w-full bg-gradient-gold text-primary-foreground" disabled={busy}>
+      <Button type="submit" className="w-full bg-gradient-gold text-primary-foreground" disabled={busy || !!rateLimit}>
         {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Sign in
       </Button>
+
       <Button type="button" variant="outline" className="w-full" onClick={google}>Continue with Google</Button>
       <button type="button" onClick={reset} className="text-xs text-muted-foreground hover:text-primary underline w-full text-center">
         Forgot password?
@@ -290,6 +336,7 @@ function SignUpForm() {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
+  const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string } | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -300,6 +347,7 @@ function SignUpForm() {
     const nv = displayNameSchema.safeParse(name || undefined);
     if (!nv.success) return toast.error("Invalid display name");
     setBusy(true);
+    setRateLimit(null);
 
     // Closed beta: validate invite (email allowlist OR code) before signing up.
     const { data: allowed, error: checkErr } = await supabase.rpc("check_beta_invite", {
@@ -327,12 +375,33 @@ function SignUpForm() {
       },
     });
     setBusy(false);
-    if (error) toast.error(friendlySignupError(error));
-    else toast.success("Account created — check your email to verify.");
+    if (error) {
+      const friendly = friendlySignupError(error);
+      if (isRateLimited(error)) {
+        const retryAfterSec = parseRetryAfterSec(error);
+        setRateLimit({ retryAfterSec, message: friendly });
+        logAuthRateEvent("signup_rate_limited", { retryAfterSec, surface: "signup" });
+      } else if (isCaptchaFailure(error)) {
+        logAuthRateEvent("signup_captcha_failed", { surface: "signup" });
+        toast.error(friendly);
+      } else {
+        toast.error(friendly);
+      }
+    } else {
+      toast.success("Account created — check your email to verify.");
+    }
   }
 
   return (
     <form onSubmit={submit} className="space-y-4">
+      {rateLimit && (
+        <RateLimitNotice
+          retryAfterSec={rateLimit.retryAfterSec}
+          message={rateLimit.message}
+          onRetry={() => setRateLimit(null)}
+          onDismiss={() => setRateLimit(null)}
+        />
+      )}
       <div>
         <Label htmlFor="su-name">Display name</Label>
         <Input id="su-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
@@ -351,9 +420,10 @@ function SignUpForm() {
         <Input id="su-code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} maxLength={32} placeholder="BETA-XXXXXX" autoComplete="off" />
         <p className="text-[10px] text-muted-foreground mt-1">Studio Sensei is in closed beta. Need access? Email <a className="underline" href="mailto:studiosensei@s2kdotza.com">studiosensei@s2kdotza.com</a>.</p>
       </div>
-      <Button type="submit" className="w-full bg-gradient-gold text-primary-foreground" disabled={busy}>
+      <Button type="submit" className="w-full bg-gradient-gold text-primary-foreground" disabled={busy || !!rateLimit}>
         {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Create account
       </Button>
     </form>
+
   );
 }

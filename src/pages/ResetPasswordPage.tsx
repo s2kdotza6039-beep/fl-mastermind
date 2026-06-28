@@ -8,6 +8,14 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Crown, Loader2, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
+import {
+  friendlyPasswordResetError,
+  isRateLimited,
+  isCaptchaFailure,
+  parseRetryAfterSec,
+} from "@/lib/friendly-errors";
+import { logAuthRateEvent } from "@/lib/auth-telemetry";
+import { RateLimitNotice } from "@/components/RateLimitNotice";
 
 const passwordSchema = z
   .string()
@@ -21,6 +29,7 @@ export default function ResetPasswordPage() {
   const [show, setShow] = useState(false);
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
+  const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string } | null>(null);
   const nav = useNavigate();
 
   async function submit(e: React.FormEvent) {
@@ -28,10 +37,22 @@ export default function ResetPasswordPage() {
     const v = passwordSchema.safeParse(pw);
     if (!v.success) return toast.error("Password too weak (8+, upper, lower, number)");
     setBusy(true);
+    setRateLimit(null);
     const { error } = await supabase.auth.updateUser({ password: v.data });
     setBusy(false);
-    if (error) toast.error(error.message);
-    else {
+    if (error) {
+      const friendly = friendlyPasswordResetError(error);
+      if (isRateLimited(error)) {
+        const retryAfterSec = parseRetryAfterSec(error);
+        setRateLimit({ retryAfterSec, message: friendly });
+        logAuthRateEvent("password_reset_rate_limited", { retryAfterSec, surface: "reset_password" });
+      } else if (isCaptchaFailure(error)) {
+        logAuthRateEvent("password_reset_captcha_failed", { surface: "reset_password" });
+        toast.error(friendly);
+      } else {
+        toast.error(friendly);
+      }
+    } else {
       toast.success("Password updated");
       nav("/", { replace: true });
     }
@@ -48,6 +69,14 @@ export default function ResetPasswordPage() {
           </div>
         </div>
         <form onSubmit={submit} className="space-y-4">
+          {rateLimit && (
+            <RateLimitNotice
+              retryAfterSec={rateLimit.retryAfterSec}
+              message={rateLimit.message}
+              onRetry={() => setRateLimit(null)}
+              onDismiss={() => setRateLimit(null)}
+            />
+          )}
           <div>
             <Label htmlFor="np">New password</Label>
             <div className="relative">
@@ -57,7 +86,7 @@ export default function ResetPasswordPage() {
               </button>
             </div>
           </div>
-          <Button type="submit" className="w-full bg-gradient-gold text-primary-foreground" disabled={busy}>
+          <Button type="submit" className="w-full bg-gradient-gold text-primary-foreground" disabled={busy || !!rateLimit}>
             {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Update password
           </Button>
         </form>
