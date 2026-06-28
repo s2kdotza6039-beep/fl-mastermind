@@ -219,7 +219,8 @@ function SignInForm() {
     setBusy(false);
     if (error) {
       // log suspicious if too many: handled in edge function later. Here just surface.
-      toast.error(error.message);
+      toast.error(friendlySignInError(error));
+
       try {
         await supabase.from("security_alerts").insert({
           severity: "low",
