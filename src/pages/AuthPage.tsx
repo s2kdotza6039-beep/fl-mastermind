@@ -240,7 +240,7 @@ function SignInForm() {
     const { error } = await supabase.auth.resetPasswordForEmail(ev.data, {
       redirectTo: `${window.location.origin}/reset-password`,
     });
-    if (error) toast.error(error.message);
+    if (error) toast.error(friendlySignInError(error));
     else toast.success("Reset link sent — check your inbox");
   }
 
