@@ -296,6 +296,14 @@ function SignInForm() {
 
   return (
     <form onSubmit={submit} className="space-y-4">
+      {rateLimit && (
+        <RateLimitNotice
+          retryAfterSec={rateLimit.retryAfterSec}
+          message={rateLimit.message}
+          onRetry={() => setRateLimit(null)}
+          onDismiss={() => setRateLimit(null)}
+        />
+      )}
       <div>
         <Label htmlFor="si-email">Email</Label>
         <Input id="si-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={255} autoComplete="email" required />
@@ -304,9 +312,10 @@ function SignInForm() {
         <Label htmlFor="si-pass">Password</Label>
         <PasswordInput id="si-pass" value={password} onChange={(e) => setPassword(e.target.value)} maxLength={128} autoComplete="current-password" required />
       </div>
-      <Button type="submit" className="w-full bg-gradient-gold text-primary-foreground" disabled={busy}>
+      <Button type="submit" className="w-full bg-gradient-gold text-primary-foreground" disabled={busy || !!rateLimit}>
         {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Sign in
       </Button>
+
       <Button type="button" variant="outline" className="w-full" onClick={google}>Continue with Google</Button>
       <button type="button" onClick={reset} className="text-xs text-muted-foreground hover:text-primary underline w-full text-center">
         Forgot password?
