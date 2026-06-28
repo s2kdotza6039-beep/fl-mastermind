@@ -219,26 +219,51 @@ function SignInForm() {
     setProbing(false);
   }
 
+  const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string } | null>(null);
+
+  async function handleAuthFailure(
+    error: any,
+    surface: "signin" | "password_reset",
+    friendly: string,
+  ) {
+    if (isRateLimited(error)) {
+      const retryAfterSec = parseRetryAfterSec(error);
+      setRateLimit({ retryAfterSec, message: friendly });
+      logAuthRateEvent(`${surface === "signin" ? "signin" : "password_reset"}_rate_limited` as any, {
+        retryAfterSec,
+        surface,
+      });
+    } else if (isCaptchaFailure(error)) {
+      logAuthRateEvent(`${surface === "signin" ? "signin" : "password_reset"}_captcha_failed` as any, { surface });
+      toast.error(friendly);
+    } else {
+      toast.error(friendly);
+    }
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const ev = emailSchema.safeParse(email);
     if (!ev.success) return toast.error(ev.error.issues[0].message);
     if (!password) return toast.error("Password required");
     setBusy(true);
+    setRateLimit(null);
     const { error } = await supabase.auth.signInWithPassword({ email: ev.data, password });
     setBusy(false);
     if (error) {
-      // log suspicious if too many: handled in edge function later. Here just surface.
-      toast.error(friendlySignInError(error));
-
-      try {
-        await supabase.from("security_alerts").insert({
-          severity: "low",
-          alert_type: "failed_signin",
-          message: `Failed sign-in for ${ev.data}`,
-          metadata: { email: ev.data },
-        });
-      } catch {}
+      await handleAuthFailure(error, "signin", friendlySignInError(error));
+      // Only insert a failed_signin alert for non-rate-limit auth failures, to avoid
+      // double-logging (rate events are already captured by logAuthRateEvent).
+      if (!isRateLimited(error) && !isCaptchaFailure(error)) {
+        try {
+          await supabase.from("security_alerts").insert({
+            severity: "low",
+            alert_type: "failed_signin",
+            message: `Failed sign-in for ${ev.data}`,
+            metadata: { email: ev.data },
+          });
+        } catch {}
+      }
     } else {
       toast.success("Welcome back");
     }
@@ -247,12 +272,14 @@ function SignInForm() {
   async function reset() {
     const ev = emailSchema.safeParse(email);
     if (!ev.success) return toast.error("Enter your email first");
+    setRateLimit(null);
     const { error } = await supabase.auth.resetPasswordForEmail(ev.data, {
       redirectTo: `${window.location.origin}/reset-password`,
     });
-    if (error) toast.error(friendlySignInError(error));
+    if (error) await handleAuthFailure(error, "password_reset", friendlyPasswordResetError(error));
     else toast.success("Reset link sent — check your inbox");
   }
+
 
   async function google() {
     setOauthError(null);
