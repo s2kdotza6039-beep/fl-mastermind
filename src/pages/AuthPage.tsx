@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Crown, Loader2, Eye, EyeOff, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
-import { friendlySignupError } from "@/lib/friendly-errors";
+import { friendlySignupError, friendlySignInError } from "@/lib/friendly-errors";
 
 type ProviderStatus = {
   google: "enabled" | "disabled" | "unknown";
@@ -219,7 +219,8 @@ function SignInForm() {
     setBusy(false);
     if (error) {
       // log suspicious if too many: handled in edge function later. Here just surface.
-      toast.error(error.message);
+      toast.error(friendlySignInError(error));
+
       try {
         await supabase.from("security_alerts").insert({
           severity: "low",
@@ -239,7 +240,7 @@ function SignInForm() {
     const { error } = await supabase.auth.resetPasswordForEmail(ev.data, {
       redirectTo: `${window.location.origin}/reset-password`,
     });
-    if (error) toast.error(error.message);
+    if (error) toast.error(friendlySignInError(error));
     else toast.success("Reset link sent — check your inbox");
   }
 
@@ -326,7 +327,7 @@ function SignUpForm() {
       },
     });
     setBusy(false);
-    if (error) toast.error(friendlySignupError(error.message));
+    if (error) toast.error(friendlySignupError(error));
     else toast.success("Account created — check your email to verify.");
   }
 
