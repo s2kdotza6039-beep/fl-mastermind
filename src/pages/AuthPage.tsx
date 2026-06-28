@@ -336,6 +336,7 @@ function SignUpForm() {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
+  const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string } | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -346,6 +347,7 @@ function SignUpForm() {
     const nv = displayNameSchema.safeParse(name || undefined);
     if (!nv.success) return toast.error("Invalid display name");
     setBusy(true);
+    setRateLimit(null);
 
     // Closed beta: validate invite (email allowlist OR code) before signing up.
     const { data: allowed, error: checkErr } = await supabase.rpc("check_beta_invite", {
@@ -373,12 +375,33 @@ function SignUpForm() {
       },
     });
     setBusy(false);
-    if (error) toast.error(friendlySignupError(error));
-    else toast.success("Account created — check your email to verify.");
+    if (error) {
+      const friendly = friendlySignupError(error);
+      if (isRateLimited(error)) {
+        const retryAfterSec = parseRetryAfterSec(error);
+        setRateLimit({ retryAfterSec, message: friendly });
+        logAuthRateEvent("signup_rate_limited", { retryAfterSec, surface: "signup" });
+      } else if (isCaptchaFailure(error)) {
+        logAuthRateEvent("signup_captcha_failed", { surface: "signup" });
+        toast.error(friendly);
+      } else {
+        toast.error(friendly);
+      }
+    } else {
+      toast.success("Account created — check your email to verify.");
+    }
   }
 
   return (
     <form onSubmit={submit} className="space-y-4">
+      {rateLimit && (
+        <RateLimitNotice
+          retryAfterSec={rateLimit.retryAfterSec}
+          message={rateLimit.message}
+          onRetry={() => setRateLimit(null)}
+          onDismiss={() => setRateLimit(null)}
+        />
+      )}
       <div>
         <Label htmlFor="su-name">Display name</Label>
         <Input id="su-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
@@ -397,9 +420,10 @@ function SignUpForm() {
         <Input id="su-code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} maxLength={32} placeholder="BETA-XXXXXX" autoComplete="off" />
         <p className="text-[10px] text-muted-foreground mt-1">Studio Sensei is in closed beta. Need access? Email <a className="underline" href="mailto:studiosensei@s2kdotza.com">studiosensei@s2kdotza.com</a>.</p>
       </div>
-      <Button type="submit" className="w-full bg-gradient-gold text-primary-foreground" disabled={busy}>
+      <Button type="submit" className="w-full bg-gradient-gold text-primary-foreground" disabled={busy || !!rateLimit}>
         {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Create account
       </Button>
     </form>
+
   );
 }
