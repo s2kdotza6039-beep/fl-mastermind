@@ -11,7 +11,17 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Crown, Loader2, Eye, EyeOff, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
-import { friendlySignupError, friendlySignInError } from "@/lib/friendly-errors";
+import {
+  friendlySignupError,
+  friendlySignInError,
+  friendlyPasswordResetError,
+  isRateLimited,
+  isCaptchaFailure,
+  parseRetryAfterSec,
+} from "@/lib/friendly-errors";
+import { logAuthRateEvent } from "@/lib/auth-telemetry";
+import { RateLimitNotice } from "@/components/RateLimitNotice";
+
 
 type ProviderStatus = {
   google: "enabled" | "disabled" | "unknown";
