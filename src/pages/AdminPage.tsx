@@ -24,6 +24,7 @@ import { AdminIncidentsTab } from "@/components/AdminIncidentsTab";
 import { AdminInvitesTab } from "@/components/AdminInvitesTab";
 import { AdminPurgeAuditTab } from "@/components/AdminPurgeAuditTab";
 import { AdminProjectsTab } from "@/components/AdminProjectsTab";
+import { AdminAuthRateEventsTab } from "@/components/AdminAuthRateEventsTab";
 
 
 interface UserRow {
@@ -178,6 +179,8 @@ export default function AdminPage() {
           <TabsTrigger value="incidents">Status</TabsTrigger>
           <TabsTrigger value="purge">Purge Audit</TabsTrigger>
           <TabsTrigger value="beta">Beta Checklist</TabsTrigger>
+          <TabsTrigger value="rate-events">Auth Rate Events</TabsTrigger>
+
         </TabsList>
 
         <TabsContent value="users">
