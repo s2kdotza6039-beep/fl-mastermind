@@ -21,6 +21,8 @@ import {
 } from "@/lib/friendly-errors";
 import { logAuthRateEvent } from "@/lib/auth-telemetry";
 import { RateLimitNotice } from "@/components/RateLimitNotice";
+import { ResendConfirmationForm } from "@/components/ResendConfirmationForm";
+import { getRateLimit, setRateLimit as persistRateLimit, clearRateLimit } from "@/lib/rate-limit-store";
 
 
 type ProviderStatus = {
@@ -219,7 +221,19 @@ function SignInForm() {
     setProbing(false);
   }
 
-  const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string } | null>(null);
+  const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string } | null>(
+    () => getRateLimit("signin"),
+  );
+
+  useEffect(() => {
+    const hydrated = getRateLimit("signin");
+    if (hydrated) setRateLimit(hydrated);
+  }, []);
+
+  const dismissRateLimit = () => {
+    clearRateLimit("signin");
+    setRateLimit(null);
+  };
 
   async function handleAuthFailure(
     error: any,
@@ -228,7 +242,9 @@ function SignInForm() {
   ) {
     if (isRateLimited(error)) {
       const retryAfterSec = parseRetryAfterSec(error);
-      setRateLimit({ retryAfterSec, message: friendly });
+      // Persist under the actual surface so the countdown survives reloads.
+      persistRateLimit(surface, retryAfterSec, friendly);
+      if (surface === "signin") setRateLimit({ retryAfterSec, message: friendly });
       logAuthRateEvent(`${surface === "signin" ? "signin" : "password_reset"}_rate_limited` as any, {
         retryAfterSec,
         surface,
