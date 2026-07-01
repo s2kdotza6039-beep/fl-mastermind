@@ -1,7 +1,6 @@
-// Lightweight telemetry for rate-limit and captcha failures on auth flows.
-// Intentionally records NO sensitive content (no email, password, IP, user agent,
-// tokens, or upstream error bodies). Just an event kind + a coarse counter so we
-// can spot trends and validate the UI messaging.
+// Sanitized telemetry for rate-limit and captcha failures on auth flows.
+// Records ONLY: event kind, surface tag, retry-after seconds, session counter.
+// Deliberately no email, password, IP, user agent, tokens, or raw upstream text.
 
 import { supabase } from "@/integrations/supabase/client";
 
@@ -46,9 +45,9 @@ export function readSessionAuthRateCounters(): Record<string, number> {
 }
 
 /**
- * Log a rate-limit / captcha failure. Best-effort: writes to console (always)
- * and to `security_alerts` (only when authenticated and policy allows). Never
- * throws — auth flows must not fail because telemetry failed.
+ * Log a rate-limit / captcha failure to the backend telemetry table
+ * (`public.auth_rate_events`) plus a structured console line for local dev.
+ * Best-effort — never throws.
  */
 export async function logAuthRateEvent(
   kind: AuthRateEventKind,
@@ -57,34 +56,17 @@ export async function logAuthRateEvent(
   const counters = bumpSessionCounter(kind);
   const payload = {
     kind,
-    retry_after_sec: meta.retryAfterSec,
-    surface: meta.surface,
+    surface: meta.surface ?? null,
+    retry_after_sec: typeof meta.retryAfterSec === "number" ? Math.min(3600, Math.max(0, Math.floor(meta.retryAfterSec))) : null,
     session_kind_count: counters.kindCount,
-    session_total_count: counters.totalCount,
-    ts: new Date().toISOString(),
   };
 
-  // Always emit a structured console log so ops / analytics pipelines can pick it up.
   // eslint-disable-next-line no-console
-  console.info("[auth-telemetry]", payload);
+  console.info("[auth-telemetry]", { ...payload, ts: new Date().toISOString() });
 
-  // Best-effort server-side log. Only attempt when there's a session so we don't
-  // spam the table with anonymous noise that the policy will reject anyway.
+  // Backend write (RLS allows anon + authenticated inserts of sanitized rows only).
   try {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session?.user?.id) return;
-    await supabase.from("security_alerts").insert({
-      severity: "low",
-      alert_type: kind,
-      message: `auth ${kind.replace(/_/g, " ")}`,
-      metadata: {
-        surface: meta.surface ?? null,
-        retry_after_sec: meta.retryAfterSec ?? null,
-        session_kind_count: counters.kindCount,
-      },
-    });
+    await supabase.from("auth_rate_events").insert(payload);
   } catch {
     /* swallow — telemetry must never break auth */
   }
