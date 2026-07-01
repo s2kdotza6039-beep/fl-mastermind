@@ -341,6 +341,14 @@ function SignInForm() {
         refreshing={probing}
         onRefresh={runProbe}
       />
+      <details className="pt-2">
+        <summary className="cursor-pointer text-xs text-muted-foreground hover:text-primary text-center">
+          Didn't get the confirmation email?
+        </summary>
+        <div className="mt-3">
+          <ResendConfirmationForm />
+        </div>
+      </details>
     </form>
   );
 }
@@ -351,7 +359,19 @@ function SignUpForm() {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
-  const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string } | null>(null);
+  const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string } | null>(
+    () => getRateLimit("signup"),
+  );
+
+  useEffect(() => {
+    const hydrated = getRateLimit("signup");
+    if (hydrated) setRateLimit(hydrated);
+  }, []);
+
+  const dismissRateLimit = () => {
+    clearRateLimit("signup");
+    setRateLimit(null);
+  };
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -362,7 +382,6 @@ function SignUpForm() {
     const nv = displayNameSchema.safeParse(name || undefined);
     if (!nv.success) return toast.error("Invalid display name");
     setBusy(true);
-    setRateLimit(null);
 
     // Closed beta: validate invite (email allowlist OR code) before signing up.
     const { data: allowed, error: checkErr } = await supabase.rpc("check_beta_invite", {
@@ -394,6 +413,7 @@ function SignUpForm() {
       const friendly = friendlySignupError(error);
       if (isRateLimited(error)) {
         const retryAfterSec = parseRetryAfterSec(error);
+        persistRateLimit("signup", retryAfterSec, friendly);
         setRateLimit({ retryAfterSec, message: friendly });
         logAuthRateEvent("signup_rate_limited", { retryAfterSec, surface: "signup" });
       } else if (isCaptchaFailure(error)) {
@@ -403,6 +423,7 @@ function SignUpForm() {
         toast.error(friendly);
       }
     } else {
+      dismissRateLimit();
       toast.success("Account created — check your email to verify.");
     }
   }
@@ -413,8 +434,8 @@ function SignUpForm() {
         <RateLimitNotice
           retryAfterSec={rateLimit.retryAfterSec}
           message={rateLimit.message}
-          onRetry={() => setRateLimit(null)}
-          onDismiss={() => setRateLimit(null)}
+          onRetry={dismissRateLimit}
+          onDismiss={dismissRateLimit}
         />
       )}
       <div>
