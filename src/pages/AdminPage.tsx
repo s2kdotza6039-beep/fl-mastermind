@@ -336,6 +336,10 @@ export default function AdminPage() {
         <TabsContent value="beta">
           <BetaLaunchChecklist />
         </TabsContent>
+
+        <TabsContent value="rate-events">
+          <AdminAuthRateEventsTab />
+        </TabsContent>
       </Tabs>
     </div>
   );
