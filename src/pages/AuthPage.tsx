@@ -263,7 +263,6 @@ function SignInForm() {
     if (!ev.success) return toast.error(ev.error.issues[0].message);
     if (!password) return toast.error("Password required");
     setBusy(true);
-    setRateLimit(null);
     const { error } = await supabase.auth.signInWithPassword({ email: ev.data, password });
     setBusy(false);
     if (error) {
@@ -281,6 +280,7 @@ function SignInForm() {
         } catch {}
       }
     } else {
+      dismissRateLimit();
       toast.success("Welcome back");
     }
   }
@@ -288,7 +288,6 @@ function SignInForm() {
   async function reset() {
     const ev = emailSchema.safeParse(email);
     if (!ev.success) return toast.error("Enter your email first");
-    setRateLimit(null);
     const { error } = await supabase.auth.resetPasswordForEmail(ev.data, {
       redirectTo: `${window.location.origin}/reset-password`,
     });
@@ -316,8 +315,8 @@ function SignInForm() {
         <RateLimitNotice
           retryAfterSec={rateLimit.retryAfterSec}
           message={rateLimit.message}
-          onRetry={() => setRateLimit(null)}
-          onDismiss={() => setRateLimit(null)}
+          onRetry={dismissRateLimit}
+          onDismiss={dismissRateLimit}
         />
       )}
       <div>
