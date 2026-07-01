@@ -100,4 +100,58 @@ test.describe("auth 429 + captcha guidance", () => {
     await expect(page.getByText(/bot check failed/i)).toBeVisible({ timeout: 5000 });
     await expect(page.getByText(/captcha verification process failed/i)).toHaveCount(0);
   });
+
+  test("countdown decrements from Retry-After and the submit button re-enables when it hits 0", async ({ page }) => {
+    // Small retry window so the test runs in a few real seconds.
+    const RETRY = 4;
+    await page.route("**/auth/v1/token**", rateLimited(RETRY));
+    await page.goto(`${BASE_URL}/auth`);
+
+    await page.getByLabel(/^Email$/i).fill("countdown@example.com");
+    await page.getByLabel(/^Password$/i).fill("SomePass123!");
+    await page.getByRole("button", { name: /^Sign in$/i }).click();
+
+    const notice = page.getByRole("alert");
+    await expect(notice).toBeVisible();
+    // Initial countdown value matches Retry-After header (allow ±1s clock jitter).
+    await expect(notice).toContainText(new RegExp(`Retry in (${RETRY}|${RETRY - 1})s`));
+    await expect(page.getByRole("button", { name: /^Sign in$/i })).toBeDisabled();
+
+    // After ~half the window, the countdown should have decremented.
+    await page.waitForTimeout(Math.floor((RETRY * 1000) / 2));
+    const midText = await notice.textContent();
+    const midMatch = midText?.match(/Retry in (\d+)s/);
+    expect(midMatch).toBeTruthy();
+    expect(Number(midMatch![1])).toBeLessThan(RETRY);
+    await expect(page.getByRole("button", { name: /^Sign in$/i })).toBeDisabled();
+
+    // Once the window fully elapses (+1s slack), the Retry button becomes enabled
+    // and the submit button re-enables after dismissing the notice.
+    await page.waitForTimeout(RETRY * 1000 + 500);
+    const retryNow = page.getByRole("button", { name: /Retry now/i });
+    await expect(retryNow).toBeEnabled();
+    // Clicking Retry dismisses the notice and re-enables the submit button.
+    await retryNow.click();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Sign in$/i })).toBeEnabled();
+  });
+
+  test("Retry-After countdown persists across a page reload (sessionStorage)", async ({ page }) => {
+    const RETRY = 6;
+    await page.route("**/auth/v1/token**", rateLimited(RETRY));
+    await page.goto(`${BASE_URL}/auth`);
+    await page.getByLabel(/^Email$/i).fill("persist@example.com");
+    await page.getByLabel(/^Password$/i).fill("SomePass123!");
+    await page.getByRole("button", { name: /^Sign in$/i }).click();
+
+    await expect(page.getByRole("alert")).toBeVisible();
+
+    // Reload — the countdown should reappear without another failed request,
+    // because the deadline is persisted in sessionStorage.
+    await page.reload();
+    const notice = page.getByRole("alert");
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText(/Retry in \ds/);
+    await expect(page.getByRole("button", { name: /^Sign in$/i })).toBeDisabled();
+  });
 });

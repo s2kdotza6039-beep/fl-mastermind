@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getRateLimit, setRateLimit as persistRateLimit, clearRateLimit } from "@/lib/rate-limit-store";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,30 +30,43 @@ export default function ResetPasswordPage() {
   const [show, setShow] = useState(false);
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
-  const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string } | null>(null);
+  const [rateLimit, setRateLimitState] = useState<{ retryAfterSec: number; message: string } | null>(
+    () => getRateLimit("password_reset"),
+  );
   const nav = useNavigate();
+
+  useEffect(() => {
+    const hydrated = getRateLimit("password_reset");
+    if (hydrated) setRateLimitState(hydrated);
+  }, []);
+
+  const dismissRateLimit = () => {
+    clearRateLimit("password_reset");
+    setRateLimitState(null);
+  };
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const v = passwordSchema.safeParse(pw);
     if (!v.success) return toast.error("Password too weak (8+, upper, lower, number)");
     setBusy(true);
-    setRateLimit(null);
     const { error } = await supabase.auth.updateUser({ password: v.data });
     setBusy(false);
     if (error) {
       const friendly = friendlyPasswordResetError(error);
       if (isRateLimited(error)) {
         const retryAfterSec = parseRetryAfterSec(error);
-        setRateLimit({ retryAfterSec, message: friendly });
-        logAuthRateEvent("password_reset_rate_limited", { retryAfterSec, surface: "reset_password" });
+        persistRateLimit("password_reset", retryAfterSec, friendly);
+        setRateLimitState({ retryAfterSec, message: friendly });
+        logAuthRateEvent("password_reset_rate_limited", { retryAfterSec, surface: "password_reset" });
       } else if (isCaptchaFailure(error)) {
-        logAuthRateEvent("password_reset_captcha_failed", { surface: "reset_password" });
+        logAuthRateEvent("password_reset_captcha_failed", { surface: "password_reset" });
         toast.error(friendly);
       } else {
         toast.error(friendly);
       }
     } else {
+      clearRateLimit("password_reset");
       toast.success("Password updated");
       nav("/", { replace: true });
     }
@@ -73,8 +87,8 @@ export default function ResetPasswordPage() {
             <RateLimitNotice
               retryAfterSec={rateLimit.retryAfterSec}
               message={rateLimit.message}
-              onRetry={() => setRateLimit(null)}
-              onDismiss={() => setRateLimit(null)}
+              onRetry={dismissRateLimit}
+              onDismiss={dismissRateLimit}
             />
           )}
           <div>

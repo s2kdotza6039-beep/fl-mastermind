@@ -21,6 +21,8 @@ import {
 } from "@/lib/friendly-errors";
 import { logAuthRateEvent } from "@/lib/auth-telemetry";
 import { RateLimitNotice } from "@/components/RateLimitNotice";
+import { ResendConfirmationForm } from "@/components/ResendConfirmationForm";
+import { getRateLimit, setRateLimit as persistRateLimit, clearRateLimit } from "@/lib/rate-limit-store";
 
 
 type ProviderStatus = {
@@ -219,7 +221,19 @@ function SignInForm() {
     setProbing(false);
   }
 
-  const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string } | null>(null);
+  const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string } | null>(
+    () => getRateLimit("signin"),
+  );
+
+  useEffect(() => {
+    const hydrated = getRateLimit("signin");
+    if (hydrated) setRateLimit(hydrated);
+  }, []);
+
+  const dismissRateLimit = () => {
+    clearRateLimit("signin");
+    setRateLimit(null);
+  };
 
   async function handleAuthFailure(
     error: any,
@@ -228,7 +242,9 @@ function SignInForm() {
   ) {
     if (isRateLimited(error)) {
       const retryAfterSec = parseRetryAfterSec(error);
-      setRateLimit({ retryAfterSec, message: friendly });
+      // Persist under the actual surface so the countdown survives reloads.
+      persistRateLimit(surface, retryAfterSec, friendly);
+      if (surface === "signin") setRateLimit({ retryAfterSec, message: friendly });
       logAuthRateEvent(`${surface === "signin" ? "signin" : "password_reset"}_rate_limited` as any, {
         retryAfterSec,
         surface,
@@ -247,7 +263,6 @@ function SignInForm() {
     if (!ev.success) return toast.error(ev.error.issues[0].message);
     if (!password) return toast.error("Password required");
     setBusy(true);
-    setRateLimit(null);
     const { error } = await supabase.auth.signInWithPassword({ email: ev.data, password });
     setBusy(false);
     if (error) {
@@ -265,6 +280,7 @@ function SignInForm() {
         } catch {}
       }
     } else {
+      dismissRateLimit();
       toast.success("Welcome back");
     }
   }
@@ -272,7 +288,6 @@ function SignInForm() {
   async function reset() {
     const ev = emailSchema.safeParse(email);
     if (!ev.success) return toast.error("Enter your email first");
-    setRateLimit(null);
     const { error } = await supabase.auth.resetPasswordForEmail(ev.data, {
       redirectTo: `${window.location.origin}/reset-password`,
     });
@@ -300,8 +315,8 @@ function SignInForm() {
         <RateLimitNotice
           retryAfterSec={rateLimit.retryAfterSec}
           message={rateLimit.message}
-          onRetry={() => setRateLimit(null)}
-          onDismiss={() => setRateLimit(null)}
+          onRetry={dismissRateLimit}
+          onDismiss={dismissRateLimit}
         />
       )}
       <div>
@@ -326,6 +341,14 @@ function SignInForm() {
         refreshing={probing}
         onRefresh={runProbe}
       />
+      <details className="pt-2">
+        <summary className="cursor-pointer text-xs text-muted-foreground hover:text-primary text-center">
+          Didn't get the confirmation email?
+        </summary>
+        <div className="mt-3">
+          <ResendConfirmationForm />
+        </div>
+      </details>
     </form>
   );
 }
@@ -336,7 +359,19 @@ function SignUpForm() {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
-  const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string } | null>(null);
+  const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string } | null>(
+    () => getRateLimit("signup"),
+  );
+
+  useEffect(() => {
+    const hydrated = getRateLimit("signup");
+    if (hydrated) setRateLimit(hydrated);
+  }, []);
+
+  const dismissRateLimit = () => {
+    clearRateLimit("signup");
+    setRateLimit(null);
+  };
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -347,7 +382,6 @@ function SignUpForm() {
     const nv = displayNameSchema.safeParse(name || undefined);
     if (!nv.success) return toast.error("Invalid display name");
     setBusy(true);
-    setRateLimit(null);
 
     // Closed beta: validate invite (email allowlist OR code) before signing up.
     const { data: allowed, error: checkErr } = await supabase.rpc("check_beta_invite", {
@@ -379,6 +413,7 @@ function SignUpForm() {
       const friendly = friendlySignupError(error);
       if (isRateLimited(error)) {
         const retryAfterSec = parseRetryAfterSec(error);
+        persistRateLimit("signup", retryAfterSec, friendly);
         setRateLimit({ retryAfterSec, message: friendly });
         logAuthRateEvent("signup_rate_limited", { retryAfterSec, surface: "signup" });
       } else if (isCaptchaFailure(error)) {
@@ -388,6 +423,7 @@ function SignUpForm() {
         toast.error(friendly);
       }
     } else {
+      dismissRateLimit();
       toast.success("Account created — check your email to verify.");
     }
   }
@@ -398,8 +434,8 @@ function SignUpForm() {
         <RateLimitNotice
           retryAfterSec={rateLimit.retryAfterSec}
           message={rateLimit.message}
-          onRetry={() => setRateLimit(null)}
-          onDismiss={() => setRateLimit(null)}
+          onRetry={dismissRateLimit}
+          onDismiss={dismissRateLimit}
         />
       )}
       <div>

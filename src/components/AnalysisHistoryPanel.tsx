@@ -106,13 +106,17 @@ function keyToHz(k: string | null | undefined): number {
   const root = k.replace(/\s*(maj(or)?|min(or)?|m)\s*$/i, "").trim();
   return NOTE_HZ[root] ?? NOTE_HZ[root[0]?.toUpperCase()] ?? 220;
 }
-async function playPreview(r: TrackReport, onEnd: () => void): Promise<PreviewState | null> {
+function playPreview(r: TrackReport, onEnd: () => void): PreviewState | null {
   try {
     const Ctx = window.AudioContext || (window as any).webkitAudioContext;
     if (!Ctx) return null;
-    const ctx = new Ctx();
-    if (ctx.state === "suspended") await ctx.resume().catch(() => {});
-    const now = ctx.currentTime;
+    const ctx: AudioContext = new Ctx();
+    // Fire-and-forget resume — don't await, so we keep the click's gesture link
+    // and still schedule oscillators against ctx.currentTime immediately after.
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
+    const now = ctx.currentTime + 0.02; // tiny lead-in avoids clicks / pre-resume race
     const dur = 1.6;
     const hz = keyToHz(r.detected_key);
     const bpm = Math.max(40, Math.min(220, r.bpm ?? 100));
@@ -161,7 +165,7 @@ async function playPreview(r: TrackReport, onEnd: () => void): Promise<PreviewSt
         onEnd();
       }
       ctx.close().catch(() => {});
-    }, dur * 1000 + 50);
+    }, dur * 1000 + 100);
     return state;
   } catch {
     return null;
@@ -352,7 +356,7 @@ export const AnalysisHistoryPanel = ({ className }: { className?: string }) => {
   // Stop any preview on unmount
   useEffect(() => () => { currentPreview?.stop(); currentPreview = null; }, []);
 
-  const togglePreview = async (r: TrackReport) => {
+  const togglePreview = (r: TrackReport) => {
     if (currentPreview?.id === r.id) {
       currentPreview.stop();
       currentPreview = null;
@@ -361,13 +365,15 @@ export const AnalysisHistoryPanel = ({ className }: { className?: string }) => {
     }
     currentPreview?.stop();
     currentPreview = null;
-    setPlayingId(r.id);
-    const state = await playPreview(r, () => setPlayingId(null));
+    // Call playPreview synchronously inside the click handler so the
+    // AudioContext is created within the user-gesture window (Chrome/Safari).
+    const state = playPreview(r, () => setPlayingId(null));
     if (!state) {
       setPlayingId(null);
       toast.error("Preview unavailable in this browser");
       return;
     }
+    setPlayingId(r.id);
     currentPreview = state;
   };
 

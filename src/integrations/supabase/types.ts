@@ -176,6 +176,33 @@ export type Database = {
         }
         Relationships: []
       }
+      auth_rate_events: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          retry_after_sec: number | null
+          session_kind_count: number | null
+          surface: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          retry_after_sec?: number | null
+          session_kind_count?: number | null
+          surface?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          retry_after_sec?: number | null
+          session_kind_count?: number | null
+          surface?: string | null
+        }
+        Relationships: []
+      }
       beta_feedback: {
         Row: {
           admin_notes: string | null
