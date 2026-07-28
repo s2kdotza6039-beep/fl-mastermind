@@ -28,6 +28,8 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { useTrackSession } from "@/context/TrackSessionContext";
+import { useProject } from "@/context/ProjectContext";
+import { addTrackVersion, touchLastOpened } from "@/lib/project-memory";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -168,6 +170,7 @@ async function encodeWavAsync(
 export default function UploadPage() {
   const { user } = useAuth();
   const { setActiveReport, refreshRecent } = useTrackSession();
+  const { activeProject } = useProject();
   const navigate = useNavigate();
   const [lastReportId, setLastReportId] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -365,6 +368,10 @@ export default function UploadPage() {
       .from("audio_analysis_reports")
       .insert({
         user_id: user.id,
+        // Link the report to the active project so Project Memory can
+        // reopen it (previously reports were saved with project_id = NULL,
+        // so projects never "remembered" their tracks).
+        project_id: activeProject?.id ?? null,
         file_name: res.metrics.fileName,
         file_format: res.metrics.fileFormat,
         file_size_bytes: res.metrics.fileSizeBytes,
@@ -398,6 +405,32 @@ export default function UploadPage() {
       // Auto-activate this report as the coaching session
       await setActiveReport(inserted.id);
       await refreshRecent();
+
+      // Project Memory: log this upload as a new track version on the active
+      // project and mark it as the project's last-opened track, so reopening
+      // the project restores exactly where the producer left off.
+      if (activeProject) {
+        try {
+          const version = await addTrackVersion(user.id, activeProject.id, {
+            file_name: res.metrics.fileName,
+            audio_report_id: inserted.id,
+          });
+          // Back-link the report → version (both directions now consistent).
+          await supabase
+            .from("audio_analysis_reports")
+            .update({ track_version_id: version.id })
+            .eq("id", inserted.id);
+          await touchLastOpened(activeProject.id, {
+            trackVersionId: version.id,
+            audioReportId: inserted.id,
+          });
+        } catch (e: any) {
+          console.warn("Failed to log track version to project:", e?.message ?? e);
+          toast.warning(
+            "Analysis saved, but could not be linked to your project. Reopen the project and re-activate this track.",
+          );
+        }
+      }
     }
   };
 

@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback, ReactNode 
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import type { ChatContext } from "@/lib/sensei-api";
+import { announceTrackActivated, EVT_ACTIVATE_TRACK } from "@/lib/project-track-events";
 
 export interface TrackReport {
   id: string;
@@ -110,7 +111,11 @@ export const TrackSessionProvider = ({ children }: { children: ReactNode }) => {
     }
 
     setActive(activeReport);
-    if (activeReport) localStorage.setItem(LOCAL_KEY, activeReport.id);
+    if (activeReport) {
+      localStorage.setItem(LOCAL_KEY, activeReport.id);
+      // Let the project layer persist this as the project's last-opened track.
+      announceTrackActivated(activeReport.id);
+    }
 
     // Recent list
     const { data: recentRows } = await supabase
@@ -147,9 +152,22 @@ export const TrackSessionProvider = ({ children }: { children: ReactNode }) => {
       );
       setActive(report);
       localStorage.setItem(LOCAL_KEY, report.id);
+      announceTrackActivated(report.id);
     },
     [user],
   );
+
+  // Project layer asks us to activate a specific (per-project) track.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const reportId = (e as CustomEvent<{ reportId?: string }>).detail?.reportId;
+      if (reportId && reportId !== active?.id) {
+        setActiveReport(reportId).catch(() => {});
+      }
+    };
+    window.addEventListener(EVT_ACTIVATE_TRACK, handler);
+    return () => window.removeEventListener(EVT_ACTIVATE_TRACK, handler);
+  }, [active?.id, setActiveReport]);
 
   const clearActive = useCallback(async () => {
     if (!user) return;

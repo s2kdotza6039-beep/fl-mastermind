@@ -194,14 +194,18 @@ export async function addTrackVersion(
 }
 
 // ---------------- Chat memory ----------------
+// NOTE: fetch the LATEST `limit` messages (descending) then reverse into
+// chronological order. Previously this fetched ascending + limit, which
+// returned the OLDEST messages — after 100+ messages in a project, the most
+// recent conversation silently vanished from restores and from the AI prompt.
 export async function listChatMessages(projectId: string, limit = 200): Promise<ProjectChatMessage[]> {
   const { data } = await supabase
     .from("project_chat_messages")
     .select("*")
     .eq("project_id", projectId)
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: false })
     .limit(limit);
-  return (data ?? []) as ProjectChatMessage[];
+  return ((data ?? []) as ProjectChatMessage[]).reverse();
 }
 
 export async function appendChatMessage(
@@ -209,13 +213,15 @@ export async function appendChatMessage(
   projectId: string,
   msg: { role: "user" | "assistant" | "system"; content: string; source_page?: string },
 ): Promise<void> {
-  await supabase.from("project_chat_messages").insert({
+  const { error } = await supabase.from("project_chat_messages").insert({
     user_id: userId,
     project_id: projectId,
     role: msg.role,
     content: msg.content,
     source_page: msg.source_page,
   });
+  // Never fail silently — "Sensei forgets" bugs hide in swallowed inserts.
+  if (error) throw error;
 }
 
 /** Project context summary for AI prompts. */

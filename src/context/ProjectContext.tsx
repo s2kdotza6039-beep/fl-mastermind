@@ -12,6 +12,7 @@ import {
   touchLastOpened,
   type Project,
 } from "@/lib/project-memory";
+import { EVT_TRACK_ACTIVATED, requestTrackActivation } from "@/lib/project-track-events";
 import { toast } from "sonner";
 
 const ACTIVE_KEY = "studio-sensei-active-project-id";
@@ -36,6 +37,33 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(false);
   const loc = useLocation();
   const lastTouchedPage = useRef<string>("");
+  const lastRestoreKey = useRef<string>("");
+
+  // Ask the track layer to restore a project's last-opened track (deduped —
+  // refresh() runs on every auth-identity change, and we only want one
+  // restore request per project+report combination).
+  const restoreProjectTrack = (p: Project | null) => {
+    const reportId = p?.last_opened_audio_report_id;
+    if (!p || !reportId) return;
+    const key = `${p.id}:${reportId}`;
+    if (lastRestoreKey.current === key) return;
+    lastRestoreKey.current = key;
+    requestTrackActivation(reportId);
+  };
+
+  // The track layer announces which report became active — persist it on the
+  // active project so future sign-ins restore THIS project's track rather
+  // than whichever track was used last globally.
+  useEffect(() => {
+    if (!activeProject) return;
+    const handler = (e: Event) => {
+      const reportId = (e as CustomEvent<{ reportId?: string }>).detail?.reportId;
+      if (!reportId || reportId === activeProject.last_opened_audio_report_id) return;
+      touchLastOpened(activeProject.id, { audioReportId: reportId }).catch(() => {});
+    };
+    window.addEventListener(EVT_TRACK_ACTIVATED, handler);
+    return () => window.removeEventListener(EVT_TRACK_ACTIVATED, handler);
+  }, [activeProject]);
 
   const refresh = useCallback(async () => {
     if (!user) {
@@ -76,6 +104,9 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
       }
       setActiveProject(active);
       if (active) localStorage.setItem(ACTIVE_KEY, active.id);
+      // Per-project track memory: ask the track layer to restore the track
+      // this project was last working on (no-op if none was recorded).
+      restoreProjectTrack(active);
     } catch (e: any) {
       toast.error(e?.message ?? "Failed to load projects");
     } finally {
@@ -104,6 +135,8 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
     setActiveProject(next);
     localStorage.setItem(ACTIVE_KEY, next.id);
     await touchLastOpened(next.id, { page: loc.pathname });
+    // Restore THIS project's track (each project remembers its own).
+    restoreProjectTrack(next);
   }, [loc.pathname, refresh]);
 
   const create: ProjectContextValue["create"] = async (patch) => {

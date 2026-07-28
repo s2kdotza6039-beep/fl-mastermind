@@ -22,6 +22,9 @@ import { StatusBanner } from "@/components/StatusBanner";
 import { TrustScorecard } from "@/components/TrustScorecard";
 import { ContinueProjectBanner } from "@/components/ContinueProjectBanner";
 import { supabase } from "@/integrations/supabase/client";
+import { useProject } from "@/context/ProjectContext";
+import { deleteAdvice, listAdvice, type ProjectAdvice } from "@/lib/project-memory";
+import { toast } from "sonner";
 
 const FEATURES = [
   { to: "/chat", icon: MessageCircle, title: "Sensei Chat", desc: "Ask anything about your sound." },
@@ -49,9 +52,14 @@ interface RecentAudio {
 }
 
 export default function Dashboard() {
-  const { projectName, genre, stage, progress, savedAdvice, checklist, removeAdvice } = useSession();
+  const { projectName, genre, stage, progress, checklist } = useSession();
   const { user } = useAuth();
+  const { activeProject } = useProject();
   const [recentAudio, setRecentAudio] = useState<RecentAudio[]>([]);
+  // Saved advice now comes from Project Memory (database) — NOT the old
+  // localStorage list, which silently dropped tips after 30 entries and
+  // never synced across devices ("advice disappears" bug).
+  const [dbAdvice, setDbAdvice] = useState<ProjectAdvice[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -63,11 +71,21 @@ export default function Dashboard() {
       .then(({ data }) => setRecentAudio((data as RecentAudio[]) ?? []));
   }, [user]);
 
+  useEffect(() => {
+    if (!activeProject) {
+      setDbAdvice([]);
+      return;
+    }
+    listAdvice(activeProject.id)
+      .then(setDbAdvice)
+      .catch(() => setDbAdvice([]));
+  }, [activeProject?.id]);
+
   const stats = [
     { label: "Genre", value: genre, icon: Music2 },
     { label: "Stage", value: stage, icon: Sliders },
     { label: "Tasks Done", value: `${checklist.filter(c => c.done).length}/${checklist.length}`, icon: ListChecks },
-    { label: "Saved Tips", value: savedAdvice.length, icon: Sparkles },
+    { label: "Saved Tips", value: dbAdvice.length, icon: Sparkles },
   ];
 
   return (
@@ -199,23 +217,39 @@ export default function Dashboard() {
         <h2 className="font-display text-xl font-bold mb-4 flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-primary" /> Saved Advice
         </h2>
-        {savedAdvice.length === 0 ? (
+        {dbAdvice.length === 0 ? (
           <Card className="studio-card p-8 text-center">
             <Mic className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
             <p className="text-sm text-muted-foreground">No saved tips yet. Chat with Sensei and save the gems.</p>
           </Card>
         ) : (
           <div className="grid md:grid-cols-2 gap-3">
-            {savedAdvice.map((a) => (
+            {dbAdvice.map((a) => (
               <Card key={a.id} className="studio-card p-4 group">
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <h4 className="font-semibold text-sm text-primary line-clamp-1 flex-1">{a.title}</h4>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100" onClick={() => removeAdvice(a.id)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                    onClick={async () => {
+                      try {
+                        await deleteAdvice(a.id);
+                        setDbAdvice((prev) => prev.filter((x) => x.id !== a.id));
+                        toast.success("Advice deleted");
+                      } catch (e: any) {
+                        toast.error(e?.message ?? "Could not delete advice");
+                      }
+                    }}
+                  >
                     <Trash2 className="w-3 h-3" />
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">{a.content.replace(/[#*]/g, "")}</p>
-                <div className="text-[10px] text-muted-foreground/60 mt-2">{new Date(a.timestamp).toLocaleString()}</div>
+                <div className="text-[10px] text-muted-foreground/60 mt-2 flex items-center gap-2">
+                  <span>{new Date(a.created_at).toLocaleString()}</span>
+                  <span className="uppercase tracking-wider text-primary/60">{a.status}</span>
+                </div>
               </Card>
             ))}
           </div>

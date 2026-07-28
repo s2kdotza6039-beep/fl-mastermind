@@ -7,7 +7,10 @@ import { useProject } from "@/context/ProjectContext";
 /** "Welcome back — continue {project}" banner shown on the dashboard. */
 export const ContinueProjectBanner = () => {
   const { activeProject } = useProject();
-  if (!activeProject) return null;
+  // Only show for projects the user has actually been working in — a
+  // brand-new auto-created project has no last_opened_page, and greeting
+  // first-time users with "Welcome back" reads as a bug.
+  if (!activeProject || !activeProject.last_opened_page) return null;
 
   const lastPage = activeProject.last_opened_page && activeProject.last_opened_page !== "/"
     ? activeProject.last_opened_page

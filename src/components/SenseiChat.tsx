@@ -63,7 +63,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   const { setup } = useStudioSetup();
   const { inventory, isComplete: inventoryComplete } = usePluginInventory();
   const { toChatAudio } = useTrackSession();
-  const { activeProject } = useProject();
+  const { activeProject, loading: projectLoading } = useProject();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -138,6 +138,13 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
+    // Don't let users send before their project memory has hydrated — a
+    // message sent in that window was neither persisted nor given project
+    // context, which read as "Sensei forgot everything".
+    if (!compact && projectLoading) {
+      toast.info("Restoring your project memory… one moment.");
+      return;
+    }
     setRateLimit(null);
     const userMsg: ChatMsg = { role: "user", content: trimmed };
     const next = [...messages, userMsg];
@@ -147,7 +154,11 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
 
     // Persist user turn to project memory.
     if (activeProject && user) {
-      appendChatMessage(user.id, activeProject.id, { role: "user", content: trimmed, source_page: "chat" }).catch(() => {});
+      appendChatMessage(user.id, activeProject.id, { role: "user", content: trimmed, source_page: "chat" })
+        .catch((e) => {
+          console.warn("Failed to persist user message:", e?.message ?? e);
+          toast.error("Message sent, but it could not be saved to project memory.");
+        });
     }
 
     // Build long-term project memory for the AI (don't block on failure).
@@ -188,7 +199,11 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
         setLoading(false);
         // Persist the assistant turn once streaming finishes.
         if (activeProject && user && acc.trim()) {
-          appendChatMessage(user.id, activeProject.id, { role: "assistant", content: acc, source_page: "chat" }).catch(() => {});
+          appendChatMessage(user.id, activeProject.id, { role: "assistant", content: acc, source_page: "chat" })
+            .catch((e) => {
+              console.warn("Failed to persist assistant message:", e?.message ?? e);
+              toast.error("Sensei's reply could not be saved to project memory.");
+            });
         }
       },
       onError: (msg) => {
@@ -457,14 +472,14 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
                 send(input);
               }
             }}
-            placeholder="Ask Sensei anything... (Shift+Enter for new line)"
+            placeholder={projectLoading ? "Restoring project memory…" : "Ask Sensei anything... (Shift+Enter for new line)"}
             rows={1}
             className="resize-none bg-input border-border focus-visible:ring-primary min-h-[44px]"
-            disabled={loading}
+            disabled={loading || projectLoading}
           />
           <Button
             type="submit"
-            disabled={loading || !input.trim()}
+            disabled={loading || projectLoading || !input.trim()}
             className="bg-gradient-gold text-primary-foreground hover:opacity-90 h-[44px] px-4"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
