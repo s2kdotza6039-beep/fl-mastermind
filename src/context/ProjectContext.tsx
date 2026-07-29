@@ -12,7 +12,7 @@ import {
   touchLastOpened,
   type Project,
 } from "@/lib/project-memory";
-import { EVT_TRACK_ACTIVATED, requestTrackActivation } from "@/lib/project-track-events";
+import { EVT_TRACK_ACTIVATED, requestTrackActivation, requestTrackClear } from "@/lib/project-track-events";
 import { toast } from "sonner";
 
 const ACTIVE_KEY = "studio-sensei-active-project-id";
