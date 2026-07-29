@@ -51,7 +51,7 @@ export default function MixingCoachPage() {
       if (scoreRes.data?.[0]) {
         setLatest({
           mix_score: scoreRes.data[0].mix_score,
-          breakdown: scoreRes.data[0].breakdown as ScoreBreakdown,
+          breakdown: scoreRes.data[0].breakdown as unknown as ScoreBreakdown,
           master_ready: scoreRes.data[0].master_ready,
           target_score: tScore,
         });
@@ -160,7 +160,7 @@ export default function MixingCoachPage() {
       )}
 
       <div className="mt-8">
-        <SenseiChat contextLabel="Mixing Coach" />
+        <SenseiChat />
       </div>
     </div>
   );
