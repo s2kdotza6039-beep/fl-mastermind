@@ -50,6 +50,18 @@ export default function ProjectDetailPage() {
   const [reports, setReports] = useState<AudioReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [latestScore, setLatestScore] = useState<{ mix_score: number; breakdown: ScoreBreakdown; master_ready: boolean } | null>(null);
+  const [issues, setIssues] = useState<StoredIssue[]>([]);
+  const [planId, setPlanId] = useState<string | null>(null);
+  const [steps, setSteps] = useState<RepairPlanStep[]>([]);
+  const [targetScore, setTargetScore] = useState(85);
+  // Session form.
+  const [tracksCount, setTracksCount] = useState<number | "">("");
+  const [mixerRouting, setMixerRouting] = useState("");
+  const [pluginChains, setPluginChains] = useState("");
+  const [notes, setNotes] = useState("");
+  const [goal, setGoal] = useState("");
+  const [savingSession, setSavingSession] = useState(false);
 
   useEffect(() => {
     if (!id || !user) return;
@@ -58,23 +70,72 @@ export default function ProjectDetailPage() {
       const p = await getProject(id);
       if (!p) { setNotFound(true); setLoading(false); return; }
       setProject(p);
-      const [a, v, r] = await Promise.all([
+      const sn = (p as any).session_notes ?? {};
+      setTracksCount(typeof sn.tracks_count === "number" ? sn.tracks_count : "");
+      setMixerRouting(sn.mixer_routing ?? "");
+      setPluginChains(sn.plugin_chains ?? "");
+      setNotes(sn.notes ?? "");
+      setGoal((p as any).goal ?? "");
+      const [a, v, r, sc, iss, pl, tg] = await Promise.all([
         listAdvice(p.id),
         listTrackVersions(p.id),
-        supabase
-          .from("audio_analysis_reports")
+        supabase.from("audio_analysis_reports")
           .select("id, file_name, detected_key, bpm, lufs_estimate, detected_issues, created_at")
-          .eq("project_id", p.id)
-          .order("created_at", { ascending: false }),
+          .eq("project_id", p.id).order("created_at", { ascending: false }),
+        supabase.from("project_scores").select("mix_score, breakdown, master_ready")
+          .eq("project_id", p.id).order("created_at", { ascending: false }).limit(1),
+        supabase.from("project_issues").select("*").eq("project_id", p.id).neq("status", "resolved"),
+        supabase.from("repair_plans").select("id").eq("project_id", p.id).eq("status", "active")
+          .order("created_at", { ascending: false }).limit(1),
+        supabase.from("genre_target_profiles").select("target_score, genre"),
       ]);
       setAdvice(a);
       setVersions(v);
       setReports((r.data as AudioReport[]) ?? []);
+      if (sc.data?.[0]) {
+        setLatestScore({
+          mix_score: sc.data[0].mix_score,
+          breakdown: sc.data[0].breakdown as unknown as ScoreBreakdown,
+          master_ready: sc.data[0].master_ready,
+        });
+      }
+      setIssues(((iss.data ?? []) as any[]).map((row) => ({
+        id: row.id, detector_id: row.detector_id, severity: row.severity, title: row.title,
+        detail: row.detail, metrics: row.metrics, status: row.status,
+      })));
+      const g = (p.genre ?? "").toLowerCase();
+      const t = (tg.data ?? []).find((x: any) => (x.genre ?? "").toLowerCase() === g)
+        ?? (tg.data ?? []).find((x: any) => (x.genre ?? "").toLowerCase() === "pop");
+      setTargetScore(t?.target_score ?? 85);
+      const pid = pl.data?.[0]?.id ?? null;
+      setPlanId(pid);
+      if (pid) {
+        const { data: stepData } = await supabase.from("plan_steps")
+          .select("id, step_order, instruction, expected_delta, status")
+          .eq("plan_id", pid).order("step_order");
+        setSteps((stepData ?? []) as RepairPlanStep[]);
+      }
       setLoading(false);
-      // Auto-switch active project when viewing one directly.
       if (activeProject?.id !== p.id) switchProject(p.id).catch(() => {});
     })();
   }, [id, user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function saveSession() {
+    if (!project) return;
+    setSavingSession(true);
+    const session_notes = {
+      tracks_count: typeof tracksCount === "number" ? tracksCount : null,
+      mixer_routing: mixerRouting,
+      plugin_chains: pluginChains,
+      notes,
+    };
+    const { error } = await supabase.from("projects")
+      .update({ session_notes: session_notes as any, goal: goal || null })
+      .eq("id", project.id);
+    setSavingSession(false);
+    if (error) toast.error("Could not save session");
+    else toast.success("Session saved");
+  }
 
   if (notFound) return <Navigate to="/projects" replace />;
   if (loading || !project) {
