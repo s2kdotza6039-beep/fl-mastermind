@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback, ReactNode 
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import type { ChatContext } from "@/lib/sensei-api";
-import { announceTrackActivated, EVT_ACTIVATE_TRACK } from "@/lib/project-track-events";
+import { announceTrackActivated, EVT_ACTIVATE_TRACK, EVT_CLEAR_TRACK } from "@/lib/project-track-events";
 
 export interface TrackReport {
   id: string;
