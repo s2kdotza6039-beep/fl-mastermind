@@ -12,9 +12,13 @@ export const ContinueProjectBanner = () => {
   // first-time users with "Welcome back" reads as a bug.
   if (!activeProject || !activeProject.last_opened_page) return null;
 
-  const lastPage = activeProject.last_opened_page && activeProject.last_opened_page !== "/"
-    ? activeProject.last_opened_page
-    : "/projects/" + activeProject.id;
+  // Upload's job is done once analysis exists — send returning users to the loop page instead of re-uploading.
+  const rawLast = activeProject.last_opened_page;
+  const lastPage = rawLast === "/upload"
+    ? "/mixing"
+    : rawLast && rawLast !== "/"
+      ? rawLast
+      : "/projects/" + activeProject.id;
 
   const lastActivity = new Date(activeProject.last_activity_at);
   const daysAgo = Math.floor((Date.now() - lastActivity.getTime()) / (1000 * 60 * 60 * 24));
