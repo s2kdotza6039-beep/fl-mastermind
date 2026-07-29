@@ -169,18 +169,18 @@ export const TrackSessionProvider = ({ children }: { children: ReactNode }) => {
     return () => window.removeEventListener(EVT_ACTIVATE_TRACK, handler);
   }, [active?.id, setActiveReport]);
 
-  useEffect(() => {
-    const handler = () => { clearActive().catch(() => {}); };
-    window.addEventListener(EVT_CLEAR_TRACK, handler);
-    return () => window.removeEventListener(EVT_CLEAR_TRACK, handler);
-  }, [clearActive]);
-
   const clearActive = useCallback(async () => {
     if (!user) return;
     await supabase.from("user_active_track_session").delete().eq("user_id", user.id);
     setActive(null);
     localStorage.removeItem(LOCAL_KEY);
   }, [user]);
+
+  useEffect(() => {
+    const handler = () => { clearActive().catch(() => {}); };
+    window.addEventListener(EVT_CLEAR_TRACK, handler);
+    return () => window.removeEventListener(EVT_CLEAR_TRACK, handler);
+  }, [clearActive]);
 
   const refreshRecent = useCallback(async () => {
     const { data } = await supabase
