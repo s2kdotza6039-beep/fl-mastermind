@@ -377,7 +377,7 @@ export function reconcileIssues(
       status,
       first_seen_at: prior.first_seen_at ?? now,
       last_seen_at: now,
-      resolved_at: status === "resolved" ? prior.resolved_at ?? null : null,
+      resolved_at: null,
     });
   }
 
