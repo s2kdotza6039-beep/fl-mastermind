@@ -428,6 +428,14 @@ export default function UploadPage() {
             trackVersionId: version.id,
             audioReportId: inserted.id,
           });
+
+          // Coaching loop: score, detect issues, reconcile, and plan.
+          try {
+            await runCoachingLoop(user.id, activeProject.id, activeProject.genre, inserted.id, version.id, res);
+          } catch (loopErr: any) {
+            console.warn("Coaching loop failed:", loopErr?.message ?? loopErr);
+            toast.warning("Analysis saved, but the coaching loop did not update. Retry the upload.");
+          }
         } catch (e: any) {
           console.warn("Failed to log track version to project:", e?.message ?? e);
           toast.warning(
