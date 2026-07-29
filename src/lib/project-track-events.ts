@@ -15,3 +15,8 @@ export function requestTrackActivation(reportId: string): void {
 export function announceTrackActivated(reportId: string): void {
   window.dispatchEvent(new CustomEvent(EVT_TRACK_ACTIVATED, { detail: { reportId } }));
 }
+
+export const EVT_CLEAR_TRACK = "studio-sensei:clear-track";
+export function requestTrackClear(): void {
+  window.dispatchEvent(new CustomEvent(EVT_CLEAR_TRACK));
+}
