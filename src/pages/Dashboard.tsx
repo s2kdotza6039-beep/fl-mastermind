@@ -21,6 +21,7 @@ import { BetaNotice } from "@/components/BetaNotice";
 import { StatusBanner } from "@/components/StatusBanner";
 import { TrustScorecard } from "@/components/TrustScorecard";
 import { ContinueProjectBanner } from "@/components/ContinueProjectBanner";
+import { NextStepCard } from "@/components/NextStepCard";
 import { supabase } from "@/integrations/supabase/client";
 import { useProject } from "@/context/ProjectContext";
 import { deleteAdvice, listAdvice, type ProjectAdvice } from "@/lib/project-memory";
