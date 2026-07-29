@@ -176,7 +176,7 @@ export default function ProjectDetailPage() {
         icon={<FolderOpen className="w-6 h-6" />}
         action={
           <Button asChild className="bg-gradient-gold text-primary-foreground hover:opacity-90">
-            <Link to="/chat"><MessageCircle className="w-4 h-4 mr-2" /> Continue with Sensei</Link>
+            <Link to="/mixing"><MessageCircle className="w-4 h-4 mr-2" /> Continue coaching</Link>
           </Button>
         }
       />
