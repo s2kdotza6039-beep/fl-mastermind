@@ -1,13 +1,18 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, Navigate } from "react-router-dom";
-import { ArrowLeft, FolderOpen, MessageCircle, Trash2, Check, X, CircleDot, Loader2, Music2, AudioLines, TrendingUp } from "lucide-react";
+import { ArrowLeft, FolderOpen, MessageCircle, Trash2, Check, X, CircleDot, Loader2, Music2, AudioLines, TrendingUp, AlertTriangle, AlertCircle, Info, Save } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { MixScoreCard } from "@/components/MixScoreCard";
+import { RepairPlanCard, type RepairPlanStep } from "@/components/RepairPlanCard";
 import { useAuth } from "@/context/AuthContext";
 import { useProject } from "@/context/ProjectContext";
 import {
@@ -16,6 +21,7 @@ import {
 } from "@/lib/project-memory";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import type { ScoreBreakdown, StoredIssue } from "@/lib/coaching-loop";
 
 interface AudioReport {
   id: string;
