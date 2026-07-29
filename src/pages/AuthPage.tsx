@@ -383,12 +383,28 @@ function SignUpForm() {
     if (!nv.success) return toast.error("Invalid display name");
     setBusy(true);
 
-    // Closed beta: validate invite (email allowlist OR code) before signing up.
-    const { data: allowed, error: checkErr } = await supabase.rpc("check_beta_invite", {
-      _email: ev.data,
-      _code: code.trim() || null,
-    });
-    if (checkErr) {
+    // Closed beta: validate invite (email allowlist OR code) via edge function.
+    let allowed: boolean | null = null;
+    try {
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-invite`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({ email: ev.data, code: code.trim() || null }),
+        },
+      );
+      if (resp.ok) {
+        const body = await resp.json();
+        if (typeof body?.allowed === "boolean") allowed = body.allowed;
+      }
+    } catch {
+      /* fall through to error branch below */
+    }
+    if (allowed === null) {
       setBusy(false);
       return toast.error("Could not verify invite. Please try again.");
     }
