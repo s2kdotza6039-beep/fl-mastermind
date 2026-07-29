@@ -219,9 +219,83 @@ export default function ProjectDetailPage() {
       <Tabs defaultValue="advice">
         <TabsList>
           <TabsTrigger value="advice">Advice timeline ({advice.length})</TabsTrigger>
+          <TabsTrigger value="issues">Issues & Plan</TabsTrigger>
+          <TabsTrigger value="session">Session</TabsTrigger>
           <TabsTrigger value="tracks">Tracks ({versions.length})</TabsTrigger>
           <TabsTrigger value="analyses">Analyses ({reports.length})</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="issues">
+          <div className="mt-4 space-y-4">
+            <MixScoreCard
+              score={latestScore?.mix_score ?? null}
+              breakdown={latestScore?.breakdown ?? null}
+              master_ready={latestScore?.master_ready ?? false}
+              target_score={targetScore}
+            />
+            <Card className="studio-card p-5">
+              <h3 className="font-display text-lg font-bold mb-3">Open issues ({issues.length})</h3>
+              {issues.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No open issues detected. Re-upload after fixes to verify.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {issues.map((i) => {
+                    const Icon = i.severity === "critical" ? AlertCircle : i.severity === "warn" ? AlertTriangle : Info;
+                    const color = i.severity === "critical" ? "text-destructive" : i.severity === "warn" ? "text-amber-400" : "text-muted-foreground";
+                    return (
+                      <li key={i.detector_id} className="flex items-start gap-3">
+                        <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${color}`} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold">{i.title}</span>
+                            <Badge variant="outline" className="text-[10px] uppercase">{i.severity}</Badge>
+                          </div>
+                          {i.detail && <p className="text-xs text-muted-foreground">{i.detail}</p>}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </Card>
+            <RepairPlanCard planId={planId} steps={steps} onChange={setSteps} />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="session">
+          <Card className="studio-card p-5 mt-4 space-y-4">
+            <div>
+              <Label>Project goal</Label>
+              <Input value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="e.g. Broadcast-ready Amapiano single" />
+            </div>
+            <div>
+              <Label>Tracks count</Label>
+              <Input type="number" min={0} value={tracksCount}
+                onChange={(e) => setTracksCount(e.target.value === "" ? "" : Number(e.target.value))}
+                placeholder="e.g. 18" />
+            </div>
+            <div>
+              <Label>Mixer routing</Label>
+              <Textarea rows={3} value={mixerRouting} onChange={(e) => setMixerRouting(e.target.value)}
+                placeholder="Insert 1 = Kick, Insert 2 = Snare, Bus 20 = Drum group…" />
+            </div>
+            <div>
+              <Label>Plugin chains</Label>
+              <Textarea rows={3} value={pluginChains} onChange={(e) => setPluginChains(e.target.value)}
+                placeholder="Vocal: Parametric EQ 2 → Fruity Compressor → Reeverb 2…" />
+            </div>
+            <div>
+              <Label>Session notes</Label>
+              <Textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)}
+                placeholder="Anything Sensei should remember for next time." />
+            </div>
+            <Button onClick={saveSession} disabled={savingSession} className="bg-gradient-gold text-primary-foreground hover:opacity-90">
+              {savingSession ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} Save session
+            </Button>
+          </Card>
+        </TabsContent>
+
+
 
         <TabsContent value="advice">
           <div className="space-y-2 mt-4">
