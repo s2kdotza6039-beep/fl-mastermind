@@ -1,13 +1,18 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, Navigate } from "react-router-dom";
-import { ArrowLeft, FolderOpen, MessageCircle, Trash2, Check, X, CircleDot, Loader2, Music2, AudioLines, TrendingUp } from "lucide-react";
+import { ArrowLeft, FolderOpen, MessageCircle, Trash2, Check, X, CircleDot, Loader2, Music2, AudioLines, TrendingUp, AlertTriangle, AlertCircle, Info, Save } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { MixScoreCard } from "@/components/MixScoreCard";
+import { RepairPlanCard, type RepairPlanStep } from "@/components/RepairPlanCard";
 import { useAuth } from "@/context/AuthContext";
 import { useProject } from "@/context/ProjectContext";
 import {
@@ -16,6 +21,7 @@ import {
 } from "@/lib/project-memory";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import type { ScoreBreakdown, StoredIssue } from "@/lib/coaching-loop";
 
 interface AudioReport {
   id: string;
@@ -44,6 +50,18 @@ export default function ProjectDetailPage() {
   const [reports, setReports] = useState<AudioReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [latestScore, setLatestScore] = useState<{ mix_score: number; breakdown: ScoreBreakdown; master_ready: boolean } | null>(null);
+  const [issues, setIssues] = useState<StoredIssue[]>([]);
+  const [planId, setPlanId] = useState<string | null>(null);
+  const [steps, setSteps] = useState<RepairPlanStep[]>([]);
+  const [targetScore, setTargetScore] = useState(85);
+  // Session form.
+  const [tracksCount, setTracksCount] = useState<number | "">("");
+  const [mixerRouting, setMixerRouting] = useState("");
+  const [pluginChains, setPluginChains] = useState("");
+  const [notes, setNotes] = useState("");
+  const [goal, setGoal] = useState("");
+  const [savingSession, setSavingSession] = useState(false);
 
   useEffect(() => {
     if (!id || !user) return;
@@ -52,23 +70,72 @@ export default function ProjectDetailPage() {
       const p = await getProject(id);
       if (!p) { setNotFound(true); setLoading(false); return; }
       setProject(p);
-      const [a, v, r] = await Promise.all([
+      const sn = (p as any).session_notes ?? {};
+      setTracksCount(typeof sn.tracks_count === "number" ? sn.tracks_count : "");
+      setMixerRouting(sn.mixer_routing ?? "");
+      setPluginChains(sn.plugin_chains ?? "");
+      setNotes(sn.notes ?? "");
+      setGoal((p as any).goal ?? "");
+      const [a, v, r, sc, iss, pl, tg] = await Promise.all([
         listAdvice(p.id),
         listTrackVersions(p.id),
-        supabase
-          .from("audio_analysis_reports")
+        supabase.from("audio_analysis_reports")
           .select("id, file_name, detected_key, bpm, lufs_estimate, detected_issues, created_at")
-          .eq("project_id", p.id)
-          .order("created_at", { ascending: false }),
+          .eq("project_id", p.id).order("created_at", { ascending: false }),
+        supabase.from("project_scores").select("mix_score, breakdown, master_ready")
+          .eq("project_id", p.id).order("created_at", { ascending: false }).limit(1),
+        supabase.from("project_issues").select("*").eq("project_id", p.id).neq("status", "resolved"),
+        supabase.from("repair_plans").select("id").eq("project_id", p.id).eq("status", "active")
+          .order("created_at", { ascending: false }).limit(1),
+        supabase.from("genre_target_profiles").select("target_score, genre"),
       ]);
       setAdvice(a);
       setVersions(v);
       setReports((r.data as AudioReport[]) ?? []);
+      if (sc.data?.[0]) {
+        setLatestScore({
+          mix_score: sc.data[0].mix_score,
+          breakdown: sc.data[0].breakdown as unknown as ScoreBreakdown,
+          master_ready: sc.data[0].master_ready,
+        });
+      }
+      setIssues(((iss.data ?? []) as any[]).map((row) => ({
+        id: row.id, detector_id: row.detector_id, severity: row.severity, title: row.title,
+        detail: row.detail, metrics: row.metrics, status: row.status,
+      })));
+      const g = (p.genre ?? "").toLowerCase();
+      const t = (tg.data ?? []).find((x: any) => (x.genre ?? "").toLowerCase() === g)
+        ?? (tg.data ?? []).find((x: any) => (x.genre ?? "").toLowerCase() === "pop");
+      setTargetScore(t?.target_score ?? 85);
+      const pid = pl.data?.[0]?.id ?? null;
+      setPlanId(pid);
+      if (pid) {
+        const { data: stepData } = await supabase.from("plan_steps")
+          .select("id, step_order, instruction, expected_delta, status")
+          .eq("plan_id", pid).order("step_order");
+        setSteps((stepData ?? []) as RepairPlanStep[]);
+      }
       setLoading(false);
-      // Auto-switch active project when viewing one directly.
       if (activeProject?.id !== p.id) switchProject(p.id).catch(() => {});
     })();
   }, [id, user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function saveSession() {
+    if (!project) return;
+    setSavingSession(true);
+    const session_notes = {
+      tracks_count: typeof tracksCount === "number" ? tracksCount : null,
+      mixer_routing: mixerRouting,
+      plugin_chains: pluginChains,
+      notes,
+    };
+    const { error } = await supabase.from("projects")
+      .update({ session_notes: session_notes as any, goal: goal || null })
+      .eq("id", project.id);
+    setSavingSession(false);
+    if (error) toast.error("Could not save session");
+    else toast.success("Session saved");
+  }
 
   if (notFound) return <Navigate to="/projects" replace />;
   if (loading || !project) {
@@ -152,9 +219,83 @@ export default function ProjectDetailPage() {
       <Tabs defaultValue="advice">
         <TabsList>
           <TabsTrigger value="advice">Advice timeline ({advice.length})</TabsTrigger>
+          <TabsTrigger value="issues">Issues & Plan</TabsTrigger>
+          <TabsTrigger value="session">Session</TabsTrigger>
           <TabsTrigger value="tracks">Tracks ({versions.length})</TabsTrigger>
           <TabsTrigger value="analyses">Analyses ({reports.length})</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="issues">
+          <div className="mt-4 space-y-4">
+            <MixScoreCard
+              score={latestScore?.mix_score ?? null}
+              breakdown={latestScore?.breakdown ?? null}
+              master_ready={latestScore?.master_ready ?? false}
+              target_score={targetScore}
+            />
+            <Card className="studio-card p-5">
+              <h3 className="font-display text-lg font-bold mb-3">Open issues ({issues.length})</h3>
+              {issues.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No open issues detected. Re-upload after fixes to verify.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {issues.map((i) => {
+                    const Icon = i.severity === "critical" ? AlertCircle : i.severity === "warn" ? AlertTriangle : Info;
+                    const color = i.severity === "critical" ? "text-destructive" : i.severity === "warn" ? "text-amber-400" : "text-muted-foreground";
+                    return (
+                      <li key={i.detector_id} className="flex items-start gap-3">
+                        <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${color}`} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold">{i.title}</span>
+                            <Badge variant="outline" className="text-[10px] uppercase">{i.severity}</Badge>
+                          </div>
+                          {i.detail && <p className="text-xs text-muted-foreground">{i.detail}</p>}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </Card>
+            <RepairPlanCard planId={planId} steps={steps} onChange={setSteps} />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="session">
+          <Card className="studio-card p-5 mt-4 space-y-4">
+            <div>
+              <Label>Project goal</Label>
+              <Input value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="e.g. Broadcast-ready Amapiano single" />
+            </div>
+            <div>
+              <Label>Tracks count</Label>
+              <Input type="number" min={0} value={tracksCount}
+                onChange={(e) => setTracksCount(e.target.value === "" ? "" : Number(e.target.value))}
+                placeholder="e.g. 18" />
+            </div>
+            <div>
+              <Label>Mixer routing</Label>
+              <Textarea rows={3} value={mixerRouting} onChange={(e) => setMixerRouting(e.target.value)}
+                placeholder="Insert 1 = Kick, Insert 2 = Snare, Bus 20 = Drum group…" />
+            </div>
+            <div>
+              <Label>Plugin chains</Label>
+              <Textarea rows={3} value={pluginChains} onChange={(e) => setPluginChains(e.target.value)}
+                placeholder="Vocal: Parametric EQ 2 → Fruity Compressor → Reeverb 2…" />
+            </div>
+            <div>
+              <Label>Session notes</Label>
+              <Textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)}
+                placeholder="Anything Sensei should remember for next time." />
+            </div>
+            <Button onClick={saveSession} disabled={savingSession} className="bg-gradient-gold text-primary-foreground hover:opacity-90">
+              {savingSession ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} Save session
+            </Button>
+          </Card>
+        </TabsContent>
+
+
 
         <TabsContent value="advice">
           <div className="space-y-2 mt-4">
