@@ -176,7 +176,7 @@ export default function ProjectDetailPage() {
         icon={<FolderOpen className="w-6 h-6" />}
         action={
           <Button asChild className="bg-gradient-gold text-primary-foreground hover:opacity-90">
-            <Link to="/chat"><MessageCircle className="w-4 h-4 mr-2" /> Continue with Sensei</Link>
+            <Link to="/mixing"><MessageCircle className="w-4 h-4 mr-2" /> Continue coaching</Link>
           </Button>
         }
       />
@@ -352,8 +352,11 @@ export default function ProjectDetailPage() {
         <TabsContent value="tracks">
           <div className="space-y-2 mt-4">
             {versions.length === 0 ? (
-              <Card className="studio-card p-8 text-center text-sm text-muted-foreground">
-                No track versions yet. Upload audio while this project is active and Sensei will log it as v1.
+              <Card className="studio-card p-8 text-center text-sm text-muted-foreground space-y-4">
+                <div>No track versions yet. Upload audio while this project is active and Sensei will log it as v1.</div>
+                <Button asChild className="bg-gradient-gold text-primary-foreground hover:opacity-90">
+                  <Link to="/upload">Upload audio — start v1</Link>
+                </Button>
               </Card>
             ) : versions.map((v) => (
               <Card key={v.id} className="studio-card p-4 flex items-center gap-3">

@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback, ReactNode 
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import type { ChatContext } from "@/lib/sensei-api";
-import { announceTrackActivated, EVT_ACTIVATE_TRACK } from "@/lib/project-track-events";
+import { announceTrackActivated, EVT_ACTIVATE_TRACK, EVT_CLEAR_TRACK } from "@/lib/project-track-events";
 
 export interface TrackReport {
   id: string;
@@ -175,6 +175,12 @@ export const TrackSessionProvider = ({ children }: { children: ReactNode }) => {
     setActive(null);
     localStorage.removeItem(LOCAL_KEY);
   }, [user]);
+
+  useEffect(() => {
+    const handler = () => { clearActive().catch(() => {}); };
+    window.addEventListener(EVT_CLEAR_TRACK, handler);
+    return () => window.removeEventListener(EVT_CLEAR_TRACK, handler);
+  }, [clearActive]);
 
   const refreshRecent = useCallback(async () => {
     const { data } = await supabase
