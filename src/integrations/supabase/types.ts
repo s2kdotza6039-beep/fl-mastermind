@@ -278,6 +278,48 @@ export type Database = {
         }
         Relationships: []
       }
+      genre_target_profiles: {
+        Row: {
+          band_tolerance: number
+          created_at: string
+          curve: Json
+          dr_min: number
+          genre: string
+          id: string
+          target_lufs: number
+          target_score: number
+          updated_at: string
+          width_max: number
+          width_min: number
+        }
+        Insert: {
+          band_tolerance?: number
+          created_at?: string
+          curve: Json
+          dr_min?: number
+          genre: string
+          id?: string
+          target_lufs: number
+          target_score?: number
+          updated_at?: string
+          width_max?: number
+          width_min?: number
+        }
+        Update: {
+          band_tolerance?: number
+          created_at?: string
+          curve?: Json
+          dr_min?: number
+          genre?: string
+          id?: string
+          target_lufs?: number
+          target_score?: number
+          updated_at?: string
+          width_max?: number
+          width_min?: number
+        }
+        Relationships: []
+      }
       incidents: {
         Row: {
           body: string
@@ -331,6 +373,66 @@ export type Database = {
           email?: string
         }
         Relationships: []
+      }
+      plan_steps: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          detector_id: string | null
+          expected_delta: string | null
+          id: string
+          instruction: string
+          plan_id: string
+          project_id: string
+          status: string
+          step_order: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          detector_id?: string | null
+          expected_delta?: string | null
+          id?: string
+          instruction: string
+          plan_id: string
+          project_id: string
+          status?: string
+          step_order: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          detector_id?: string | null
+          expected_delta?: string | null
+          id?: string
+          instruction?: string
+          plan_id?: string
+          project_id?: string
+          status?: string
+          step_order?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_steps_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "repair_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_steps_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -460,6 +562,136 @@ export type Database = {
           },
         ]
       }
+      project_issues: {
+        Row: {
+          audio_report_id: string | null
+          created_at: string
+          detail: string | null
+          detector_id: string
+          first_seen_at: string
+          id: string
+          last_seen_at: string
+          metrics: Json
+          project_id: string
+          resolved_at: string | null
+          severity: string
+          status: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          audio_report_id?: string | null
+          created_at?: string
+          detail?: string | null
+          detector_id: string
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          metrics?: Json
+          project_id: string
+          resolved_at?: string | null
+          severity: string
+          status?: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          audio_report_id?: string | null
+          created_at?: string
+          detail?: string | null
+          detector_id?: string
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          metrics?: Json
+          project_id?: string
+          resolved_at?: string | null
+          severity?: string
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_issues_audio_report_id_fkey"
+            columns: ["audio_report_id"]
+            isOneToOne: false
+            referencedRelation: "audio_analysis_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_issues_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_scores: {
+        Row: {
+          audio_report_id: string | null
+          breakdown: Json
+          created_at: string
+          id: string
+          master_ready: boolean
+          mix_score: number
+          project_id: string
+          track_version_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          audio_report_id?: string | null
+          breakdown?: Json
+          created_at?: string
+          id?: string
+          master_ready?: boolean
+          mix_score: number
+          project_id: string
+          track_version_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          audio_report_id?: string | null
+          breakdown?: Json
+          created_at?: string
+          id?: string
+          master_ready?: boolean
+          mix_score?: number
+          project_id?: string
+          track_version_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_scores_audio_report_id_fkey"
+            columns: ["audio_report_id"]
+            isOneToOne: false
+            referencedRelation: "audio_analysis_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_scores_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_scores_track_version_id_fkey"
+            columns: ["track_version_id"]
+            isOneToOne: false
+            referencedRelation: "project_track_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_track_versions: {
         Row: {
           audio_report_id: string | null
@@ -509,12 +741,14 @@ export type Database = {
           created_at: string
           description: string | null
           genre: string | null
+          goal: string | null
           id: string
           last_activity_at: string
           last_opened_audio_report_id: string | null
           last_opened_page: string | null
           last_opened_track_version_id: string | null
           name: string
+          session_notes: Json
           status: Database["public"]["Enums"]["project_status"]
           updated_at: string
           user_id: string
@@ -523,12 +757,14 @@ export type Database = {
           created_at?: string
           description?: string | null
           genre?: string | null
+          goal?: string | null
           id?: string
           last_activity_at?: string
           last_opened_audio_report_id?: string | null
           last_opened_page?: string | null
           last_opened_track_version_id?: string | null
           name: string
+          session_notes?: Json
           status?: Database["public"]["Enums"]["project_status"]
           updated_at?: string
           user_id: string
@@ -537,17 +773,64 @@ export type Database = {
           created_at?: string
           description?: string | null
           genre?: string | null
+          goal?: string | null
           id?: string
           last_activity_at?: string
           last_opened_audio_report_id?: string | null
           last_opened_page?: string | null
           last_opened_track_version_id?: string | null
           name?: string
+          session_notes?: Json
           status?: Database["public"]["Enums"]["project_status"]
           updated_at?: string
           user_id?: string
         }
         Relationships: []
+      }
+      repair_plans: {
+        Row: {
+          audio_report_id: string
+          created_at: string
+          id: string
+          project_id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          audio_report_id: string
+          created_at?: string
+          id?: string
+          project_id: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          audio_report_id?: string
+          created_at?: string
+          id?: string
+          project_id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "repair_plans_audio_report_id_fkey"
+            columns: ["audio_report_id"]
+            isOneToOne: false
+            referencedRelation: "audio_analysis_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "repair_plans_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       security_alerts: {
         Row: {
