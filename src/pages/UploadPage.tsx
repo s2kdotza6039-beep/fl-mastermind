@@ -30,6 +30,10 @@ import { useAuth } from "@/context/AuthContext";
 import { useTrackSession } from "@/context/TrackSessionContext";
 import { useProject } from "@/context/ProjectContext";
 import { addTrackVersion, touchLastOpened } from "@/lib/project-memory";
+import {
+  computeMixScore, detectIssues, reconcileIssues, buildPlanFromIssues, computeDelta,
+  type AudioReportLike, type GenreTarget, type StoredIssue, BANDS,
+} from "@/lib/coaching-loop";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
