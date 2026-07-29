@@ -170,6 +170,150 @@ async function encodeWavAsync(
   return new Blob([buf], { type: "audio/wav" });
 }
 
+async function runCoachingLoop(
+  userId: string,
+  projectId: string,
+  projectGenre: string | null,
+  audioReportId: string,
+  trackVersionId: string,
+  res: AudioAnalysisResult,
+) {
+  // 1. Load genre target (fallback: Pop).
+  const wanted = (projectGenre ?? "").trim().toLowerCase();
+  const { data: allTargets, error: gErr } = await supabase
+    .from("genre_target_profiles")
+    .select("*");
+  if (gErr || !allTargets || allTargets.length === 0) throw new Error("Genre targets unavailable");
+  const match = allTargets.find((t: any) => (t.genre ?? "").toLowerCase() === wanted);
+  const fallback = allTargets.find((t: any) => (t.genre ?? "").toLowerCase() === "pop");
+  const target = ((match ?? fallback) as unknown) as GenreTarget;
+
+  // 2. Build audio report snapshot for math.
+  const snapshot: AudioReportLike = {
+    id: audioReportId,
+    file_name: res.metrics.fileName,
+    peak_db: res.metrics.peakDb,
+    lufs_estimate: res.metrics.lufsEstimate,
+    dynamic_range_db: res.metrics.dynamicRangeDb,
+    stereo_width: res.metrics.stereoWidth,
+    band_low_db: res.metrics.bands.low,
+    band_lowmid_db: res.metrics.bands.lowMid,
+    band_mid_db: res.metrics.bands.mid,
+    band_highmid_db: res.metrics.bands.highMid,
+    band_high_db: res.metrics.bands.high,
+    detected_issues: res.issues,
+  };
+
+  // 3. Fetch previous score to compute delta.
+  const { data: prevScores } = await supabase
+    .from("project_scores")
+    .select("id, audio_report_id, created_at")
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  let deltaBreakdown: Record<string, unknown> | undefined = undefined;
+  const prevScore = prevScores?.[0];
+  if (prevScore?.audio_report_id) {
+    const { data: prevReport } = await supabase
+      .from("audio_analysis_reports")
+      .select("peak_db, lufs_estimate, dynamic_range_db, stereo_width, band_low_db, band_lowmid_db, band_mid_db, band_highmid_db, band_high_db")
+      .eq("id", prevScore.audio_report_id)
+      .maybeSingle();
+    if (prevReport) {
+      deltaBreakdown = { delta: computeDelta(prevReport as AudioReportLike, snapshot, target) };
+    }
+  }
+
+  // 4. Score.
+  const scored = computeMixScore(snapshot, target);
+  const breakdown = { ...scored.breakdown, ...(deltaBreakdown ?? {}) };
+  await supabase.from("project_scores").insert({
+    user_id: userId,
+    project_id: projectId,
+    audio_report_id: audioReportId,
+    track_version_id: trackVersionId,
+    mix_score: scored.score,
+    breakdown: breakdown as any,
+    master_ready: scored.master_ready,
+  });
+
+  // 5. Detect + reconcile issues.
+  const detected = detectIssues(snapshot, target);
+  const { data: existingRows } = await supabase
+    .from("project_issues")
+    .select("*")
+    .eq("project_id", projectId);
+  const existing: StoredIssue[] = (existingRows ?? []).map((r: any) => ({
+    id: r.id,
+    detector_id: r.detector_id,
+    severity: r.severity,
+    title: r.title,
+    detail: r.detail,
+    metrics: r.metrics,
+    status: r.status,
+    first_seen_at: r.first_seen_at,
+    last_seen_at: r.last_seen_at,
+    resolved_at: r.resolved_at,
+  }));
+  const reconciled = reconcileIssues(existing, detected);
+  for (const iss of reconciled) {
+    const payload = {
+      user_id: userId,
+      project_id: projectId,
+      audio_report_id: audioReportId,
+      detector_id: iss.detector_id,
+      severity: iss.severity,
+      title: iss.title,
+      detail: iss.detail ?? null,
+      metrics: iss.metrics as any,
+      status: iss.status,
+      last_seen_at: iss.last_seen_at ?? new Date().toISOString(),
+      resolved_at: iss.resolved_at ?? null,
+    };
+    await supabase
+      .from("project_issues")
+      .upsert(payload, { onConflict: "project_id,detector_id" });
+  }
+
+  // 6. Supersede active plans, create a new one from detected issues.
+  await supabase
+    .from("repair_plans")
+    .update({ status: "superseded" })
+    .eq("project_id", projectId)
+    .eq("status", "active");
+
+  if (detected.length > 0) {
+    const { data: newPlan } = await supabase
+      .from("repair_plans")
+      .insert({
+        user_id: userId,
+        project_id: projectId,
+        audio_report_id: audioReportId,
+        status: "active",
+      })
+      .select("id")
+      .single();
+    if (newPlan?.id) {
+      const drafts = buildPlanFromIssues(detected, snapshot, target);
+      if (drafts.length > 0) {
+        await supabase.from("plan_steps").insert(
+          drafts.map((d) => ({
+            plan_id: newPlan.id,
+            project_id: projectId,
+            user_id: userId,
+            step_order: d.step_order,
+            instruction: d.instruction,
+            detector_id: d.detector_id,
+            expected_delta: d.expected_delta,
+          })),
+        );
+      }
+    }
+  }
+  // Explicitly reference BANDS to keep module import used.
+  void BANDS;
+}
+
 
 export default function UploadPage() {
   const { user } = useAuth();
