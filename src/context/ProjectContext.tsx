@@ -43,12 +43,13 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
   // refresh() runs on every auth-identity change, and we only want one
   // restore request per project+report combination).
   const restoreProjectTrack = (p: Project | null) => {
-    const reportId = p?.last_opened_audio_report_id;
-    if (!p || !reportId) return;
-    const key = `${p.id}:${reportId}`;
+    if (!p) return;
+    const reportId = p.last_opened_audio_report_id;
+    const key = `${p.id}:${reportId ?? "none"}`;
     if (lastRestoreKey.current === key) return;
     lastRestoreKey.current = key;
-    requestTrackActivation(reportId);
+    if (reportId) requestTrackActivation(reportId);
+    else requestTrackClear();
   };
 
   // The track layer announces which report became active — persist it on the
