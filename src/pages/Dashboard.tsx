@@ -104,6 +104,7 @@ export default function Dashboard() {
       />
 
       <ContinueProjectBanner />
+      <NextStepCard />
       <StatusBanner />
       <BetaNotice />
       <TrustScorecard />
