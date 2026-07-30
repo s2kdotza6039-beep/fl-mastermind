@@ -738,6 +738,7 @@ export type Database = {
       }
       projects: {
         Row: {
+          checklist: Json
           created_at: string
           description: string | null
           genre: string | null
@@ -754,6 +755,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          checklist?: Json
           created_at?: string
           description?: string | null
           genre?: string | null
@@ -770,6 +772,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          checklist?: Json
           created_at?: string
           description?: string | null
           genre?: string | null

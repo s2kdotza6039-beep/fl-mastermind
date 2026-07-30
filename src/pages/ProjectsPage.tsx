@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { FolderOpen, Plus, ArrowRight, Music2, AudioLines } from "lucide-react";
+import { FolderOpen, Plus, ArrowRight, Music2, AudioLines, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,14 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useProject } from "@/context/ProjectContext";
 import { listAdvice, listTrackVersions, type ProjectStatus } from "@/lib/project-memory";
+import { toast } from "sonner";
 
 interface ProjectStats {
   openIssues: number;
@@ -22,13 +27,16 @@ interface ProjectStats {
 }
 
 export default function ProjectsPage() {
-  const { projects, activeProject, switchProject, create, update } = useProject();
+  const { projects, activeProject, switchProject, create, update, remove } = useProject();
   const [stats, setStats] = useState<Record<string, ProjectStats>>({});
   const [openNew, setOpenNew] = useState(false);
   const [name, setName] = useState("");
   const [genre, setGenre] = useState("");
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
+  const [search, setSearch] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
+
 
   useEffect(() => {
     (async () => {
@@ -63,6 +71,15 @@ export default function ProjectsPage() {
         }
       />
 
+      <div className="mb-4">
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search projects by name or genre…"
+          className="max-w-sm"
+        />
+      </div>
+
       {projects.length === 0 ? (
         <Card className="studio-card p-12 text-center">
           <FolderOpen className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
@@ -73,7 +90,15 @@ export default function ProjectsPage() {
         </Card>
       ) : (
         <div className="grid md:grid-cols-2 gap-4">
-          {projects.map((p) => {
+          {projects
+            .filter((p) => {
+              const q = search.trim().toLowerCase();
+              if (!q) return true;
+              return (
+                p.name.toLowerCase().includes(q) || (p.genre ?? "").toLowerCase().includes(q)
+              );
+            })
+            .map((p) => {
             const s = stats[p.id];
             const isActive = activeProject?.id === p.id;
             const lastActivity = new Date(p.last_activity_at);
@@ -128,12 +153,21 @@ export default function ProjectsPage() {
                   Last activity {lastActivity.toLocaleString()}
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
                   {!isActive && (
                     <Button size="sm" variant="outline" onClick={() => switchProject(p.id)}>
                       Switch to
                     </Button>
                   )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    aria-label={`Delete ${p.name}`}
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => setPendingDelete({ id: p.id, name: p.name })}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
                   <Button asChild size="sm" className="ml-auto bg-gradient-gold text-primary-foreground hover:opacity-90">
                     <Link to={`/projects/${p.id}`}>
                       Open project <ArrowRight className="w-3.5 h-3.5 ml-1" />
@@ -145,6 +179,37 @@ export default function ProjectsPage() {
           })}
         </div>
       )}
+
+      <AlertDialog open={!!pendingDelete} onOpenChange={(o) => !o && setPendingDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete project?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes {pendingDelete?.name} with all its track versions, scores, issues, plans, advice and chat history.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                const target = pendingDelete;
+                setPendingDelete(null);
+                if (!target) return;
+                try {
+                  await remove(target.id);
+                  toast.success("Project deleted");
+                } catch (e: any) {
+                  toast.error(e?.message ?? "Could not delete project");
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
 
       <Dialog open={openNew} onOpenChange={setOpenNew}>
         <DialogContent>
