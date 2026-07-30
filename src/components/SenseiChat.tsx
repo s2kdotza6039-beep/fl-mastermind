@@ -16,6 +16,8 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { editionToTier, forbiddenPlugins, eligiblePlugins, tierLabel } from "@/lib/fl-plugin-eligibility";
 import { addAdvice, appendChatMessage, buildProjectAiContext, listChatMessages } from "@/lib/project-memory";
+import { SpeechProvider } from "@/lib/speech";
+import { SpeechButton } from "./SpeechButton";
 
 // Detect mentions of owned plugins in assistant text.
 // Short brand names (≤3 chars) use word-boundary to avoid false matches.
