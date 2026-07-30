@@ -227,6 +227,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   };
 
   return (
+    <SpeechProvider>
     <div className={cn("flex flex-col h-full", compact && "max-h-[600px]")}>
       {eligibility && (
         <div className="border-b border-border bg-muted/30 text-xs">
