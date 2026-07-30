@@ -127,12 +127,15 @@ export default function Dashboard() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {stats.map((s) => (
-          <Card key={s.label} className="studio-card p-4">
+          <Card key={s.label} className="studio-card p-4" title={(s as any).title}>
             <div className="flex items-center justify-between mb-2">
               <span className="text-[10px] uppercase tracking-widest text-muted-foreground">{s.label}</span>
               <s.icon className="w-4 h-4 text-primary/70" />
             </div>
             <div className="text-xl font-bold text-foreground truncate">{s.value}</div>
+            {(s as any).title && (
+              <div className="text-[10px] text-muted-foreground/70 mt-1">{(s as any).title}</div>
+            )}
           </Card>
         ))}
       </div>
