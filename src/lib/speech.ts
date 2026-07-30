@@ -158,13 +158,15 @@ export function SpeechProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<SpeechState>("idle");
   const [speakingFor, setSpeakingFor] = useState<string | null>(null);
   const [progress, setProgress] = useState<SpeechProgress>({ current: 0, total: 0 });
-  const [rate, setRateState] = useState(1);
-  const rateRef = useRef(1);
+  const [rate, setRateState] = useState(() => loadStoredRate(1));
+  const rateRef = useRef(rate);
 
   const setRate = useCallback((r: number) => {
     rateRef.current = r;
     setRateState(r);
+    storeRate(r);
   }, []);
+
 
   const stop = useCallback(() => {
     if (!supported) return;
