@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, Navigate } from "react-router-dom";
-import { ArrowLeft, FolderOpen, MessageCircle, Trash2, Check, X, CircleDot, Loader2, Music2, AudioLines, TrendingUp, AlertTriangle, AlertCircle, Info, Save } from "lucide-react";
+import { ArrowLeft, FolderOpen, MessageCircle, Trash2, Check, X, CircleDot, Loader2, Music2, AudioLines, TrendingUp, AlertTriangle, AlertCircle, Info, Save, Download } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -120,6 +120,61 @@ export default function ProjectDetailPage() {
     })();
   }, [id, user]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  async function exportJson() {
+    if (!project) return;
+    try {
+      const [v, sc, iss, pl, adv] = await Promise.all([
+        supabase.from("project_track_versions").select("*").eq("project_id", project.id),
+        supabase.from("project_scores").select("*").eq("project_id", project.id),
+        supabase.from("project_issues").select("*").eq("project_id", project.id),
+        supabase.from("repair_plans").select("*").eq("project_id", project.id),
+        supabase.from("project_advice").select("*").eq("project_id", project.id),
+      ]);
+      const plans = (pl.data ?? []) as any[];
+      const planIds = plans.map((p) => p.id);
+      let stepsByPlan: Record<string, any[]> = {};
+      if (planIds.length > 0) {
+        const { data: allSteps } = await supabase
+          .from("plan_steps").select("*").in("plan_id", planIds).order("step_order");
+        for (const s of (allSteps ?? []) as any[]) {
+          (stepsByPlan[s.plan_id] ||= []).push(s);
+        }
+      }
+      const payload = {
+        app: "studio-sensei",
+        exported_at: new Date().toISOString(),
+        project: {
+          id: project.id,
+          name: project.name,
+          description: project.description ?? null,
+          genre: project.genre ?? null,
+          status: project.status,
+          goal: (project as any).goal ?? null,
+          session_notes: (project as any).session_notes ?? null,
+          created_at: project.created_at,
+        },
+        versions: v.data ?? [],
+        scores: sc.data ?? [],
+        issues: iss.data ?? [],
+        plans: plans.map((p) => ({ ...p, steps: stepsByPlan[p.id] ?? [] })),
+        advice: adv.data ?? [],
+      };
+      const slug = project.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project";
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${slug}-studio-sensei-export.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Project exported");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Could not export project");
+    }
+  }
+
   async function saveSession() {
     if (!project) return;
     setSavingSession(true);
@@ -175,9 +230,21 @@ export default function ProjectDetailPage() {
         description={project.description ?? "Sensei is remembering everything in this project."}
         icon={<FolderOpen className="w-6 h-6" />}
         action={
-          <Button asChild className="bg-gradient-gold text-primary-foreground hover:opacity-90">
-            <Link to="/mixing"><MessageCircle className="w-4 h-4 mr-2" /> Continue coaching</Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Export JSON"
+              title="Export JSON"
+              className="text-muted-foreground hover:text-primary"
+              onClick={exportJson}
+            >
+              <Download className="w-4 h-4" />
+            </Button>
+            <Button asChild className="bg-gradient-gold text-primary-foreground hover:opacity-90">
+              <Link to="/mixing"><MessageCircle className="w-4 h-4 mr-2" /> Continue coaching</Link>
+            </Button>
+          </div>
         }
       />
 
