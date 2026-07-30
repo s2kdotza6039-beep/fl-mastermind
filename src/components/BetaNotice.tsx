@@ -19,10 +19,9 @@ export function BetaNotice() {
           <Sparkles className="w-4 h-4" />
         </div>
         <div>
-          <div className="font-display font-bold text-sm">Studio Sensei is in Beta</div>
+          <div className="font-display font-bold text-sm">Studio Sensei — Public Beta</div>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            You may run into occasional issues. Your feedback shapes what ships next — bug reports
-            and ideas welcome.
+            Free while in beta. Subscription tiers launch soon — your projects and progress carry over.
           </p>
         </div>
       </div>

@@ -1,10 +1,14 @@
 import { ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
 import { AppSidebar } from "./AppSidebar";
 import { SessionHeader } from "./SessionHeader";
 import { ActiveProjectChip } from "./ActiveProjectChip";
 import { UserMenu } from "./UserMenu";
 import { Footer } from "./Footer";
+
 
 export const StudioLayout = ({ children }: { children: ReactNode }) => {
   return (
