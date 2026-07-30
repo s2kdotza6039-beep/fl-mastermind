@@ -410,6 +410,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
                     );
                   })()}
 
+                  <div className="flex gap-2 items-center flex-wrap">
                   {!loading && i === messages.length - 1 && m.content.length > 50 && (
                     <Button
                       size="sm"
@@ -433,6 +434,10 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
                       <Bookmark className="w-3 h-3 mr-1" /> Save advice
                     </Button>
                   )}
+                  {!!m.content.trim() && (!loading || i < messages.length - 1) && (
+                    <SpeechButton id={`sp-${i}`} text={m.content} />
+                  )}
+                  </div>
                 </>
               )}
             </div>
