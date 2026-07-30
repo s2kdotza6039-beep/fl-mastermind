@@ -495,5 +495,6 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
         </div>
       </form>
     </div>
+    </SpeechProvider>
   );
 };
