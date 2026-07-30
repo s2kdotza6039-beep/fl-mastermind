@@ -153,12 +153,21 @@ export default function ProjectsPage() {
                   Last activity {lastActivity.toLocaleString()}
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
                   {!isActive && (
                     <Button size="sm" variant="outline" onClick={() => switchProject(p.id)}>
                       Switch to
                     </Button>
                   )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    aria-label={`Delete ${p.name}`}
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => setPendingDelete({ id: p.id, name: p.name })}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
                   <Button asChild size="sm" className="ml-auto bg-gradient-gold text-primary-foreground hover:opacity-90">
                     <Link to={`/projects/${p.id}`}>
                       Open project <ArrowRight className="w-3.5 h-3.5 ml-1" />
@@ -170,6 +179,37 @@ export default function ProjectsPage() {
           })}
         </div>
       )}
+
+      <AlertDialog open={!!pendingDelete} onOpenChange={(o) => !o && setPendingDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete project?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes {pendingDelete?.name} with all its track versions, scores, issues, plans, advice and chat history.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                const target = pendingDelete;
+                setPendingDelete(null);
+                if (!target) return;
+                try {
+                  await remove(target.id);
+                  toast.success("Project deleted");
+                } catch (e: any) {
+                  toast.error(e?.message ?? "Could not delete project");
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
 
       <Dialog open={openNew} onOpenChange={setOpenNew}>
         <DialogContent>
