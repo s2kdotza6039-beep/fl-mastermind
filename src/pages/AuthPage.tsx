@@ -397,9 +397,6 @@ function SignUpForm() {
         },
       },
     });
-
-      },
-    });
     setBusy(false);
     if (error) {
       const friendly = friendlySignupError(error);
