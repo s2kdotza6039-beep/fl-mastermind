@@ -249,6 +249,41 @@ const playXiao = (ctx: Ctx, out: AudioNode, t: number, freq: number, level = 0.2
   noise.stop(t + durSec);
 };
 
+const playGong = (ctx: Ctx, out: AudioNode, t: number, level = 0.55, durSec = 5.5) => {
+  const master = ctx.createGain();
+  master.gain.setValueAtTime(0.0001, t);
+  master.gain.exponentialRampToValueAtTime(level, t + 0.008);
+  master.gain.exponentialRampToValueAtTime(0.0001, t + durSec);
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.setValueAtTime(1100, t);
+  lp.frequency.exponentialRampToValueAtTime(320, t + durSec);
+  lp.Q.value = 0.7;
+  const partials: Array<[number, number, number]> = [
+    [98, 1.0, 5.5], [202.7, 0.55, 4.4], [292, 0.42, 3.8],
+    [438, 0.28, 3.0], [636, 0.16, 2.3], [867, 0.09, 1.8],
+  ];
+  for (const [pf, amp, pd] of partials) {
+    const o = ctx.createOscillator();
+    o.type = "sine";
+    o.frequency.value = pf * (1 + (Math.random() - 0.5) * 0.004);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(amp, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + pd);
+    o.connect(g); g.connect(lp); o.start(t); o.stop(t + pd + 0.05);
+  }
+  const nLen = Math.floor(ctx.sampleRate * 0.12);
+  const nBuf = ctx.createBuffer(1, nLen, ctx.sampleRate);
+  const nd = nBuf.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / nd.length, 2);
+  const noise = ctx.createBufferSource(); noise.buffer = nBuf;
+  const nBp = ctx.createBiquadFilter(); nBp.type = "bandpass"; nBp.frequency.value = 2200; nBp.Q.value = 0.8;
+  const nG = ctx.createGain(); nG.gain.value = 0.22;
+  noise.connect(nBp); nBp.connect(nG); nG.connect(lp);
+  noise.start(t); noise.stop(t + 0.12);
+  lp.connect(master); master.connect(out);
+};
+
 const makeHall = (ctx: Ctx, out: AudioNode) => {
   const send = ctx.createGain();
   send.gain.value = 0.22;
