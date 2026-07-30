@@ -380,13 +380,7 @@ export const playSenseiBootTone = async () => {
     dry.connect(master);
     dry.connect(hallSend);
 
-    const t0 = ctx.currentTime + 0.02;
-    playTempleBell(ctx, dry, t0, 523.25);
-    playPluck(ctx, dry, t0 + 0.35, 146.83, 0.15, 0.42, 1.8);
-    playPluck(ctx, dry, t0 + 0.85, 220.0, 0.2, 0.36, 1.6);
-    playPluck(ctx, dry, t0 + 1.25, 369.99, 0.7, 0.32, 1.3);
-    playPluck(ctx, dry, t0 + 1.55, 440.0, 0.78, 0.3, 1.2);
-    playXiao(ctx, dry, t0 + 1.4, 587.33, 0.26, 1.5);
+    playGong(ctx, dry, ctx.currentTime);
 
     setTimeout(() => {
       if (activeBootCtx === ctx) {
