@@ -73,3 +73,70 @@ describe("speech preference persistence", () => {
     expect(loadStoredPrefs()).toEqual({ autoResume: true, lastSpokenId: "msg-7" });
   });
 });
+
+import {
+  splitSentences,
+  messageKey,
+  scoreVoice,
+  pickBestVoice,
+  saveResume,
+  loadResume,
+  clearResume,
+} from "./speech";
+
+describe("sentence splitting (V1.5 engine)", () => {
+  it("splits into trimmed sentences and drops empties", () => {
+    expect(splitSentences("One. Two! Three?")).toEqual(["One.", "Two!", "Three?"]);
+    expect(splitSentences("")).toEqual([]);
+  });
+});
+
+describe("messageKey stability", () => {
+  it("is deterministic and content-sensitive", () => {
+    expect(messageKey("hello mix")).toBe(messageKey("hello mix"));
+    expect(messageKey("hello mix")).not.toBe(messageKey("hello mix!"));
+  });
+});
+
+describe("voice scoring", () => {
+  const mk = (name: string, lang: string) =>
+    ({ name, lang, voiceURI: name, default: false, localService: true }) as SpeechSynthesisVoice;
+
+  it("prefers natural/neural voices over plain ones", () => {
+    expect(scoreVoice("Microsoft Aria Online (Natural) - English (United States)", "en-US"))
+      .toBeGreaterThan(scoreVoice("English", "en-US"));
+  });
+
+  it("prefers en-ZA among equal-quality voices and rejects non-English", () => {
+    expect(scoreVoice("Google South African English", "en-ZA")).toBeGreaterThan(
+      scoreVoice("Google US English", "en-US"),
+    );
+    expect(scoreVoice("Lucie", "fr-FR")).toBeLessThan(0);
+  });
+
+  it("pickBestVoice honors an explicit override first", () => {
+    const a = mk("Microsoft Aria Online (Natural) - English (United States)", "en-US");
+    const b = mk("Plain Voice", "en-US");
+    expect(pickBestVoice([a, b], "Plain Voice")?.name).toBe("Plain Voice");
+    expect(pickBestVoice([a, b], null)?.name).toBe(a.name);
+  });
+});
+
+describe("resume positions", () => {
+  it("round-trips and clears", () => {
+    saveResume("m1", 4, 9);
+    expect(loadResume("m1")).toMatchObject({ sentence: 4, total: 9 });
+    clearResume("m1");
+    expect(loadResume("m1")).toBeNull();
+  });
+
+  it("rejects finished/corrupt/unknown positions", () => {
+    expect(loadResume("never-saved")).toBeNull();
+    saveResume("m2", 9, 9); // finished — nothing to resume
+    expect(loadResume("m2")).toBeNull();
+    localStorage.setItem("sensei.speech.resume.m3", "{oops");
+    expect(loadResume("m3")).toBeNull();
+    localStorage.removeItem("sensei.speech.resume.m3");
+    localStorage.removeItem("sensei.speech.resume.m2");
+  });
+});
