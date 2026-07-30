@@ -25,7 +25,7 @@ import { ResendConfirmationForm } from "@/components/ResendConfirmationForm";
 import { getRateLimit, setRateLimit as persistRateLimit, clearRateLimit } from "@/lib/rate-limit-store";
 
 
-const OAUTH_GOOGLE_ENABLED = false; // flip to true at the public-launch gate (Google provider config deferred — decision D9)
+const OAUTH_GOOGLE_ENABLED = true; // Google provider configured in cloud auth settings (decision D11)
 
 type ProviderStatus = {
   google: "enabled" | "disabled" | "unknown";

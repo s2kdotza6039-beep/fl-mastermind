@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes } from "lucide-react";
+import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/context/SessionContext";
@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { editionToTier, forbiddenPlugins, eligiblePlugins, tierLabel } from "@/lib/fl-plugin-eligibility";
 import { addAdvice, appendChatMessage, buildProjectAiContext, listChatMessages } from "@/lib/project-memory";
-import { SpeechProvider } from "@/lib/speech";
+import { SpeechProvider, messageKey } from "@/lib/speech";
 import { SpeechButton } from "./SpeechButton";
 
 // Detect mentions of owned plugins in assistant text.
@@ -385,7 +385,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
                 <p className="text-sm leading-relaxed">{m.content}</p>
               ) : (
                 <>
-                  <SenseiMarkdown content={m.content || "…"} messageId={`m-${i}`} />
+                  <SenseiMarkdown content={m.content || "…"} messageId={messageKey(m.content)} />
                   {(() => {
                     const hits = findPrioritized(m.content, ownedAll);
                     if (hits.length === 0) return null;
@@ -435,7 +435,17 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
                     </Button>
                   )}
                   {!!m.content.trim() && (!loading || i < messages.length - 1) && (
-                    <SpeechButton id={`sp-${i}`} text={m.content} />
+                    isPaid ? (
+                      <SpeechButton id={messageKey(m.content)} text={m.content} />
+                    ) : (
+                      <span
+                        className="inline-flex items-center gap-1 h-7 px-1.5 text-[10px] text-muted-foreground/70 select-none"
+                        title="Voice reading is a Pro feature — upgrade to unlock"
+                        aria-label="Voice reading is a Pro feature"
+                      >
+                        <Lock className="w-3 h-3" />
+                      </span>
+                    )
                   )}
                   </div>
                 </>

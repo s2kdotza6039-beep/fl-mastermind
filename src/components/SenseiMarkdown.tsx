@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { loadChatChecks, saveChatChecks } from "@/lib/chat-checks";
 
 interface SenseiMarkdownProps {
   content: string;
@@ -12,10 +13,10 @@ interface SenseiMarkdownProps {
 }
 
 export const SenseiMarkdown = ({ content, className, messageId = "msg" }: SenseiMarkdownProps) => {
-  // Track which checklist items are checked, keyed by message + item index
-  const [checked, setChecked] = useState<Record<string, boolean>>({});
-  // Counter that resets per render — we use a ref-like via useMemo seed
-  const itemIndex = useMemo(() => ({ n: 0 }), [content, messageId]);
+  // Fresh counter every render — render order is stable, so ids are stable.
+  // (A memoized mutable counter drifts upward across renders and breaks keys.)
+  const itemCounter = { n: 0 };
+  const [checked, setChecked] = useState<Record<string, boolean>>(() => loadChatChecks(messageId));
 
   return (
     <div className={cn("prose prose-invert prose-sm max-w-none", className)}>
@@ -36,7 +37,7 @@ export const SenseiMarkdown = ({ content, className, messageId = "msg" }: Sensei
             // react-markdown + remark-gfm marks task list items
             const isTask = (props as { className?: string }).className?.includes("task-list-item");
             if (isTask) {
-              const id = `${messageId}-${itemIndex.n++}`;
+              const id = `${messageId}-${itemCounter.n++}`;
               const isChecked = checked[id] ?? false;
               // Strip the rendered raw checkbox; we render our own
               const filtered = Array.isArray(children)
@@ -52,7 +53,13 @@ export const SenseiMarkdown = ({ content, className, messageId = "msg" }: Sensei
                 <li className="list-none">
                   <button
                     type="button"
-                    onClick={() => setChecked((p) => ({ ...p, [id]: !isChecked }))}
+                    onClick={() =>
+                      setChecked((p) => {
+                        const next = { ...p, [id]: !p[id] };
+                        saveChatChecks(messageId, next);
+                        return next;
+                      })
+                    }
                     className={cn(
                       "w-full text-left flex items-start gap-2.5 p-2 -mx-1 rounded-md transition-colors",
                       "hover:bg-primary/5",
