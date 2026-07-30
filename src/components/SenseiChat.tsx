@@ -16,6 +16,8 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { editionToTier, forbiddenPlugins, eligiblePlugins, tierLabel } from "@/lib/fl-plugin-eligibility";
 import { addAdvice, appendChatMessage, buildProjectAiContext, listChatMessages } from "@/lib/project-memory";
+import { SpeechProvider } from "@/lib/speech";
+import { SpeechButton } from "./SpeechButton";
 
 // Detect mentions of owned plugins in assistant text.
 // Short brand names (≤3 chars) use word-boundary to avoid false matches.
@@ -225,6 +227,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   };
 
   return (
+    <SpeechProvider>
     <div className={cn("flex flex-col h-full", compact && "max-h-[600px]")}>
       {eligibility && (
         <div className="border-b border-border bg-muted/30 text-xs">
@@ -407,6 +410,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
                     );
                   })()}
 
+                  <div className="flex gap-2 items-center flex-wrap">
                   {!loading && i === messages.length - 1 && m.content.length > 50 && (
                     <Button
                       size="sm"
@@ -430,6 +434,10 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
                       <Bookmark className="w-3 h-3 mr-1" /> Save advice
                     </Button>
                   )}
+                  {!!m.content.trim() && (!loading || i < messages.length - 1) && (
+                    <SpeechButton id={`sp-${i}`} text={m.content} />
+                  )}
+                  </div>
                 </>
               )}
             </div>
@@ -487,5 +495,6 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
         </div>
       </form>
     </div>
+    </SpeechProvider>
   );
 };

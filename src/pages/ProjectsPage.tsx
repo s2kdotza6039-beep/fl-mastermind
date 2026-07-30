@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { FolderOpen, Plus, ArrowRight, Music2, AudioLines, Trash2 } from "lucide-react";
+import { FolderOpen, Plus, ArrowRight, Music2, AudioLines, Trash2, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,9 @@ export default function ProjectsPage() {
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
+  const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renaming, setRenaming] = useState(false);
 
 
   useEffect(() => {
@@ -162,6 +165,15 @@ export default function ProjectsPage() {
                   <Button
                     size="sm"
                     variant="ghost"
+                    aria-label={`Rename ${p.name}`}
+                    className="text-muted-foreground hover:text-primary"
+                    onClick={() => { setRenameTarget({ id: p.id, name: p.name }); setRenameValue(p.name); }}
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
                     aria-label={`Delete ${p.name}`}
                     className="text-muted-foreground hover:text-destructive"
                     onClick={() => setPendingDelete({ id: p.id, name: p.name })}
@@ -209,6 +221,44 @@ export default function ProjectsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!renameTarget} onOpenChange={(o) => !o && setRenameTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename project</DialogTitle>
+            <DialogDescription>Give this project a clearer name.</DialogDescription>
+          </DialogHeader>
+          <div>
+            <Label>Project name</Label>
+            <Input
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value.slice(0, 80))}
+              placeholder="Project name"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameTarget(null)}>Cancel</Button>
+            <Button
+              disabled={!renameValue.trim() || renaming}
+              onClick={async () => {
+                if (!renameTarget) return;
+                setRenaming(true);
+                try {
+                  await update(renameTarget.id, { name: renameValue.trim().slice(0, 80) });
+                  setRenameTarget(null);
+                  toast.success("Project renamed");
+                } catch (e: any) {
+                  toast.error(e?.message ?? "Could not rename project");
+                } finally {
+                  setRenaming(false);
+                }
+              }}
+            >
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
 
       <Dialog open={openNew} onOpenChange={setOpenNew}>
