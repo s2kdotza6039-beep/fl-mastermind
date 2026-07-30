@@ -82,10 +82,20 @@ export default function Dashboard() {
       .catch(() => setDbAdvice([]));
   }, [activeProject?.id]);
 
+  const projectChecklist: Array<{ id: string; label: string; done: boolean }> = Array.isArray(
+    (activeProject as any)?.checklist,
+  )
+    ? ((activeProject as any).checklist as Array<{ id: string; label: string; done: boolean }>)
+    : [];
+  const tasksDone =
+    !activeProject || projectChecklist.length === 0
+      ? "—"
+      : `${projectChecklist.filter((c) => c.done).length}/${projectChecklist.length}`;
+
   const stats = [
     { label: "Genre", value: genre, icon: Music2 },
     { label: "Stage", value: stage, icon: Sliders },
-    { label: "Tasks Done", value: `${checklist.filter(c => c.done).length}/${checklist.length}`, icon: ListChecks },
+    { label: "Tasks Done", value: tasksDone, icon: ListChecks, title: "Active project checklist" },
     { label: "Saved Tips", value: dbAdvice.length, icon: Sparkles },
   ];
 
