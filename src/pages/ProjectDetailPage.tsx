@@ -15,6 +15,8 @@ import { MixScoreCard } from "@/components/MixScoreCard";
 import { RepairPlanCard, type RepairPlanStep } from "@/components/RepairPlanCard";
 import { useAuth } from "@/context/AuthContext";
 import { useProject } from "@/context/ProjectContext";
+import { buildExportPayload, exportFileName } from "@/lib/project-export";
+
 import {
   getProject, listAdvice, listTrackVersions, setAdviceStatus, deleteAdvice,
   type Project, type ProjectAdvice, type ProjectTrackVersion, type AdviceStatus,
@@ -140,31 +142,20 @@ export default function ProjectDetailPage() {
           (stepsByPlan[s.plan_id] ||= []).push(s);
         }
       }
-      const payload = {
-        app: "studio-sensei",
-        exported_at: new Date().toISOString(),
-        project: {
-          id: project.id,
-          name: project.name,
-          description: project.description ?? null,
-          genre: project.genre ?? null,
-          status: project.status,
-          goal: (project as any).goal ?? null,
-          session_notes: (project as any).session_notes ?? null,
-          created_at: project.created_at,
-        },
+      const payload = buildExportPayload({
+        project,
         versions: v.data ?? [],
         scores: sc.data ?? [],
         issues: iss.data ?? [],
         plans: plans.map((p) => ({ ...p, steps: stepsByPlan[p.id] ?? [] })),
         advice: adv.data ?? [],
-      };
-      const slug = project.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project";
+      });
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${slug}-studio-sensei-export.json`;
+      a.download = exportFileName(project.name);
+
       document.body.appendChild(a);
       a.click();
       a.remove();
