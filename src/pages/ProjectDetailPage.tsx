@@ -15,6 +15,8 @@ import { MixScoreCard } from "@/components/MixScoreCard";
 import { RepairPlanCard, type RepairPlanStep } from "@/components/RepairPlanCard";
 import { useAuth } from "@/context/AuthContext";
 import { useProject } from "@/context/ProjectContext";
+import { buildExportPayload, exportFileName } from "@/lib/project-export";
+
 import {
   getProject, listAdvice, listTrackVersions, setAdviceStatus, deleteAdvice,
   type Project, type ProjectAdvice, type ProjectTrackVersion, type AdviceStatus,
