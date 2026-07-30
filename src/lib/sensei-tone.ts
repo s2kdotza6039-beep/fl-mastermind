@@ -388,7 +388,7 @@ export const playSenseiBootTone = async () => {
         activeMasterGain = null;
       }
       ctx.close().catch(() => {});
-    }, 4200);
+    }, 6200);
   } catch (e) {
     updateDiagnostics({ lastError: e instanceof Error ? e.message : String(e) });
   }
