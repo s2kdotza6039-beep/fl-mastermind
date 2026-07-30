@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { FolderOpen, Plus, ArrowRight, Music2, AudioLines } from "lucide-react";
+import { FolderOpen, Plus, ArrowRight, Music2, AudioLines, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,14 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useProject } from "@/context/ProjectContext";
 import { listAdvice, listTrackVersions, type ProjectStatus } from "@/lib/project-memory";
+import { toast } from "sonner";
 
 interface ProjectStats {
   openIssues: number;
@@ -22,13 +27,16 @@ interface ProjectStats {
 }
 
 export default function ProjectsPage() {
-  const { projects, activeProject, switchProject, create, update } = useProject();
+  const { projects, activeProject, switchProject, create, update, remove } = useProject();
   const [stats, setStats] = useState<Record<string, ProjectStats>>({});
   const [openNew, setOpenNew] = useState(false);
   const [name, setName] = useState("");
   const [genre, setGenre] = useState("");
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
+  const [search, setSearch] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
+
 
   useEffect(() => {
     (async () => {
