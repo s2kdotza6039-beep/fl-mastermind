@@ -71,6 +71,15 @@ export default function ProjectsPage() {
         }
       />
 
+      <div className="mb-4">
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search projects by name or genre…"
+          className="max-w-sm"
+        />
+      </div>
+
       {projects.length === 0 ? (
         <Card className="studio-card p-12 text-center">
           <FolderOpen className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
@@ -81,7 +90,15 @@ export default function ProjectsPage() {
         </Card>
       ) : (
         <div className="grid md:grid-cols-2 gap-4">
-          {projects.map((p) => {
+          {projects
+            .filter((p) => {
+              const q = search.trim().toLowerCase();
+              if (!q) return true;
+              return (
+                p.name.toLowerCase().includes(q) || (p.genre ?? "").toLowerCase().includes(q)
+              );
+            })
+            .map((p) => {
             const s = stats[p.id];
             const isActive = activeProject?.id === p.id;
             const lastActivity = new Date(p.last_activity_at);
