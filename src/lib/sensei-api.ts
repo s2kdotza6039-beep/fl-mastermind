@@ -7,6 +7,8 @@ export interface ChatContext {
   /** D19 multilingual advisor language code (BCP-47, closed allowlist). */
   advisorLanguage?: string;
   mode?: "guided" | "quick";
+  /** R9: pre-matched FL procedure reference text (client-side matcher, D23). */
+  procedures?: string;
   genre?: string;
   stage?: string;
   projectName?: string;

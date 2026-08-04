@@ -13,6 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { MixScoreCard } from "@/components/MixScoreCard";
 import { resolveGenreTarget } from "@/lib/genre-target";
+import { ChordGeneratorCard } from "@/components/ChordGeneratorCard";
+import { GenrePlaybookCard } from "@/components/GenrePlaybookCard";
 import { RepairPlanCard, type RepairPlanStep } from "@/components/RepairPlanCard";
 import { useAuth } from "@/context/AuthContext";
 import { useProject } from "@/context/ProjectContext";
@@ -282,6 +284,8 @@ export default function ProjectDetailPage() {
           <TabsTrigger value="session">Session</TabsTrigger>
           <TabsTrigger value="tracks">Tracks ({versions.length})</TabsTrigger>
           <TabsTrigger value="analyses">Analyses ({reports.length})</TabsTrigger>
+          <TabsTrigger value="chords">🎹 Chords</TabsTrigger>
+          <TabsTrigger value="playbook">🥁 Playbook</TabsTrigger>
         </TabsList>
 
         <TabsContent value="issues">
@@ -456,6 +460,12 @@ export default function ProjectDetailPage() {
               );
             })}
           </div>
+        </TabsContent>
+        <TabsContent value="chords">
+          <ChordGeneratorCard genre={project?.genre ?? null} detectedKey={reports[0]?.detected_key ?? null} />
+        </TabsContent>
+        <TabsContent value="playbook">
+          <GenrePlaybookCard genre={project?.genre ?? null} />
         </TabsContent>
       </Tabs>
     </div>

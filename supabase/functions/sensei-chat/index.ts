@@ -240,6 +240,14 @@ Deno.serve(async (req) => {
     if (chatMode === "quick") {
       system += `\n\nMODE: QUICK ANSWERS. The user wants speed over tutoring. Reply in 4 sentences or fewer unless the user explicitly asks for depth. Lead with the fix/answer first, then one line of reasoning. Skip the usual multi-option breakdowns unless asked.`;
     }
+    // FL Mastery Pack — deterministic procedure knowledge (D23). The client
+    // attaches only matched procedures (capped, short) — no extra AI calls.
+    if (ctx && typeof ctx === "object" && typeof (ctx as Record<string, unknown>).procedures === "string") {
+      const procText = ((ctx as Record<string, unknown>).procedures as string).slice(0, 900).trim();
+      if (procText) {
+        system += `\n\nFL PROCEDURE REFERENCE — verified exact FL Studio steps relevant to the user's question. When answering on this topic, follow these steps EXACTLY (adapt insert/track numbers to the user's situation), and prefer newest-generation stock plugins:\n${procText}`;
+      }
+    }
     if (ctx && typeof ctx === "object") {
       const parts: string[] = [];
       if (typeof ctx.genre === "string") parts.push(`Current genre: ${ctx.genre.slice(0, 60)}`);

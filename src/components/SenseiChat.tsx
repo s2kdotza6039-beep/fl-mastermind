@@ -1,5 +1,6 @@
 import { ADVISOR_LANGUAGES, loadAdvisorLanguage, storeAdvisorLanguage } from "@/lib/advisor-language";
 import { loadMessageRating, storeMessageRating } from "@/lib/message-rating";
+import { matchProcedures, proceduresToContext } from "@/lib/fl-procedures";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock, ThumbsUp, ThumbsDown } from "lucide-react";
@@ -191,6 +192,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
       });
     };
 
+    const procHits = matchProcedures(trimmed, 2);
     await streamSenseiChat({
       messages: next,
       context: {
@@ -205,6 +207,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
         customPlugins: inventoryComplete ? inventory?.custom_plugins ?? undefined : undefined,
         advisorLanguage: advisorLang,
         mode,
+        procedures: procHits.length ? proceduresToContext(procHits) : undefined,
         audio: audioContext ?? toChatAudio(),
         projectMemory,
       },
