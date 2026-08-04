@@ -57,7 +57,7 @@ export const JourneyBelt = () => {
         hasProject: true,
         hasAnalysis: (reportRes.data ?? []).length > 0,
         // Row shape includes master_ready + breakdown; cast is what NextStepCard-style code needs.
-        latestScore: (scoreRes.data ?? null) as LoopInputs["latestScore"],
+        latestScore: (scoreRes.data ?? null) as unknown as LoopInputs["latestScore"],
         plan: planRes.data ? { status: planRes.data.status } : null,
         steps,
       };
