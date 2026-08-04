@@ -6,6 +6,7 @@ export type ChatMsg = { role: "user" | "assistant"; content: string };
 export interface ChatContext {
   /** D19 multilingual advisor language code (BCP-47, closed allowlist). */
   advisorLanguage?: string;
+  mode?: "guided" | "quick";
   genre?: string;
   stage?: string;
   projectName?: string;
