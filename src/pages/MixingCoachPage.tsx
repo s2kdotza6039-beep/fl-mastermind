@@ -14,6 +14,7 @@ import { RepairPlanCard, type RepairPlanStep } from "@/components/RepairPlanCard
 import { useProject } from "@/context/ProjectContext";
 import { supabase } from "@/integrations/supabase/client";
 import { deriveLoopState, type LoopState, type StoredIssue, type ScoreBreakdown } from "@/lib/coaching-loop";
+import { resolveGenreTarget } from "@/lib/genre-target";
 
 interface LatestScore { mix_score: number; breakdown: ScoreBreakdown; master_ready: boolean; target_score: number }
 
@@ -26,6 +27,7 @@ export default function MixingCoachPage() {
   const [steps, setSteps] = useState<RepairPlanStep[]>([]);
   const [hasAnalysis, setHasAnalysis] = useState(false);
   const [targetScore, setTargetScore] = useState(85);
+  const [genericTarget, setGenericTarget] = useState(false);
 
   useEffect(() => {
     if (!activeProject) { setLoading(false); return; }
@@ -42,10 +44,9 @@ export default function MixingCoachPage() {
         supabase.from("audio_analysis_reports").select("id").eq("project_id", activeProject.id).limit(1),
       ]);
 
-      const g = (activeProject.genre ?? "").toLowerCase();
-      const target = (targetRes.data ?? []).find((t: any) => (t.genre ?? "").toLowerCase() === g)
-        ?? (targetRes.data ?? []).find((t: any) => (t.genre ?? "").toLowerCase() === "pop");
-      const tScore = target?.target_score ?? 85;
+      const resolved = resolveGenreTarget((targetRes.data ?? []) as any[], activeProject.genre);
+      const tScore = resolved.profile?.target_score ?? 85;
+      setGenericTarget(resolved.generic);
       setTargetScore(tScore);
 
       if (scoreRes.data?.[0]) {
@@ -120,6 +121,11 @@ export default function MixingCoachPage() {
             master_ready={latest?.master_ready ?? false}
             target_score={targetScore}
           />
+          {genericTarget && (
+            <div className="-mt-4 mb-6">
+              <span className="text-[10px] text-muted-foreground/70">Generic targets — custom-genre mapping coming</span>
+            </div>
+          )}
 
           <Card className="studio-card p-5 mb-6">
             <div className="flex items-center justify-between mb-3">

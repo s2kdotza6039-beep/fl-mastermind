@@ -1,7 +1,8 @@
-import { loadAdvisorLanguage } from "@/lib/advisor-language";
+import { ADVISOR_LANGUAGES, loadAdvisorLanguage, storeAdvisorLanguage } from "@/lib/advisor-language";
+import { loadMessageRating, storeMessageRating } from "@/lib/message-rating";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock } from "lucide-react";
+import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock, ThumbsUp, ThumbsDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/context/SessionContext";
@@ -55,6 +56,8 @@ function findPrioritized(text: string, owned: string[]): PriorityHit[] {
 }
 
 
+const MODE_KEY = "sensei.chat.mode";
+
 interface SenseiChatProps {
   initialPrompt?: string;
   compact?: boolean;
@@ -69,6 +72,11 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   const { toChatAudio } = useTrackSession();
   const { activeProject, loading: projectLoading } = useProject();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [advisorLang, setAdvisorLang] = useState(loadAdvisorLanguage());
+  const [ratings, setRatings] = useState<Record<string, "up" | "down" | null>>({});
+  const [mode, setMode] = useState<"guided" | "quick">(() => {
+    try { return localStorage.getItem(MODE_KEY) === "quick" ? "quick" : "guided"; } catch { return "guided"; }
+  });
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
@@ -195,7 +203,8 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
         nativePlugins: inventoryComplete ? inventory?.native_plugins ?? undefined : undefined,
         thirdPartyPlugins: inventoryComplete ? inventory?.third_party_plugins ?? undefined : undefined,
         customPlugins: inventoryComplete ? inventory?.custom_plugins ?? undefined : undefined,
-        advisorLanguage: loadAdvisorLanguage(),
+        advisorLanguage: advisorLang,
+        mode,
         audio: audioContext ?? toChatAudio(),
         projectMemory,
       },
@@ -451,6 +460,33 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
                       </span>
                     )
                   )}
+                  {!!m.content.trim() && (() => {
+                    const mk = messageKey(m.content);
+                    const current = mk in ratings ? ratings[mk] : loadMessageRating(mk);
+                    const set = (r: "up" | "down") => {
+                      const next = current === r ? null : r;
+                      storeMessageRating(mk, next);
+                      setRatings((prev) => ({ ...prev, [mk]: next }));
+                    };
+                    return (
+                      <>
+                        <Button
+                          size="icon" variant="ghost" title="Rate this answer" aria-label="Helpful"
+                          className={cn("h-7 w-7", current === "up" ? "text-primary" : "text-muted-foreground/60")}
+                          onClick={() => set("up")}
+                        >
+                          <ThumbsUp className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          size="icon" variant="ghost" title="Rate this answer" aria-label="Not helpful"
+                          className={cn("h-7 w-7", current === "down" ? "text-primary" : "text-muted-foreground/60")}
+                          onClick={() => set("down")}
+                        >
+                          <ThumbsDown className="w-3.5 h-3.5" />
+                        </Button>
+                      </>
+                    );
+                  })()}
                   </div>
                 </>
               )}
@@ -485,6 +521,35 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
 
       <form onSubmit={handleSubmit} className="border-t border-border p-4 bg-card/50 backdrop-blur">
         <div className="flex gap-2 items-end">
+          <select
+            value={advisorLang}
+            onChange={(e) => {
+              setAdvisorLang(e.target.value);
+              storeAdvisorLanguage(e.target.value);
+            }}
+            title="Answer language — Sensei replies and reads in this language"
+            aria-label="Answer language"
+            className="h-[44px] rounded-md border border-border bg-background px-2 text-xs text-muted-foreground hover:text-primary"
+          >
+            {ADVISOR_LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.code.toUpperCase()} · {l.native}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => {
+              const next = mode === "guided" ? "quick" : "guided";
+              setMode(next);
+              try { localStorage.setItem(MODE_KEY, next); } catch { /* ignore */ }
+            }}
+            title={mode === "guided" ? "Guided mode: full tutor answers. Click for Quick mode." : "Quick mode: short direct answers. Click for Guided mode."}
+            aria-pressed={mode === "quick"}
+            className="h-[44px] px-2 rounded-md border border-border text-[10px] font-medium text-muted-foreground hover:text-primary"
+          >
+            {mode === "guided" ? "Guided" : "⚡ Quick"}
+          </button>
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}

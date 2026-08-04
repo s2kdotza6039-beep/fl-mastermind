@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { MixScoreCard } from "@/components/MixScoreCard";
+import { resolveGenreTarget } from "@/lib/genre-target";
 import { RepairPlanCard, type RepairPlanStep } from "@/components/RepairPlanCard";
 import { useAuth } from "@/context/AuthContext";
 import { useProject } from "@/context/ProjectContext";
@@ -57,6 +58,7 @@ export default function ProjectDetailPage() {
   const [planId, setPlanId] = useState<string | null>(null);
   const [steps, setSteps] = useState<RepairPlanStep[]>([]);
   const [targetScore, setTargetScore] = useState(85);
+  const [genericTarget, setGenericTarget] = useState(false);
   // Session form.
   const [tracksCount, setTracksCount] = useState<number | "">("");
   const [mixerRouting, setMixerRouting] = useState("");
@@ -105,10 +107,9 @@ export default function ProjectDetailPage() {
         id: row.id, detector_id: row.detector_id, severity: row.severity, title: row.title,
         detail: row.detail, metrics: row.metrics, status: row.status,
       })));
-      const g = (p.genre ?? "").toLowerCase();
-      const t = (tg.data ?? []).find((x: any) => (x.genre ?? "").toLowerCase() === g)
-        ?? (tg.data ?? []).find((x: any) => (x.genre ?? "").toLowerCase() === "pop");
-      setTargetScore(t?.target_score ?? 85);
+      const resolved = resolveGenreTarget((tg.data ?? []) as any[], p.genre);
+      setTargetScore(resolved.profile?.target_score ?? 85);
+      setGenericTarget(resolved.generic);
       const pid = pl.data?.[0]?.id ?? null;
       setPlanId(pid);
       if (pid) {
@@ -291,6 +292,9 @@ export default function ProjectDetailPage() {
               master_ready={latestScore?.master_ready ?? false}
               target_score={targetScore}
             />
+            {genericTarget && (
+              <span className="text-[10px] text-muted-foreground/70">Generic targets — custom-genre mapping coming</span>
+            )}
             <Card className="studio-card p-5">
               <h3 className="font-display text-lg font-bold mb-3">Open issues ({issues.length})</h3>
               {issues.length === 0 ? (

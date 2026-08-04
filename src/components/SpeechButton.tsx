@@ -58,7 +58,7 @@ export const SpeechButton = ({ id, text }: SpeechButtonProps) => {
   const voiceSelect = (
     <select
       className="h-7 max-w-[7.5rem] rounded-md border border-border bg-transparent px-1 text-[10px] text-muted-foreground hover:text-primary"
-      title="Voice"
+      title="Voice/accent (pronunciation only — the LANGUAGE selector sits next to the chat box)"
       aria-label="Voice"
       value={voiceURI ?? ""}
       onChange={(e) => setVoiceURI(e.target.value || null)}

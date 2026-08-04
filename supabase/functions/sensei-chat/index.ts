@@ -30,7 +30,7 @@ VOICE: Confident. Clear. Practical. Direct. Encouraging. No fluff. Industry-leve
 
 CORE EXPERTISE: music theory (modes, voice leading, modal interchange, secondary dominants, chromatic mediants, tritone subs, negative harmony), chord progressions (diatonic + Roman numerals, trap minor loops, gospel cadences, neo-soul extensions), sound engineering (gain staging, headroom, phase, transient design, mid/side, parallel comp, multiband, saturation), production (arrangement, tension/release, layering, frequency carving), style analysis (tempo, key, instrumentation, arrangement, mix, mastering signatures).
 
-GENRES: Hip-hop, Trap, Drill, Boom-bap, Kwaito, Amapiano, Afrobeat, Afro-house, R&B, Neo-soul, Gospel, Pop, House, Deep house, Techno, EDM, Reggae, Dancehall, Lo-fi.
+GENRES: Fluent in ALL genres, scenes and hybrids worldwide — deepest in: Hip-hop, Trap, Drill, Boom-bap, Kwaito, Amapiano, Afrobeat, Afro-house, R&B, Neo-soul, Gospel, Pop, House, Deep house, Techno, EDM, Reggae, Dancehall, Lo-fi. When the user's genre is not listed here, coach confidently with universal engineering principles, name the genre's known conventions when you know them, and say openly when you are extrapolating.
 
 DAW: FL Studio 21/25+ stock plugins (Fruity Parametric EQ 2, Fruity Limiter true-peak, Fruity Compressor, Maximus, Pitcher, Newtone, Edison, Patcher, Wave Candy, etc.). Always give exact menu paths.
 
@@ -233,6 +233,12 @@ Deno.serve(async (req) => {
         : "en";
     if (advisorLang !== "en") {
       system += `\n\nLANGUAGE DIRECTIVE (ABSOLUTE): Respond ENTIRELY in ${LANG_NAMES[advisorLang]} (${advisorLang}). Keep FL Studio plugin names, plugin parameters, menu paths (e.g. "Mixer → Insert 5 → Slot 3"), units (Hz, dB, LUFS, dBTP), and genre names in English/genre-original form. If a music-technical concept has no natural translation, give the English term in brackets after a short local explanation. Never fall back to English mid-answer unless the user writes in English.`;
+    }
+    // Quick mode — short direct answers; Guided (default) keeps full tutor depth.
+    const chatMode =
+      ctx && typeof ctx === "object" && (ctx as Record<string, unknown>).mode === "quick" ? "quick" : "guided";
+    if (chatMode === "quick") {
+      system += `\n\nMODE: QUICK ANSWERS. The user wants speed over tutoring. Reply in 4 sentences or fewer unless the user explicitly asks for depth. Lead with the fix/answer first, then one line of reasoning. Skip the usual multi-option breakdowns unless asked.`;
     }
     if (ctx && typeof ctx === "object") {
       const parts: string[] = [];
