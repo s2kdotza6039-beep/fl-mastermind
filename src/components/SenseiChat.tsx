@@ -1,5 +1,6 @@
 import { ADVISOR_LANGUAGES, loadAdvisorLanguage, storeAdvisorLanguage } from "@/lib/advisor-language";
 import { loadMessageRating, storeMessageRating } from "@/lib/message-rating";
+import { matchProcedures, proceduresToContext } from "@/lib/fl-procedures";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock, ThumbsUp, ThumbsDown } from "lucide-react";
