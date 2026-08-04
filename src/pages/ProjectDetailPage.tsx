@@ -461,6 +461,12 @@ export default function ProjectDetailPage() {
             })}
           </div>
         </TabsContent>
+        <TabsContent value="chords">
+          <ChordGeneratorCard genre={project?.genre ?? null} detectedKey={reports[0]?.detected_key ?? null} />
+        </TabsContent>
+        <TabsContent value="playbook">
+          <GenrePlaybookCard genre={project?.genre ?? null} />
+        </TabsContent>
       </Tabs>
     </div>
   );
