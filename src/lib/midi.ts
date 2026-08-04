@@ -50,7 +50,7 @@ const PPQ = 480;
  * Build a single-track (type-0) MIDI file from chord note names.
  * `chords` is an array of chords, each an array of note names ("A3", "C4"...).
  */
-export function chordsToMidi(chords: string[][], opts: MidiOptions = {}): Uint8Array {
+export function chordsToMidi(chords: string[][], opts: MidiOptions = {}): ArrayBuffer {
   const { beatsPerChord = 4, bpm = 120, velocity = 96 } = opts;
   const ticks = Math.max(1, Math.round(beatsPerChord * PPQ));
   const track: number[] = [];
@@ -77,7 +77,10 @@ export function chordsToMidi(chords: string[][], opts: MidiOptions = {}): Uint8A
 
   const header = [...str("MThd"), ...u32(6), 0x00, 0x00, 0x00, 0x01, (PPQ >> 8) & 0xff, PPQ & 0xff];
   const chunk = [...str("MTrk"), ...u32(track.length), ...track];
-  return new Uint8Array([...header, ...chunk]);
+  const bytes = [...header, ...chunk];
+  const buffer = new ArrayBuffer(bytes.length);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
 }
 
 export interface ProgressionExport {
