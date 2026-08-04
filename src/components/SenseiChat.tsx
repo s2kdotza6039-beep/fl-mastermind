@@ -1,7 +1,8 @@
-import { loadAdvisorLanguage } from "@/lib/advisor-language";
+import { ADVISOR_LANGUAGES, loadAdvisorLanguage, storeAdvisorLanguage } from "@/lib/advisor-language";
+import { loadMessageRating, storeMessageRating } from "@/lib/message-rating";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock } from "lucide-react";
+import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock, ThumbsUp, ThumbsDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/context/SessionContext";
