@@ -45,6 +45,7 @@ export const StudioLayout = ({ children }: { children: ReactNode }) => {
               <UserMenu />
             </div>
           </header>
+          <JourneyBelt />
           <main className="flex-1 overflow-auto scrollbar-thin">
             {children}
             <Footer />
