@@ -341,6 +341,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
       )}
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-4 py-6 space-y-4">
+        <PlanCard />
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center py-12 animate-fade-in-up">
             <div className="w-16 h-16 rounded-2xl bg-gradient-gold flex items-center justify-center mb-4 glow-gold">
