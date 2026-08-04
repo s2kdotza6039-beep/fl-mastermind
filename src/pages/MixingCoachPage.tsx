@@ -121,6 +121,11 @@ export default function MixingCoachPage() {
             master_ready={latest?.master_ready ?? false}
             target_score={targetScore}
           />
+          {genericTarget && (
+            <div className="-mt-4 mb-6">
+              <span className="text-[10px] text-muted-foreground/70">Generic targets — custom-genre mapping coming</span>
+            </div>
+          )}
 
           <Card className="studio-card p-5 mb-6">
             <div className="flex items-center justify-between mb-3">
