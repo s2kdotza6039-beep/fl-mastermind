@@ -18,6 +18,7 @@ import { editionToTier, forbiddenPlugins, eligiblePlugins, tierLabel } from "@/l
 import { addAdvice, appendChatMessage, buildProjectAiContext, listChatMessages } from "@/lib/project-memory";
 import { SpeechProvider, messageKey } from "@/lib/speech";
 import { SpeechButton } from "./SpeechButton";
+import { PlanCard } from "./PlanCard";
 
 // Detect mentions of owned plugins in assistant text.
 // Short brand names (≤3 chars) use word-boundary to avoid false matches.
