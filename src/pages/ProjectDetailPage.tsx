@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { MixScoreCard } from "@/components/MixScoreCard";
+import { resolveGenreTarget } from "@/lib/genre-target";
 import { RepairPlanCard, type RepairPlanStep } from "@/components/RepairPlanCard";
 import { useAuth } from "@/context/AuthContext";
 import { useProject } from "@/context/ProjectContext";
