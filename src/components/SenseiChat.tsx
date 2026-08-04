@@ -192,6 +192,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
       });
     };
 
+    const procHits = matchProcedures(trimmed, 2);
     await streamSenseiChat({
       messages: next,
       context: {
