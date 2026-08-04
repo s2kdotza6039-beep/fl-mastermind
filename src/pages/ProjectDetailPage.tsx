@@ -287,6 +287,7 @@ export default function ProjectDetailPage() {
           <TabsTrigger value="analyses">Analyses ({reports.length})</TabsTrigger>
           <TabsTrigger value="chords">🎹 Chords</TabsTrigger>
           <TabsTrigger value="playbook">🥁 Playbook</TabsTrigger>
+          <TabsTrigger value="checklist">✅ Playbook steps</TabsTrigger>
         </TabsList>
 
         <TabsContent value="issues">
