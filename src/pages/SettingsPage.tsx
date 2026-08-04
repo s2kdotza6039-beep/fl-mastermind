@@ -227,6 +227,10 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      <AdvisorLanguageCard />
+
+
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
