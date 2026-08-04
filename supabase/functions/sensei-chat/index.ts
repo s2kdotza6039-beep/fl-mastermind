@@ -220,6 +220,20 @@ Deno.serve(async (req) => {
     // ---------- SYSTEM PROMPT WITH CONTEXT ----------
     let system = SYSTEM_PROMPT;
     const ctx = body.context;
+    // D19 multilingual advisor — sanitized against a closed allowlist.
+    const LANG_NAMES: Record<string, string> = {
+      en: "English", zu: "isiZulu", xh: "isiXhosa", st: "Sesotho", af: "Afrikaans",
+      pt: "Português", es: "Español", fr: "Français", de: "Deutsch", sw: "Kiswahili",
+      zh: "中文 (Simplified Chinese)", ja: "日本語", hi: "हिन्दी", ar: "العربية",
+    };
+    const advisorLang =
+      ctx && typeof ctx === "object" && typeof (ctx as Record<string, unknown>).advisorLanguage === "string" &&
+      LANG_NAMES[(ctx as Record<string, unknown>).advisorLanguage as string]
+        ? (ctx as Record<string, unknown>).advisorLanguage as string
+        : "en";
+    if (advisorLang !== "en") {
+      system += `\n\nLANGUAGE DIRECTIVE (ABSOLUTE): Respond ENTIRELY in ${LANG_NAMES[advisorLang]} (${advisorLang}). Keep FL Studio plugin names, plugin parameters, menu paths (e.g. "Mixer → Insert 5 → Slot 3"), units (Hz, dB, LUFS, dBTP), and genre names in English/genre-original form. If a music-technical concept has no natural translation, give the English term in brackets after a short local explanation. Never fall back to English mid-answer unless the user writes in English.`;
+    }
     if (ctx && typeof ctx === "object") {
       const parts: string[] = [];
       if (typeof ctx.genre === "string") parts.push(`Current genre: ${ctx.genre.slice(0, 60)}`);

@@ -12,6 +12,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { advisorBcp47, loadAdvisorLanguage } from "./advisor-language";
+
 export type SpeechState = "idle" | "playing" | "paused";
 
 export interface SpeechProgress {
@@ -379,6 +381,7 @@ export function SpeechProvider({ children }: { children: ReactNode }) {
     const utter = new SpeechSynthesisUtterance(sentences[fromIndex]);
     utter.rate = rateRef.current;
     utter.pitch = 1;
+    utter.lang = advisorBcp47(loadAdvisorLanguage());
     utter.volume = 1;
     const voice = pickBestVoice(window.speechSynthesis.getVoices(), voiceURIRef.current);
     if (voice) utter.voice = voice;

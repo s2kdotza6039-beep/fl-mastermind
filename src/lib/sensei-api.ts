@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 export type ChatMsg = { role: "user" | "assistant"; content: string };
 
 export interface ChatContext {
+  /** D19 multilingual advisor language code (BCP-47, closed allowlist). */
+  advisorLanguage?: string;
   genre?: string;
   stage?: string;
   projectName?: string;

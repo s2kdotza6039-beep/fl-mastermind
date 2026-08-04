@@ -12,6 +12,7 @@ import { SenseiChat } from "@/components/SenseiChat";
 import { ActiveTrackChip } from "@/components/ActiveTrackChip";
 import { UploadTrustPanel } from "@/components/UploadTrustPanel";
 import { AudioReportCard } from "@/components/AudioReportCard";
+import { ReferenceCompareCard } from "@/components/ReferenceCompareCard";
 import { WaveformPlayer, type WaveformSelection, type WaveformPlayerHandle } from "@/components/WaveformPlayer";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -1267,6 +1268,8 @@ export default function UploadPage() {
               analyzedRange={analyzedRange}
             />
           )}
+
+          {result && <ReferenceCompareCard metrics={result.metrics} />}
 
           {result && lastReportId && (
             <Card className="studio-card-gold p-4 mt-6 flex items-center justify-between gap-3 flex-wrap">

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Volume2, Play, Activity, EyeOff, RotateCcw, VolumeX, Keyboard, FlaskConical, Cloud } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { AdvisorLanguageCard } from "@/components/AdvisorLanguageCard";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
