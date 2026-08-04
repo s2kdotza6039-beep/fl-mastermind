@@ -1,3 +1,4 @@
+import { loadAdvisorLanguage } from "@/lib/advisor-language";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock } from "lucide-react";
@@ -194,6 +195,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
         nativePlugins: inventoryComplete ? inventory?.native_plugins ?? undefined : undefined,
         thirdPartyPlugins: inventoryComplete ? inventory?.third_party_plugins ?? undefined : undefined,
         customPlugins: inventoryComplete ? inventory?.custom_plugins ?? undefined : undefined,
+        advisorLanguage: loadAdvisorLanguage(),
         audio: audioContext ?? toChatAudio(),
         projectMemory,
       },

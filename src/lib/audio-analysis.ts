@@ -3,6 +3,8 @@
 // with the heavy DSP step (FFT / BPM / chroma) split out so it can
 // run inside a Web Worker via runDspAnalysis() to keep the UI responsive.
 
+import { integratedLoudness, truePeakEstimate } from "./loudness";
+
 export interface ConfidenceScore {
   /** 0..1 — how trustworthy the detection is. */
   value: number;
@@ -24,6 +26,8 @@ export interface AudioMetrics {
   peakDb: number;
   rmsDb: number;
   lufsEstimate: number;
+  /** True-peak ESTIMATE via 4x oversampling (±0.2 dB honesty label). */
+  truePeakDbtp: number;
   dynamicRangeDb: number;
   stereoWidth: number;
   stereoWidthLabel: "Mono" | "Narrow" | "Moderate" | "Wide";
@@ -395,7 +399,10 @@ export function runDspAnalysis(
   const widthRaw = rms > 0 ? sideRms / rms : 0;
   const stereoWidth = channels === 1 ? 0 : Math.max(0, Math.min(1, widthRaw));
 
-  onProgress?.(40, "Estimating loudness…");
+  onProgress?.(40, "Measuring loudness (BS.1770)…");
+  const lufsEstimate = integratedLoudness(channelData, sampleRate);
+  const truePeakDbtp = truePeakEstimate(channelData);
+  // Dynamic range: peak vs median 400 ms block energy (unchanged heuristic, now K-informed).
   const block = Math.floor(sampleRate * 0.4);
   const blockEnergies: number[] = [];
   for (let i = 0; i + block < mono.length; i += block) {
@@ -404,9 +411,6 @@ export function runDspAnalysis(
     blockEnergies.push(s / block);
   }
   blockEnergies.sort((a, b) => b - a);
-  const top = blockEnergies.slice(0, Math.max(1, Math.floor(blockEnergies.length * 0.3)));
-  const topMean = top.reduce((a, b) => a + b, 0) / top.length;
-  const lufsEstimate = blockEnergies.length ? -0.691 + 10 * Math.log10(topMean || 1e-12) : -Infinity;
   const medIdx = Math.floor(blockEnergies.length * 0.5);
   const medE = blockEnergies[medIdx] || 1e-12;
   const dynamicRangeDb = toDb(peak) - 10 * Math.log10(medE);
@@ -460,6 +464,7 @@ export function runDspAnalysis(
     peakDb: Math.round(peakDb * 10) / 10,
     rmsDb: Math.round(rmsDb * 10) / 10,
     lufsEstimate: Math.round(lufsEstimate * 10) / 10,
+    truePeakDbtp: Math.round(truePeakDbtp * 10) / 10,
     dynamicRangeDb: Math.round(dynamicRangeDb * 10) / 10,
     stereoWidth: Math.round(stereoWidth * 100) / 100,
     stereoWidthLabel: widthLabel(stereoWidth),
@@ -602,6 +607,16 @@ function diagnose(m: AudioMetrics): AudioIssue[] {
     });
   }
 
+  if (m.truePeakDbtp > -1.0 && m.peakDb <= -1.0) {
+    issues.push({
+      id: "intersample_hot",
+      severity: "warn",
+      title: "Inter-sample peaks likely (true-peak estimate)",
+      detail: `Sample peak is ${m.peakDb.toFixed(1)} dBFS but true-peak (4x oversampled estimate) reaches ${m.truePeakDbtp.toFixed(1)} dBTP — DACs can clip on playback even though your meters show headroom.`,
+      recommendation: "Set Fruity Limiter true-peak mode ON, ceiling −1.0 dBTP (Mixer → Master).",
+    });
+  }
+
   if (m.lufsEstimate < -20) {
     issues.push({
       id: "quiet_master",
@@ -685,6 +700,28 @@ function diagnose(m: AudioMetrics): AudioIssue[] {
     });
   }
 
+  // Masking heuristics — ALWAYS honestly labeled as medium-confidence guesses
+  // from a stereo bounce. We cannot hear individual stems; stems precision
+  // mode is a later chapter. Never upgrade these to "critical".
+  if (m.bands.low > -8 && m.bands.lowMid > -8) {
+    issues.push({
+      id: "masking_kickbass_hint",
+      severity: "info",
+      title: "Probable kick/bass masking (medium confidence, stereo-bounce heuristic)",
+      detail: `Low and low-mid bands are both hot — kick and bass likely fight in 100–300 Hz. This is a heuristic guess from the mixed bounce; stems would confirm it.`,
+      recommendation: "Try complementary EQ: carve 100–160 Hz in the bass where the kick hits, or duck the bass with Fruity Peak Controller keyed by the kick.",
+    });
+  }
+  if (m.bands.mid > -6.5 && m.bands.highMid > -8 && m.stereoWidth < 0.35) {
+    issues.push({
+      id: "masking_vocal_hint",
+      severity: "info",
+      title: "Probable vocal-band masking (medium confidence, stereo-bounce heuristic)",
+      detail: `Mid and high-mid energy is dense while the stereo field is narrow — vocals/snares may mask each other around 1.5–5 kHz. Heuristic from the bounce; verify by soloing sources.`,
+      recommendation: "Pan competing elements apart and cut 2–4 kHz by 1–2 dB in pads/instruments that don't need presence.",
+    });
+  }
+
   if (issues.length === 0) {
     issues.push({
       id: "clean",
@@ -704,6 +741,9 @@ export function formatMetricsForPrompt(m: AudioMetrics, issues: AudioIssue[]): s
   lines.push(`Duration: ${Math.floor(m.durationSec / 60)}:${String(Math.floor(m.durationSec % 60)).padStart(2, "0")}`);
   lines.push(`Sample rate: ${m.sampleRate} Hz | Channels: ${m.channels} (${m.isStereo ? "stereo" : "mono"}) | Bit rate ≈ ${m.bitRate} kbps`);
   lines.push(`Peak: ${m.peakDb.toFixed(1)} dBFS | RMS: ${m.rmsDb.toFixed(1)} dBFS | LUFS≈ ${m.lufsEstimate.toFixed(1)}`);
+  if (Number.isFinite(m.truePeakDbtp)) {
+    lines.push(`True peak (4x oversampled estimate, ±0.2 dB): ${m.truePeakDbtp.toFixed(1)} dBTP`);
+  }
   lines.push(`Dynamic range: ${m.dynamicRangeDb.toFixed(1)} dB | Stereo width: ${m.stereoWidth.toFixed(2)} (${m.stereoWidthLabel})`);
   lines.push(`BPM: ${m.bpm ?? "unknown"} (confidence: ${m.bpmConfidence.label}${m.bpmConfidence.note ? ` — ${m.bpmConfidence.note}` : ""})`);
   lines.push(`Key: ${m.detectedKey ?? "unknown"} (confidence: ${m.keyConfidence.label}${m.keyConfidence.note ? ` — ${m.keyConfidence.note}` : ""})`);
