@@ -8,6 +8,7 @@ import { SessionHeader } from "./SessionHeader";
 import { ActiveProjectChip } from "./ActiveProjectChip";
 import { UserMenu } from "./UserMenu";
 import { Footer } from "./Footer";
+import { JourneyBelt } from "./JourneyBelt";
 
 
 export const StudioLayout = ({ children }: { children: ReactNode }) => {

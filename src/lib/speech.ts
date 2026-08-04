@@ -460,6 +460,33 @@ export function SpeechProvider({ children }: { children: ReactNode }) {
 
   const resumeFor = (id: string): ResumePos | null => loadResume(id);
 
+  // Keyboard shortcuts: Space = pause/resume current reading, S = stop.
+  // Guarded so typing in inputs/textareas is never hijacked.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName ?? "";
+      const editable =
+        tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable;
+      if (editable) return;
+      if (runRef.current.id === null) return;
+      if (e.code === "Space") {
+        e.preventDefault();
+        if (pausedInGapRef.current || window.speechSynthesis.paused) {
+          resume();
+        } else {
+          pause();
+        }
+      } else if (e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        stop();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
+
   useEffect(() => {
     return () => {
       if (runRef.current.timer !== null) window.clearTimeout(runRef.current.timer);
