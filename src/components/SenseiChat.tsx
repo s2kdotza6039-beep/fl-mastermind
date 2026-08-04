@@ -207,6 +207,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
         customPlugins: inventoryComplete ? inventory?.custom_plugins ?? undefined : undefined,
         advisorLanguage: advisorLang,
         mode,
+        procedures: procHits.length ? proceduresToContext(procHits) : undefined,
         audio: audioContext ?? toChatAudio(),
         projectMemory,
       },
