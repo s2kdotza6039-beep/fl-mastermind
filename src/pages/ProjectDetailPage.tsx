@@ -292,6 +292,9 @@ export default function ProjectDetailPage() {
               master_ready={latestScore?.master_ready ?? false}
               target_score={targetScore}
             />
+            {genericTarget && (
+              <span className="text-[10px] text-muted-foreground/70">Generic targets — custom-genre mapping coming</span>
+            )}
             <Card className="studio-card p-5">
               <h3 className="font-display text-lg font-bold mb-3">Open issues ({issues.length})</h3>
               {issues.length === 0 ? (
