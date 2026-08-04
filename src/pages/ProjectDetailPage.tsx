@@ -15,6 +15,7 @@ import { MixScoreCard } from "@/components/MixScoreCard";
 import { resolveGenreTarget } from "@/lib/genre-target";
 import { ChordGeneratorCard } from "@/components/ChordGeneratorCard";
 import { GenrePlaybookCard } from "@/components/GenrePlaybookCard";
+import { PlaybookChecklistCard } from "@/components/PlaybookChecklistCard";
 import { RepairPlanCard, type RepairPlanStep } from "@/components/RepairPlanCard";
 import { useAuth } from "@/context/AuthContext";
 import { useProject } from "@/context/ProjectContext";
@@ -286,6 +287,7 @@ export default function ProjectDetailPage() {
           <TabsTrigger value="analyses">Analyses ({reports.length})</TabsTrigger>
           <TabsTrigger value="chords">🎹 Chords</TabsTrigger>
           <TabsTrigger value="playbook">🥁 Playbook</TabsTrigger>
+          <TabsTrigger value="checklist">✅ Playbook steps</TabsTrigger>
         </TabsList>
 
         <TabsContent value="issues">
@@ -462,10 +464,22 @@ export default function ProjectDetailPage() {
           </div>
         </TabsContent>
         <TabsContent value="chords">
-          <ChordGeneratorCard genre={project?.genre ?? null} detectedKey={reports[0]?.detected_key ?? null} />
+          <ChordGeneratorCard
+            genre={project?.genre ?? null}
+            detectedKey={reports[0]?.detected_key ?? null}
+            bpm={reports[0]?.bpm ?? null}
+            projectName={project?.name ?? null}
+          />
         </TabsContent>
         <TabsContent value="playbook">
           <GenrePlaybookCard genre={project?.genre ?? null} />
+        </TabsContent>
+        <TabsContent value="checklist">
+          <PlaybookChecklistCard
+            genre={project?.genre ?? null}
+            projectId={project?.id ?? null}
+            projectName={project?.name ?? null}
+          />
         </TabsContent>
       </Tabs>
     </div>
