@@ -1,9 +1,10 @@
 import { ADVISOR_LANGUAGES, loadAdvisorLanguage, storeAdvisorLanguage } from "@/lib/advisor-language";
 import { loadMessageRating, storeMessageRating } from "@/lib/message-rating";
 import { matchProcedures, proceduresToContext } from "@/lib/fl-procedures";
+import { ShowMeMap } from "@/components/ShowMeMap";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock, ThumbsUp, ThumbsDown, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/context/SessionContext";
@@ -75,6 +76,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [advisorLang, setAdvisorLang] = useState(loadAdvisorLanguage());
   const [ratings, setRatings] = useState<Record<string, "up" | "down" | null>>({});
+  const [openMapFor, setOpenMapFor] = useState<string | null>(null);
   const [mode, setMode] = useState<"guided" | "quick">(() => {
     try { return localStorage.getItem(MODE_KEY) === "quick" ? "quick" : "guided"; } catch { return "guided"; }
   });
@@ -490,7 +492,26 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
                       </>
                     );
                   })()}
+                  {!!m.content.trim() && (() => {
+                    const mk = messageKey(m.content);
+                    const p = matchProcedures(m.content, 1)[0];
+                    if (!p) return null;
+                    const open = openMapFor === mk;
+                    return (
+                      <Button
+                        size="icon" variant="ghost" title="Show me — animated FL steps" aria-label="Show me"
+                        className={cn("h-7 w-7", open ? "text-primary" : "text-muted-foreground/60")}
+                        onClick={() => setOpenMapFor(open ? null : mk)}
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </Button>
+                    );
+                  })()}
                   </div>
+                  {openMapFor === messageKey(m.content) && (() => {
+                    const p = matchProcedures(m.content, 1)[0];
+                    return p ? <ShowMeMap procedure={p} onClose={() => setOpenMapFor(null)} /> : null;
+                  })()}
                 </>
               )}
             </div>
