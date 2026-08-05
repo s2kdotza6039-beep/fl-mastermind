@@ -74,7 +74,7 @@ export const GrooveEngineCard = ({ genre, bpm, projectName }: Props) => {
   };
 
   return (
-    <Card className="studio-card space-y-4 p-4">>
+    <Card className="studio-card space-y-4 p-4">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-sm font-semibold">🥁 Groove Engine</h3>
         {matched.has(groove.id) && (
