@@ -143,12 +143,13 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   }, [activeProject?.id, compact]);
 
   useEffect(() => {
+    if (loopLock.lockKind) return; // R9.7 — while locked, nothing lands in the chat
     if (initialPrompt && !sentInitial.current && historyLoaded) {
       sentInitial.current = true;
       send(initialPrompt);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialPrompt, historyLoaded]);
+  }, [initialPrompt, historyLoaded, loopLock.lockKind]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
