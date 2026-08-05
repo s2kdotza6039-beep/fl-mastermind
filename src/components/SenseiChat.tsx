@@ -1,6 +1,7 @@
 import { ADVISOR_LANGUAGES, loadAdvisorLanguage, storeAdvisorLanguage } from "@/lib/advisor-language";
 import { loadMessageRating, storeMessageRating } from "@/lib/message-rating";
-import { matchProcedures, proceduresToContext } from "@/lib/fl-procedures";
+import { FL_PROCEDURES, matchProcedures, proceduresToContext } from "@/lib/fl-procedures";
+import { useLoopLock } from "@/hooks/use-loop-lock";
 import { ShowMeMap } from "@/components/ShowMeMap";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
