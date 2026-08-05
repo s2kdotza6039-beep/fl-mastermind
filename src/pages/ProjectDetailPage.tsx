@@ -474,6 +474,7 @@ export default function ProjectDetailPage() {
         </TabsContent>
         <TabsContent value="playbook">
           <GenrePlaybookCard genre={project?.genre ?? null} />
+          <GrooveEngineCard genre={project?.genre ?? null} bpm={reports[0]?.bpm ?? null} projectName={project?.name ?? null} />
         </TabsContent>
         <TabsContent value="checklist">
           <PlaybookChecklistCard
