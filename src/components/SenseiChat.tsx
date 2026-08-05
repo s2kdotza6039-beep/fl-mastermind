@@ -548,6 +548,53 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
         </div>
       )}
 
+      {loopLock.lockKind && (
+        <div className="px-4 pb-2">
+          <div className="rounded-lg border border-primary/40 bg-primary/5 p-3">
+            <div className="flex items-start gap-3">
+              <Lock className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-sm text-foreground">
+                  {loopLock.lockKind === "foreign"
+                    ? "🥋 Sensei: hold on — I don't recognize this beat"
+                    : "🥋 Sensei: fix steps done — time to re-bounce"}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {loopLock.lockKind === "foreign"
+                    ? `This upload's DNA doesn't match the project${loopLock.prevFileName ? ` (last confirmed: "${loopLock.prevFileName}")` : ""}: ${loopLock.reasons.join(" · ")}. Coaching is paused — load the correct bounce and I'll verify it instantly.`
+                    : "I'm not guessing from old info, champ. Re-bounce your beat in FL Studio and upload it — coaching continues the moment I hear it."}
+                </p>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <Button asChild size="sm" className="bg-gradient-gold text-primary-foreground hover:opacity-90">
+                    <Link to="/upload">
+                      ⬆ Upload {loopLock.lockKind === "foreign" ? "the correct beat" : "new bounce"}
+                    </Link>
+                  </Button>
+                  {loopLock.lockKind === "rebounce" && exportWavProc && (
+                    <Button size="sm" variant="outline" onClick={() => setBounceHelpOpen((v) => !v)}>
+                      <Eye className="w-3.5 h-3.5 mr-1" /> Show me how to bounce
+                    </Button>
+                  )}
+                  {loopLock.lockKind === "foreign" && (
+                    <Button asChild size="sm" variant="outline">
+                      <Link to="/projects">🆕 It's a new beat → new project</Link>
+                    </Button>
+                  )}
+                  <Button size="sm" variant="ghost" onClick={loopLock.refresh}>
+                    🔄 I've uploaded — check again
+                  </Button>
+                </div>
+                {bounceHelpOpen && loopLock.lockKind === "rebounce" && exportWavProc && (
+                  <div className="mt-3">
+                    <ShowMeMap procedure={exportWavProc} onClose={() => setBounceHelpOpen(false)} />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="border-t border-border p-4 bg-card/50 backdrop-blur">
         <div className="flex gap-2 items-end">
           <select
