@@ -588,14 +588,18 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
                 send(input);
               }
             }}
-            placeholder={projectLoading ? "Restoring project memory…" : "Ask Sensei anything... (Shift+Enter for new line)"}
+            placeholder={loopLock.lockKind === "foreign"
+              ? "🔒 Beat not recognized — load the correct bounce above to continue…"
+              : loopLock.lockKind === "rebounce"
+                ? "🔒 Waiting for your new bounce — Sensei will verify it…"
+                : projectLoading ? "Restoring project memory…" : "Ask Sensei anything... (Shift+Enter for new line)"}
             rows={1}
             className="resize-none bg-input border-border focus-visible:ring-primary min-h-[44px]"
-            disabled={loading || projectLoading}
+            disabled={loading || projectLoading || loopLock.lockKind != null}
           />
           <Button
             type="submit"
-            disabled={loading || projectLoading || !input.trim()}
+            disabled={loading || projectLoading || loopLock.lockKind != null || !input.trim()}
             className="bg-gradient-gold text-primary-foreground hover:opacity-90 h-[44px] px-4"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
