@@ -646,8 +646,29 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
               </div>
             </div>
           </div>
+
+          <AlertDialog open={overrideOpen} onOpenChange={(o) => !o && setOverrideOpen(false)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Confirm this is the same song</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {`Sensei heard a different DNA${loopLock.reasons.length ? `: ${loopLock.reasons.join(" · ")}` : ""}. Confirming logs an owner override on this bounce and resumes coaching right away.`}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={overriding}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={overriding}
+                  onClick={(e) => { e.preventDefault(); confirmOverride(); }}
+                >
+                  {overriding ? "Logging…" : "Yes — resume coaching"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       )}
+
 
       <form onSubmit={handleSubmit} className="border-t border-border p-4 bg-card/50 backdrop-blur">
         <div className="flex gap-2 items-end">
