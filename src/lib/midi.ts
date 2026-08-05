@@ -219,3 +219,51 @@ export function chordsToMidiMulti(
   new Uint8Array(buffer).set(bytes);
   return buffer;
 }
+
+// ============================================================================
+// R9.6 — GENERIC EVENT WRITER (channel-aware, delta-encoded timeline)
+// Foundation for the Groove Engine: drums on channel 10 (index 9), melodic
+// lanes (log drum / 808) on channel 1 (index 0) — FL Studio reads both.
+// ============================================================================
+
+export interface MidiEvent {
+  midi: number;
+  startTicks: number;
+  durTicks: number;
+  velocity: number;
+  channel: number; // 0-based; 9 = GM drums
+}
+
+/** Build a type-0 single-track SMF from arbitrary events (tempo meta included). */
+export function notesToMidi(events: MidiEvent[], opts: { bpm?: number; name?: string } = {}): ArrayBuffer {
+  const { bpm = 120, name } = opts;
+  interface Act { t: number; on: boolean; midi: number; vel: number; chan: number; ord: number }
+  const acts: Act[] = [];
+  events.forEach((e, i) => {
+    const chan = e.channel & 0x0f;
+    const vel = Math.max(1, Math.min(127, Math.round(e.velocity)));
+    acts.push({ t: e.startTicks, on: true, midi: e.midi, vel, chan, ord: i * 2 });
+    acts.push({ t: e.startTicks + Math.max(1, Math.round(e.durTicks)), on: false, midi: e.midi, vel: 64, chan, ord: i * 2 + 1 });
+  });
+  // Time asc; at equal times note-OFFs first; then original order (stable, deterministic).
+  acts.sort((a, b) => a.t - b.t || Number(a.on) - Number(b.on) || a.ord - b.ord);
+
+  const body: number[] = [];
+  if (name) body.push(0x00, 0xff, 0x03, name.length, ...str(name));
+  const usPerQuarter = Math.round(60_000_000 / Math.max(1, bpm));
+  body.push(0x00, 0xff, 0x51, 0x03, (usPerQuarter >> 16) & 0xff, (usPerQuarter >> 8) & 0xff, usPerQuarter & 0xff);
+
+  let last = 0;
+  for (const a of acts) {
+    body.push(...variableLength(Math.max(0, a.t - last)), a.on ? 0x90 | a.chan : 0x80 | a.chan, a.midi, a.vel);
+    last = a.t;
+  }
+  body.push(0x00, 0xff, 0x2f, 0x00);
+
+  const header = [...str("MThd"), ...u32(6), 0x00, 0x00, 0x00, 0x01, (PPQ >> 8) & 0xff, PPQ & 0xff];
+  const chunk = [...str("MTrk"), ...u32(body.length), ...body];
+  const bytes = [...header, ...chunk];
+  const buffer = new ArrayBuffer(bytes.length);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
