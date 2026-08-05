@@ -2,6 +2,9 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
+import { allStepsResolved } from "@/lib/loop-guard";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
