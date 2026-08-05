@@ -27,3 +27,9 @@ describe("FL Mastery Pack matcher", () => {
     expect(txt.length).toBeLessThan(600);
   });
 });
+
+describe("Show-Me renderer contract (R9.5)", () => {
+  it("every procedure carries exactly one zone per step", () => {
+    for (const p of FL_PROCEDURES) expect(p.zones).toHaveLength(p.steps.length);
+  });
+});
