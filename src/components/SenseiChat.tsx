@@ -2,6 +2,12 @@ import { ADVISOR_LANGUAGES, loadAdvisorLanguage, storeAdvisorLanguage } from "@/
 import { loadMessageRating, storeMessageRating } from "@/lib/message-rating";
 import { FL_PROCEDURES, matchProcedures, proceduresToContext } from "@/lib/fl-procedures";
 import { useLoopLock } from "@/hooks/use-loop-lock";
+import { CONTINUITY_OVERRIDE_ID, overrideIssue } from "@/lib/loop-guard";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ShowMeMap } from "@/components/ShowMeMap";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -76,6 +82,42 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   const { activeProject, loading: projectLoading } = useProject();
   const loopLock = useLoopLock(activeProject?.id ?? null);
   const [bounceHelpOpen, setBounceHelpOpen] = useState(false);
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [overriding, setOverriding] = useState(false);
+
+  // R10 — owner override: confirm the DNA change was intentional, log the
+  // continuity.override marker on the newest report, and resume the composer.
+  const confirmOverride = async () => {
+    if (!activeProject) return;
+    setOverriding(true);
+    try {
+      const { data, error } = await supabase
+        .from("audio_analysis_reports")
+        .select("id, detected_issues")
+        .eq("project_id", activeProject.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error("No bounce to override yet.");
+      const existing = Array.isArray(data.detected_issues) ? (data.detected_issues as any[]) : [];
+      if (!existing.some((i: any) => i?.detector_id === CONTINUITY_OVERRIDE_ID)) {
+        const { error: upErr } = await supabase
+          .from("audio_analysis_reports")
+          .update({ detected_issues: [...existing, overrideIssue()] as any })
+          .eq("id", data.id);
+        if (upErr) throw upErr;
+      }
+      setOverrideOpen(false);
+      loopLock.refresh();
+      toast.success("Override logged — coaching resumed. 🥋");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't log the override.");
+    } finally {
+      setOverriding(false);
+    }
+  };
+
   const exportWavProc = FL_PROCEDURES.find((p) => p.id === "export-wav");
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [advisorLang, setAdvisorLang] = useState(loadAdvisorLanguage());
@@ -571,18 +613,30 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
                     </Link>
                   </Button>
                   {loopLock.lockKind === "rebounce" && exportWavProc && (
-                    <Button size="sm" variant="outline" onClick={() => setBounceHelpOpen((v) => !v)}>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setBounceHelpOpen((v) => !v)}>
                       <Eye className="w-3.5 h-3.5 mr-1" /> Show me how to bounce
                     </Button>
                   )}
                   {loopLock.lockKind === "foreign" && (
-                    <Button asChild size="sm" variant="outline">
-                      <Link to="/projects">🆕 It's a new beat → new project</Link>
-                    </Button>
+                    <>
+                      <Button asChild size="sm" variant="outline">
+                        <Link to="/projects">🆕 It's a new beat → new project</Link>
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={overriding}
+                        onClick={() => setOverrideOpen(true)}
+                      >
+                        ✅ Same beat — I changed it on purpose
+                      </Button>
+                    </>
                   )}
-                  <Button size="sm" variant="ghost" onClick={loopLock.refresh}>
+                  <Button type="button" size="sm" variant="ghost" onClick={loopLock.refresh}>
                     🔄 I've uploaded — check again
                   </Button>
+
                 </div>
                 {bounceHelpOpen && loopLock.lockKind === "rebounce" && exportWavProc && (
                   <div className="mt-3">
@@ -592,8 +646,29 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
               </div>
             </div>
           </div>
+
+          <AlertDialog open={overrideOpen} onOpenChange={(o) => !o && setOverrideOpen(false)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Confirm this is the same song</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {`Sensei heard a different DNA${loopLock.reasons.length ? `: ${loopLock.reasons.join(" · ")}` : ""}. Confirming logs an owner override on this bounce and resumes coaching right away.`}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={overriding}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={overriding}
+                  onClick={(e) => { e.preventDefault(); confirmOverride(); }}
+                >
+                  {overriding ? "Logging…" : "Yes — resume coaching"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       )}
+
 
       <form onSubmit={handleSubmit} className="border-t border-border p-4 bg-card/50 backdrop-blur">
         <div className="flex gap-2 items-end">

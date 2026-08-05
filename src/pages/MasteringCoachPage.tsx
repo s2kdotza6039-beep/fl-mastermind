@@ -1,9 +1,11 @@
 import { Crown } from "lucide-react";
 import { CoachPage } from "@/components/CoachPage";
+import { MasterChapterCard } from "@/components/MasterChapterCard";
 
 export default function MasteringCoachPage() {
   return (
     <CoachPage
+      above={<MasterChapterCard />}
       eyebrow="International Standard"
       title="Mastering Coach"
       description="Loud, clean, polished — ready for streaming platforms worldwide."
