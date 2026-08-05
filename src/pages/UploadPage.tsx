@@ -324,6 +324,7 @@ export default function UploadPage() {
   const navigate = useNavigate();
   const [lastReportId, setLastReportId] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [continuityHold, setContinuityHold] = useState<{ reportId: string; versionId: string; reasons: string[]; prevFileName: string | null } | null>(null);
   const [decoded, setDecoded] = useState<DecodedAudio | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [progress, setProgress] = useState(0);
