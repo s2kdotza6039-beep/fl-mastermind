@@ -74,6 +74,9 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   const { inventory, isComplete: inventoryComplete } = usePluginInventory();
   const { toChatAudio } = useTrackSession();
   const { activeProject, loading: projectLoading } = useProject();
+  const loopLock = useLoopLock(activeProject?.id ?? null);
+  const [bounceHelpOpen, setBounceHelpOpen] = useState(false);
+  const exportWavProc = FL_PROCEDURES.find((p) => p.id === "export-wav");
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [advisorLang, setAdvisorLang] = useState(loadAdvisorLanguage());
   const [ratings, setRatings] = useState<Record<string, "up" | "down" | null>>({});
