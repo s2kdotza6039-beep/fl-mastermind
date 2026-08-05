@@ -637,6 +637,34 @@ export default function UploadPage() {
     }
   };
 
+  // R9.7 — door 1: the producer confirms the flagged beat IS the same song.
+  // The override is logged on the report (visible, permanent), then the normal
+  // coaching pipeline runs: activate → score → delta → plan.
+  const confirmSameBeat = async () => {
+    if (!user || !activeProject || !continuityHold || !result) return;
+    const hold = continuityHold;
+    try {
+      const { data: row } = await supabase
+        .from("audio_analysis_reports")
+        .select("detected_issues")
+        .eq("id", hold.reportId)
+        .maybeSingle();
+      const issues = Array.isArray((row as any)?.detected_issues) ? ((row as any).detected_issues as any[]) : [];
+      await supabase
+        .from("audio_analysis_reports")
+        .update({ detected_issues: [...issues, overrideIssue()] as any })
+        .eq("id", hold.reportId);
+      setContinuityHold(null);
+      setLastReportId(hold.reportId);
+      await setActiveReport(hold.reportId);
+      await runCoachingLoop(user.id, activeProject.id, activeProject.genre, hold.reportId, hold.versionId, result);
+      toast.success("Confirmed — coaching resumed. The override is logged on this report.");
+    } catch (e: any) {
+      console.warn("Override failed:", e?.message ?? e);
+      toast.error("Could not confirm the override — try re-uploading.");
+    }
+  };
+
   const runAnalysis = async () => {
     if (!file) return;
     setAnalyzing(true);
