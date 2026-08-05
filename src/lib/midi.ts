@@ -149,3 +149,73 @@ export function downloadBlob(data: BlobPart, filename: string, type: string) {
 export function safeFileName(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "progression";
 }
+
+// ============================================================================
+// R9.5 FORGE PACK (D29 / s9): MULTITRACK SMF TYPE-1
+// Track 0 = tempo map; one MTrk per part. Bass = lowest chord tone (octave
+// shifted), Pads = full chord (softer velocity). Channels 1/2/3 in FL terms.
+// ============================================================================
+
+export interface ForgeParts {
+  chords?: boolean;
+  bass?: boolean;
+  pads?: boolean;
+  bassVelocity?: number;
+  padVelocity?: number;
+  /** Octave shifts: bass default -1 (down), pads default 0. */
+  bassOctave?: number;
+  padOctave?: number;
+}
+
+const clampMidi = (n: number) => Math.max(0, Math.min(127, n));
+
+function buildTrack(name: string, channel: number, chordsMidi: number[][], ticks: number, velocity: number): number[] {
+  const body: number[] = [0x00, 0xff, 0x03, name.length, ...str(name)];
+  for (const midis of chordsMidi) {
+    if (!midis.length) continue;
+    midis.forEach((n) => body.push(...variableLength(0), 0x90 | channel, n, velocity));
+    midis.forEach((n, i) => body.push(...variableLength(i === 0 ? ticks : 0), 0x80 | channel, n, 0x40));
+  }
+  body.push(0x00, 0xff, 0x2f, 0x00);
+  return [...str("MTrk"), ...u32(body.length), ...body];
+}
+
+export function chordsToMidiMulti(
+  chords: string[][],
+  opts: { bpm?: number; beatsPerChord?: number; velocity?: number } & ForgeParts = {},
+): ArrayBuffer {
+  const { beatsPerChord = 4, bpm = 120, velocity = 96 } = opts;
+  const {
+    chords: useChords = true, bass = true, pads = true,
+    bassVelocity = 104, padVelocity = 72, bassOctave = -1, padOctave = 0,
+  } = opts;
+  const ticks = Math.max(1, Math.round(beatsPerChord * PPQ));
+  const per = chords.map((ch) =>
+    ch.map(noteNameToMidi).filter((n): n is number => n !== null && n >= 0 && n <= 127));
+
+  const tracks: number[][] = [];
+  if (useChords) tracks.push(buildTrack("Chords", 0, per.map((m) => m.map(clampMidi)), ticks, velocity));
+  if (bass) tracks.push(buildTrack("Bass", 1, per.map((m) => (m.length ? [clampMidi(Math.min(...m) + bassOctave * 12)] : [])), ticks, bassVelocity));
+  if (pads) tracks.push(buildTrack("Pads", 2, per.map((m) => m.map((n) => clampMidi(n + padOctave * 12))), ticks, padVelocity));
+
+  // Track 0: tempo map (format 1 convention).
+  const usPerQuarter = Math.round(60_000_000 / Math.max(1, bpm));
+  const t0Body = [
+    0x00, 0xff, 0x51, 0x03,
+    (usPerQuarter >> 16) & 0xff, (usPerQuarter >> 8) & 0xff, usPerQuarter & 0xff,
+    0x00, 0xff, 0x2f, 0x00,
+  ];
+  const t0 = [...str("MTrk"), ...u32(t0Body.length), ...t0Body];
+
+  const ntracks = tracks.length + 1;
+  const header = [
+    ...str("MThd"), ...u32(6),
+    0x00, 0x01, // format 1
+    (ntracks >> 8) & 0xff, ntracks & 0xff,
+    (PPQ >> 8) & 0xff, PPQ & 0xff,
+  ];
+  const bytes = [...header, ...t0, ...tracks.flat()];
+  const buffer = new ArrayBuffer(bytes.length);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}

@@ -5,6 +5,8 @@
 // music-theory tables + a seeded voicing engine ("endless" = infinite seeds).
 // ============================================================================
 
+import { noteNameToMidi } from "./midi";
+
 export type Mode = "major" | "minor";
 export type Direction = "uplifting" | "dark" | "soulful" | "hard" | "chill";
 
@@ -206,4 +208,34 @@ export function generateProgressions(key: string, mode: Mode, opts: GenerateOpti
     });
     return { label: r.label, romans: [...r.romans], chords, notes, matchedGenre, matchedDirection };
   });
+}
+
+// ============================================================================
+// R9.5 FORGE HELPERS (D29 / s6): inversions & slash bass
+// Pipeline rule: applyInversion FIRST, slashBass LAST (bass stays on the floor).
+// ============================================================================
+
+/** Rotate the lowest note up one octave `times` (chord inversions, by name). */
+export function applyInversion(notes: string[], times: number): string[] {
+  if (notes.length === 0) return [];
+  const t = ((times % notes.length) + notes.length) % notes.length;
+  if (t === 0) return [...notes];
+  const lifted = notes.slice(0, t).map((n) => {
+    const m = noteNameToMidi(n);
+    return m === null ? n : midiName(m + 12);
+  });
+  return [...notes.slice(t), ...lifted];
+}
+
+export type SlashOption = "none" | "root-12" | "fifth-12";
+
+/**
+ * Prepend a low bass note: "root-12" doubles the root one octave down;
+ * "fifth-12" puts the chord's fifth in the bass (the classic slash sound).
+ */
+export function slashBass(notes: string[], opt: SlashOption): string[] {
+  if (opt === "none" || notes.length === 0) return [...notes];
+  const root = noteNameToMidi(notes[0]);
+  if (root === null) return [...notes];
+  return [midiName(opt === "root-12" ? root - 12 : root + 7 - 12), ...notes];
 }

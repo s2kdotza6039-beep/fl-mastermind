@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateProgressions, parseKeyMode } from "./chords";
+import { applyInversion, generateProgressions, parseKeyMode, slashBass } from "./chords";
 
 describe("chord engine — correctness", () => {
   it("A minor yields the classic i-VI-III-VII with correct spelling", () => {
@@ -51,5 +51,24 @@ describe("parseKeyMode", () => {
     expect(parseKeyMode("Bb minor")).toEqual({ key: "A#", mode: "minor" });
     expect(parseKeyMode("n/a")).toBeNull();
     expect(parseKeyMode(null)).toBeNull();
+  });
+});
+
+describe("forge helpers (R9.5)", () => {
+  it("applyInversion rotates the bottom note up an octave, wrapping safely", () => {
+    expect(applyInversion(["A3", "C4", "E4"], 1)).toEqual(["C4", "E4", "A4"]);
+    expect(applyInversion(["A3", "C4", "E4"], 3)).toEqual(["A3", "C4", "E4"]);
+    expect(applyInversion(["A3", "C4", "E4"], 0)).toEqual(["A3", "C4", "E4"]);
+  });
+
+  it("slashBass prepends a low root or a fifth in the bass", () => {
+    expect(slashBass(["A3", "C4", "E4"], "root-12")).toEqual(["A2", "A3", "C4", "E4"]);
+    expect(slashBass(["A3", "C4", "E4"], "fifth-12")).toEqual(["E3", "A3", "C4", "E4"]);
+    expect(slashBass(["A3", "C4", "E4"], "none")).toEqual(["A3", "C4", "E4"]);
+  });
+
+  it("slash-after-inversion keeps the bass on the floor (pipeline rule)", () => {
+    const inv = applyInversion(["A3", "C4", "E4"], 1);
+    expect(slashBass(inv, "root-12")[0]).toBe("C3");
   });
 });
