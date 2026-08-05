@@ -571,18 +571,30 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
                     </Link>
                   </Button>
                   {loopLock.lockKind === "rebounce" && exportWavProc && (
-                    <Button size="sm" variant="outline" onClick={() => setBounceHelpOpen((v) => !v)}>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setBounceHelpOpen((v) => !v)}>
                       <Eye className="w-3.5 h-3.5 mr-1" /> Show me how to bounce
                     </Button>
                   )}
                   {loopLock.lockKind === "foreign" && (
-                    <Button asChild size="sm" variant="outline">
-                      <Link to="/projects">🆕 It's a new beat → new project</Link>
-                    </Button>
+                    <>
+                      <Button asChild size="sm" variant="outline">
+                        <Link to="/projects">🆕 It's a new beat → new project</Link>
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={overriding}
+                        onClick={() => setOverrideOpen(true)}
+                      >
+                        ✅ Same beat — I changed it on purpose
+                      </Button>
+                    </>
                   )}
-                  <Button size="sm" variant="ghost" onClick={loopLock.refresh}>
+                  <Button type="button" size="sm" variant="ghost" onClick={loopLock.refresh}>
                     🔄 I've uploaded — check again
                   </Button>
+
                 </div>
                 {bounceHelpOpen && loopLock.lockKind === "rebounce" && exportWavProc && (
                   <div className="mt-3">
