@@ -15,6 +15,7 @@ import { MixScoreCard } from "@/components/MixScoreCard";
 import { resolveGenreTarget } from "@/lib/genre-target";
 import { ChordGeneratorCard } from "@/components/ChordGeneratorCard";
 import { GenrePlaybookCard } from "@/components/GenrePlaybookCard";
+import { GrooveEngineCard } from "@/components/GrooveEngineCard";
 import { PlaybookChecklistCard } from "@/components/PlaybookChecklistCard";
 import { RepairPlanCard, type RepairPlanStep } from "@/components/RepairPlanCard";
 import { useAuth } from "@/context/AuthContext";
