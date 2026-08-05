@@ -1369,6 +1369,41 @@ export default function UploadPage() {
             </Card>
           )}
 
+          {continuityHold && (
+            <Card className="studio-card p-4 mt-6 border-destructive/40">
+              <div className="flex items-start gap-3">
+                <div className="text-2xl leading-none">🥋</div>
+                <div className="min-w-0 flex-1">
+                  <div className="font-display text-base font-bold text-foreground">
+                    Sensei paused — beat DNA doesn't match
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    This upload's song identity differs from your project{continuityHold.prevFileName ? ` (last confirmed: "${continuityHold.prevFileName}")` : ""}:
+                  </p>
+                  <ul className="mt-2 space-y-0.5">
+                    {continuityHold.reasons.map((r) => (
+                      <li key={r} className="text-xs text-foreground">• {r}</li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Coaching stays paused and this beat is kept out of your project's scores — one project, one song.
+                  </p>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <Button size="sm" onClick={confirmSameBeat} className="bg-gradient-gold text-primary-foreground hover:opacity-90">
+                      ✅ It IS the same beat — continue
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => { setContinuityHold(null); reset(); }}>
+                      ↩️ Load the correct bounce
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => navigate("/projects")}>
+                      🆕 It's a new beat → new project
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          )}
+
           {result && askSensei && (
             <Card className="studio-card overflow-hidden h-[60vh] flex flex-col mt-6">
               <SenseiChat initialPrompt={senseiPrompt} audioContext={senseiAudioContext} />
