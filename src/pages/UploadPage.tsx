@@ -553,9 +553,40 @@ export default function UploadPage() {
       return;
     }
     if (inserted?.id) {
-      setLastReportId(inserted.id);
-      // Auto-activate this report as the coaching session
-      await setActiveReport(inserted.id);
+      // ── R9.7 SAME-BEAT GUARD ─────────────────────────────────────────────
+      // A mix re-bounce changes the song's CLOTHING (EQ / loudness), never its
+      // DNA (key / tempo / duration). Compare the new upload against the
+      // project's previous CONFIRMED report before Sensei trusts it.
+      let prevReport: { id: string; file_name: string | null; bpm: number | null; detected_key: string | null; duration_sec: number | null } | null = null;
+      if (activeProject) {
+        const { data: recent } = await supabase
+          .from("audio_analysis_reports")
+          .select("id, file_name, bpm, detected_key, duration_sec")
+          .eq("project_id", activeProject.id)
+          .order("created_at", { ascending: false })
+          .limit(3);
+        prevReport = (recent ?? []).find((r: any) => r.id !== inserted.id) ?? null;
+      }
+      const verdict = activeProject && prevReport
+        ? assessContinuation(prevReport, {
+            bpm: res.metrics.bpm,
+            detected_key: res.metrics.detectedKey,
+            duration_sec: res.metrics.durationSec,
+          })
+        : { verdict: "first" as const, points: 0, reasons: [] as string[] };
+      const foreign = verdict.verdict === "mismatch";
+
+      if (foreign) {
+        // Truth first: the foreign report stays in history, visibly flagged.
+        await supabase
+          .from("audio_analysis_reports")
+          .update({ detected_issues: [...(res.issues as any[]), flagIssue(prevReport?.file_name ?? null, verdict)] as any })
+          .eq("id", inserted.id);
+      } else {
+        setLastReportId(inserted.id);
+        // Auto-activate this report as the coaching session
+        await setActiveReport(inserted.id);
+      }
       await refreshRecent();
 
       // Project Memory: log this upload as a new track version on the active
@@ -577,12 +608,24 @@ export default function UploadPage() {
             audioReportId: inserted.id,
           });
 
-          // Coaching loop: score, detect issues, reconcile, and plan.
-          try {
-            await runCoachingLoop(user.id, activeProject.id, activeProject.genre, inserted.id, version.id, res);
-          } catch (loopErr: any) {
-            console.warn("Coaching loop failed:", loopErr?.message ?? loopErr);
-            toast.warning("Analysis saved, but the coaching loop did not update. Retry the upload.");
+          if (foreign) {
+            // Foreign beats NEVER touch scores, issues or plans: coaching holds
+            // until the correct bounce (or an explicit owner override below).
+            setContinuityHold({
+              reportId: inserted.id,
+              versionId: version.id,
+              reasons: verdict.reasons,
+              prevFileName: prevReport?.file_name ?? null,
+            });
+            toast.warning("Sensei paused coaching — this doesn't sound like the same beat.");
+          } else {
+            // Coaching loop: score, detect issues, reconcile, and plan.
+            try {
+              await runCoachingLoop(user.id, activeProject.id, activeProject.genre, inserted.id, version.id, res);
+            } catch (loopErr: any) {
+              console.warn("Coaching loop failed:", loopErr?.message ?? loopErr);
+              toast.warning("Analysis saved, but the coaching loop did not update. Retry the upload.");
+            }
           }
         } catch (e: any) {
           console.warn("Failed to log track version to project:", e?.message ?? e);
