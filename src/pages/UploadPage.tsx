@@ -515,6 +515,7 @@ export default function UploadPage() {
 
   const persistReport = async (res: AudioAnalysisResult) => {
     if (!user) return;
+    setContinuityHold(null);
     const { data: inserted, error: insertErr } = await supabase
       .from("audio_analysis_reports")
       .insert({
