@@ -1,6 +1,7 @@
 import { ADVISOR_LANGUAGES, loadAdvisorLanguage, storeAdvisorLanguage } from "@/lib/advisor-language";
 import { loadMessageRating, storeMessageRating } from "@/lib/message-rating";
-import { matchProcedures, proceduresToContext } from "@/lib/fl-procedures";
+import { FL_PROCEDURES, matchProcedures, proceduresToContext } from "@/lib/fl-procedures";
+import { useLoopLock } from "@/hooks/use-loop-lock";
 import { ShowMeMap } from "@/components/ShowMeMap";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -73,6 +74,9 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   const { inventory, isComplete: inventoryComplete } = usePluginInventory();
   const { toChatAudio } = useTrackSession();
   const { activeProject, loading: projectLoading } = useProject();
+  const loopLock = useLoopLock(activeProject?.id ?? null);
+  const [bounceHelpOpen, setBounceHelpOpen] = useState(false);
+  const exportWavProc = FL_PROCEDURES.find((p) => p.id === "export-wav");
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [advisorLang, setAdvisorLang] = useState(loadAdvisorLanguage());
   const [ratings, setRatings] = useState<Record<string, "up" | "down" | null>>({});
@@ -139,12 +143,13 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   }, [activeProject?.id, compact]);
 
   useEffect(() => {
+    if (loopLock.lockKind) return; // R9.7 — while locked, nothing lands in the chat
     if (initialPrompt && !sentInitial.current && historyLoaded) {
       sentInitial.current = true;
       send(initialPrompt);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialPrompt, historyLoaded]);
+  }, [initialPrompt, historyLoaded, loopLock.lockKind]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -543,6 +548,53 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
         </div>
       )}
 
+      {loopLock.lockKind && (
+        <div className="px-4 pb-2">
+          <div className="rounded-lg border border-primary/40 bg-primary/5 p-3">
+            <div className="flex items-start gap-3">
+              <Lock className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-sm text-foreground">
+                  {loopLock.lockKind === "foreign"
+                    ? "🥋 Sensei: hold on — I don't recognize this beat"
+                    : "🥋 Sensei: fix steps done — time to re-bounce"}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {loopLock.lockKind === "foreign"
+                    ? `This upload's DNA doesn't match the project${loopLock.prevFileName ? ` (last confirmed: "${loopLock.prevFileName}")` : ""}: ${loopLock.reasons.join(" · ")}. Coaching is paused — load the correct bounce and I'll verify it instantly.`
+                    : "I'm not guessing from old info, champ. Re-bounce your beat in FL Studio and upload it — coaching continues the moment I hear it."}
+                </p>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <Button asChild size="sm" className="bg-gradient-gold text-primary-foreground hover:opacity-90">
+                    <Link to="/upload">
+                      ⬆ Upload {loopLock.lockKind === "foreign" ? "the correct beat" : "new bounce"}
+                    </Link>
+                  </Button>
+                  {loopLock.lockKind === "rebounce" && exportWavProc && (
+                    <Button size="sm" variant="outline" onClick={() => setBounceHelpOpen((v) => !v)}>
+                      <Eye className="w-3.5 h-3.5 mr-1" /> Show me how to bounce
+                    </Button>
+                  )}
+                  {loopLock.lockKind === "foreign" && (
+                    <Button asChild size="sm" variant="outline">
+                      <Link to="/projects">🆕 It's a new beat → new project</Link>
+                    </Button>
+                  )}
+                  <Button size="sm" variant="ghost" onClick={loopLock.refresh}>
+                    🔄 I've uploaded — check again
+                  </Button>
+                </div>
+                {bounceHelpOpen && loopLock.lockKind === "rebounce" && exportWavProc && (
+                  <div className="mt-3">
+                    <ShowMeMap procedure={exportWavProc} onClose={() => setBounceHelpOpen(false)} />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="border-t border-border p-4 bg-card/50 backdrop-blur">
         <div className="flex gap-2 items-end">
           <select
@@ -583,14 +635,18 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
                 send(input);
               }
             }}
-            placeholder={projectLoading ? "Restoring project memory…" : "Ask Sensei anything... (Shift+Enter for new line)"}
+            placeholder={loopLock.lockKind === "foreign"
+              ? "🔒 Beat not recognized — load the correct bounce above to continue…"
+              : loopLock.lockKind === "rebounce"
+                ? "🔒 Waiting for your new bounce — Sensei will verify it…"
+                : projectLoading ? "Restoring project memory…" : "Ask Sensei anything... (Shift+Enter for new line)"}
             rows={1}
             className="resize-none bg-input border-border focus-visible:ring-primary min-h-[44px]"
-            disabled={loading || projectLoading}
+            disabled={loading || projectLoading || loopLock.lockKind != null}
           />
           <Button
             type="submit"
-            disabled={loading || projectLoading || !input.trim()}
+            disabled={loading || projectLoading || loopLock.lockKind != null || !input.trim()}
             className="bg-gradient-gold text-primary-foreground hover:opacity-90 h-[44px] px-4"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

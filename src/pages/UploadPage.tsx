@@ -31,6 +31,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useTrackSession } from "@/context/TrackSessionContext";
 import { useProject } from "@/context/ProjectContext";
 import { addTrackVersion, touchLastOpened } from "@/lib/project-memory";
+import { assessContinuation, flagIssue, overrideIssue } from "@/lib/loop-guard";
 import {
   computeMixScore, detectIssues, reconcileIssues, buildPlanFromIssues, computeDelta,
   type AudioReportLike, type GenreTarget, type StoredIssue, BANDS,
@@ -323,6 +324,7 @@ export default function UploadPage() {
   const navigate = useNavigate();
   const [lastReportId, setLastReportId] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [continuityHold, setContinuityHold] = useState<{ reportId: string; versionId: string; reasons: string[]; prevFileName: string | null } | null>(null);
   const [decoded, setDecoded] = useState<DecodedAudio | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -513,6 +515,7 @@ export default function UploadPage() {
 
   const persistReport = async (res: AudioAnalysisResult) => {
     if (!user) return;
+    setContinuityHold(null);
     const { data: inserted, error: insertErr } = await supabase
       .from("audio_analysis_reports")
       .insert({
@@ -550,9 +553,40 @@ export default function UploadPage() {
       return;
     }
     if (inserted?.id) {
-      setLastReportId(inserted.id);
-      // Auto-activate this report as the coaching session
-      await setActiveReport(inserted.id);
+      // ── R9.7 SAME-BEAT GUARD ─────────────────────────────────────────────
+      // A mix re-bounce changes the song's CLOTHING (EQ / loudness), never its
+      // DNA (key / tempo / duration). Compare the new upload against the
+      // project's previous CONFIRMED report before Sensei trusts it.
+      let prevReport: { id: string; file_name: string | null; bpm: number | null; detected_key: string | null; duration_sec: number | null } | null = null;
+      if (activeProject) {
+        const { data: recent } = await supabase
+          .from("audio_analysis_reports")
+          .select("id, file_name, bpm, detected_key, duration_sec")
+          .eq("project_id", activeProject.id)
+          .order("created_at", { ascending: false })
+          .limit(3);
+        prevReport = (recent ?? []).find((r: any) => r.id !== inserted.id) ?? null;
+      }
+      const verdict = activeProject && prevReport
+        ? assessContinuation(prevReport, {
+            bpm: res.metrics.bpm,
+            detected_key: res.metrics.detectedKey,
+            duration_sec: res.metrics.durationSec,
+          })
+        : { verdict: "first" as const, points: 0, reasons: [] as string[] };
+      const foreign = verdict.verdict === "mismatch";
+
+      if (foreign) {
+        // Truth first: the foreign report stays in history, visibly flagged.
+        await supabase
+          .from("audio_analysis_reports")
+          .update({ detected_issues: [...(res.issues as any[]), flagIssue(prevReport?.file_name ?? null, verdict)] as any })
+          .eq("id", inserted.id);
+      } else {
+        setLastReportId(inserted.id);
+        // Auto-activate this report as the coaching session
+        await setActiveReport(inserted.id);
+      }
       await refreshRecent();
 
       // Project Memory: log this upload as a new track version on the active
@@ -574,12 +608,24 @@ export default function UploadPage() {
             audioReportId: inserted.id,
           });
 
-          // Coaching loop: score, detect issues, reconcile, and plan.
-          try {
-            await runCoachingLoop(user.id, activeProject.id, activeProject.genre, inserted.id, version.id, res);
-          } catch (loopErr: any) {
-            console.warn("Coaching loop failed:", loopErr?.message ?? loopErr);
-            toast.warning("Analysis saved, but the coaching loop did not update. Retry the upload.");
+          if (foreign) {
+            // Foreign beats NEVER touch scores, issues or plans: coaching holds
+            // until the correct bounce (or an explicit owner override below).
+            setContinuityHold({
+              reportId: inserted.id,
+              versionId: version.id,
+              reasons: verdict.reasons,
+              prevFileName: prevReport?.file_name ?? null,
+            });
+            toast.warning("Sensei paused coaching — this doesn't sound like the same beat.");
+          } else {
+            // Coaching loop: score, detect issues, reconcile, and plan.
+            try {
+              await runCoachingLoop(user.id, activeProject.id, activeProject.genre, inserted.id, version.id, res);
+            } catch (loopErr: any) {
+              console.warn("Coaching loop failed:", loopErr?.message ?? loopErr);
+              toast.warning("Analysis saved, but the coaching loop did not update. Retry the upload.");
+            }
           }
         } catch (e: any) {
           console.warn("Failed to log track version to project:", e?.message ?? e);
@@ -588,6 +634,34 @@ export default function UploadPage() {
           );
         }
       }
+    }
+  };
+
+  // R9.7 — door 1: the producer confirms the flagged beat IS the same song.
+  // The override is logged on the report (visible, permanent), then the normal
+  // coaching pipeline runs: activate → score → delta → plan.
+  const confirmSameBeat = async () => {
+    if (!user || !activeProject || !continuityHold || !result) return;
+    const hold = continuityHold;
+    try {
+      const { data: row } = await supabase
+        .from("audio_analysis_reports")
+        .select("detected_issues")
+        .eq("id", hold.reportId)
+        .maybeSingle();
+      const issues = Array.isArray((row as any)?.detected_issues) ? ((row as any).detected_issues as any[]) : [];
+      await supabase
+        .from("audio_analysis_reports")
+        .update({ detected_issues: [...issues, overrideIssue()] as any })
+        .eq("id", hold.reportId);
+      setContinuityHold(null);
+      setLastReportId(hold.reportId);
+      await setActiveReport(hold.reportId);
+      await runCoachingLoop(user.id, activeProject.id, activeProject.genre, hold.reportId, hold.versionId, result);
+      toast.success("Confirmed — coaching resumed. The override is logged on this report.");
+    } catch (e: any) {
+      console.warn("Override failed:", e?.message ?? e);
+      toast.error("Could not confirm the override — try re-uploading.");
     }
   };
 
@@ -1291,6 +1365,41 @@ export default function UploadPage() {
                 >
                   <MessageCircle className="w-4 h-4 mr-2" /> Start coaching this track
                 </Button>
+              </div>
+            </Card>
+          )}
+
+          {continuityHold && (
+            <Card className="studio-card p-4 mt-6 border-destructive/40">
+              <div className="flex items-start gap-3">
+                <div className="text-2xl leading-none">🥋</div>
+                <div className="min-w-0 flex-1">
+                  <div className="font-display text-base font-bold text-foreground">
+                    Sensei paused — beat DNA doesn't match
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    This upload's song identity differs from your project{continuityHold.prevFileName ? ` (last confirmed: "${continuityHold.prevFileName}")` : ""}:
+                  </p>
+                  <ul className="mt-2 space-y-0.5">
+                    {continuityHold.reasons.map((r) => (
+                      <li key={r} className="text-xs text-foreground">• {r}</li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Coaching stays paused and this beat is kept out of your project's scores — one project, one song.
+                  </p>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <Button size="sm" onClick={confirmSameBeat} className="bg-gradient-gold text-primary-foreground hover:opacity-90">
+                      ✅ It IS the same beat — continue
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => { setContinuityHold(null); reset(); }}>
+                      ↩️ Load the correct bounce
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => navigate("/projects")}>
+                      🆕 It's a new beat → new project
+                    </Button>
+                  </div>
+                </div>
               </div>
             </Card>
           )}

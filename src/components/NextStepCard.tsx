@@ -56,6 +56,9 @@ export const NextStepCard = () => {
 
   if (!activeProject || loading || !state) return null;
   const { label, instruction } = LABELS[state];
+  const rebounce = state === "AWAITING_REUPLOAD";
+  const to = rebounce ? "/upload" : "/mixing";
+  const cta = rebounce ? "Upload new bounce" : "Continue coaching";
 
   return (
     <Card className="studio-card-gold p-5 mb-6 flex flex-col md:flex-row md:items-center gap-4 justify-between">
@@ -70,7 +73,7 @@ export const NextStepCard = () => {
         </div>
       </div>
       <Button asChild size="sm" className="bg-gradient-gold text-primary-foreground hover:opacity-90 flex-shrink-0">
-        <Link to="/mixing">Continue coaching <ArrowRight className="w-3.5 h-3.5 ml-1" /></Link>
+        <Link to={to}>{cta} <ArrowRight className="w-3.5 h-3.5 ml-1" /></Link>
       </Button>
     </Card>
   );

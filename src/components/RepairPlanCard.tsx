@@ -2,6 +2,9 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
+import { allStepsResolved } from "@/lib/loop-guard";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -84,6 +87,20 @@ export function RepairPlanCard({ planId, steps, onChange }: Props) {
           </li>
         ))}
       </ol>
+
+      {allStepsResolved(local) && (
+        <div className="mt-4 rounded-lg border border-primary/40 bg-primary/5 p-4 text-center">
+          <div className="text-2xl">🎉</div>
+          <div className="font-display text-base font-bold text-gold mt-1">All fix steps done</div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Sensei can't hear your changes yet. Re-bounce the beat in FL Studio and upload it —
+            then I'll measure exactly what improved.
+          </p>
+          <Button asChild size="sm" className="mt-3 bg-gradient-gold text-primary-foreground hover:opacity-90">
+            <Link to="/upload">⬆ Upload new bounce</Link>
+          </Button>
+        </div>
+      )}
     </Card>
   );
 }
