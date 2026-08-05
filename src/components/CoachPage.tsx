@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { SenseiChat } from "@/components/SenseiChat";
 import { Card } from "@/components/ui/card";
@@ -12,15 +12,20 @@ interface CoachPageProps {
   description: string;
   icon: LucideIcon;
   topics: { label: string; prompt: string }[];
+  /** Optional chapter-level card docked above the topics grid (R10). */
+  above?: ReactNode;
 }
 
-export const CoachPage = ({ eyebrow, title, description, icon: Icon, topics }: CoachPageProps) => {
+export const CoachPage = ({ eyebrow, title, description, icon: Icon, topics, above }: CoachPageProps) => {
   const [prompt, setPrompt] = useState<string>();
 
   return (
     <div className="container max-w-6xl py-8 px-4 md:px-8">
       <PageHeader eyebrow={eyebrow} title={title} description={description} icon={<Icon className="w-6 h-6" />} />
       <ActiveTrackChip />
+      {above}
+
+
 
 
       {!prompt ? (
