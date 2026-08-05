@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { chordsToMidi, chordsToMidiMulti, noteNameToMidi, progressionToFlInstructions, progressionToText, safeFileName } from "@/lib/midi";
+import { chordsToMidi, chordsToMidiMulti, notesToMidi, noteNameToMidi, progressionToFlInstructions, progressionToText, safeFileName, type MidiEvent } from "@/lib/midi";
 
 const p = {
   label: "Yano soul loop", key: "A", mode: "minor",
@@ -58,5 +58,34 @@ describe("multitrack midi (R9.5)", () => {
     // lowest of A3/C4/E4 is 57 (A3); bass = 45 (A2) with a 0x91 note-on before it.
     const pair = b.findIndex((_, i) => b[i] === 0x91 && b[i + 1] === 45);
     expect(pair).toBeGreaterThan(-1);
+  });
+});
+
+describe("generic event writer (R9.6)", () => {
+  it("type-0 header + tempo meta + simultaneous notes share delta-0", () => {
+    const events: MidiEvent[] = [
+      { midi: 45, startTicks: 0, durTicks: 120, velocity: 100, channel: 0 },
+      { midi: 52, startTicks: 0, durTicks: 120, velocity: 96, channel: 0 },
+    ];
+    const b = new Uint8Array(notesToMidi(events, { bpm: 120 }));
+    expect(String.fromCharCode(...b.slice(0, 4))).toBe("MThd");
+    expect([b[8], b[9]]).toEqual([0, 0]); // format 0
+    const k = b.findIndex((v, i) => b[i] === 0x90 && b[i + 1] === 45 && b[i + 2] === 100);
+    expect(k).toBeGreaterThan(-1);
+    expect(b[k - 1]).toBe(0);          // first note at delta 0
+    expect(b[k + 3]).toBe(0);          // second note-on also delta 0
+    expect(b[k + 4]).toBe(0x90);
+    expect(b[k + 5]).toBe(52);
+    expect(b[k + 7]).toBe(0x78);       // +120 ticks delta to first note-off
+    expect(b[k + 8]).toBe(0x80);
+  });
+
+  it("channel byte lands on note messages (drums on index 9)", () => {
+    const b = new Uint8Array(notesToMidi(
+      [{ midi: 36, startTicks: 0, durTicks: 60, velocity: 112, channel: 9 }],
+      { bpm: 112 },
+    ));
+    const k = b.findIndex((v, i) => b[i] === 0x99 && b[i + 1] === 36 && b[i + 2] === 112);
+    expect(k).toBeGreaterThan(-1);
   });
 });
