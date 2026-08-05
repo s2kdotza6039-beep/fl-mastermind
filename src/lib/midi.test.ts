@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { chordsToMidi, chordsToMidiMulti, noteNameToMidi, progressionToFlInstructions, progressionToText, safeFileName } from "@/lib/midi";
+import { chordsToMidi, chordsToMidiMulti, notesToMidi, noteNameToMidi, progressionToFlInstructions, progressionToText, safeFileName, type MidiEvent } from "@/lib/midi";
 
 const p = {
   label: "Yano soul loop", key: "A", mode: "minor",
