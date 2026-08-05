@@ -2,6 +2,8 @@ import { ADVISOR_LANGUAGES, loadAdvisorLanguage, storeAdvisorLanguage } from "@/
 import { loadMessageRating, storeMessageRating } from "@/lib/message-rating";
 import { FL_PROCEDURES, matchProcedures, proceduresToContext } from "@/lib/fl-procedures";
 import { useLoopLock } from "@/hooks/use-loop-lock";
+import { decodeAudioToChannels, detectFormat, runAnalysisOnDecoded } from "@/lib/audio-analysis";
+import { buildUploadAdvisePrompt, persistAnalyzedUpload } from "@/lib/coaching-runner";
 import { CONTINUITY_OVERRIDE_ID, overrideIssue } from "@/lib/loop-guard";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -11,7 +13,7 @@ import {
 import { ShowMeMap } from "@/components/ShowMeMap";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock, ThumbsUp, ThumbsDown, Eye } from "lucide-react";
+import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock, ThumbsUp, ThumbsDown, Eye, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/context/SessionContext";
@@ -78,7 +80,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   const { isPaid, user } = useAuth();
   const { setup } = useStudioSetup();
   const { inventory, isComplete: inventoryComplete } = usePluginInventory();
-  const { toChatAudio } = useTrackSession();
+  const { toChatAudio, setActiveReport, refreshRecent } = useTrackSession();
   const { activeProject, loading: projectLoading } = useProject();
   const loopLock = useLoopLock(activeProject?.id ?? null);
   const [bounceHelpOpen, setBounceHelpOpen] = useState(false);
@@ -119,6 +121,56 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   };
 
   const exportWavProc = FL_PROCEDURES.find((p) => p.id === "export-wav");
+  const knobFileRef = useRef<HTMLInputElement | null>(null);
+  const [knobBusy, setKnobBusy] = useState(false);
+
+  // R10.5 — the Option Knob: let Sensei hear a bounce WITHOUT leaving the chat.
+  // Same pipeline, same guard: foreign beats land in the lock banner, confirmed
+  // bounces get scored and Sensei immediately advises on them.
+  const onKnobFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f || knobBusy) return;
+    if (!user) {
+      toast.error("Sign in first so Sensei can file this under your name.");
+      return;
+    }
+    setKnobBusy(true);
+    try {
+      toast.info(`Sensei is listening to "${f.name}"…`);
+      const decoded = await decodeAudioToChannels(f);
+      const res = await runAnalysisOnDecoded(decoded, {
+        name: f.name,
+        format: detectFormat(f),
+        sizeBytes: f.size,
+      });
+      const outcome = await persistAnalyzedUpload({
+        userId: user.id,
+        activeProject: activeProject ? { id: activeProject.id, genre: activeProject.genre } : null,
+        res,
+        setActiveReport,
+      });
+      await refreshRecent();
+      loopLock.refresh();
+      if (!outcome.reportId) {
+        toast.error(outcome.error ?? "Could not save the analysis.");
+        return;
+      }
+      if (outcome.kind === "foreign") {
+        toast.warning(outcome.reasons.length
+          ? `Sensei paused — this doesn't sound like the same beat (${outcome.reasons.join(" · ")}).`
+          : "Sensei paused — this doesn't sound like the same beat.");
+        return; // the lock banner above carries the doors
+      }
+      toast.success("Sensei heard it — your new bounce is on record.");
+      send(buildUploadAdvisePrompt(f.name, res));
+    } catch (err: any) {
+      console.warn("Option Knob upload failed:", err?.message ?? err);
+      toast.error(err?.message ?? "Could not analyze that file.");
+    } finally {
+      setKnobBusy(false);
+    }
+  };
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [advisorLang, setAdvisorLang] = useState(loadAdvisorLanguage());
   const [ratings, setRatings] = useState<Record<string, "up" | "down" | null>>({});
@@ -701,6 +753,23 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
           >
             {mode === "guided" ? "Guided" : "⚡ Quick"}
           </button>
+          <button
+            type="button"
+            onClick={() => knobFileRef.current?.click()}
+            disabled={knobBusy}
+            title="Let Sensei hear a bounce (MP3/WAV) — it goes through the same-beat check"
+            aria-label="Let Sensei hear a bounce (MP3/WAV)"
+            className="h-[44px] px-2 rounded-md border border-border text-muted-foreground hover:text-primary disabled:opacity-50"
+          >
+            {knobBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Paperclip className="w-3.5 h-3.5" />}
+          </button>
+          <input
+            ref={knobFileRef}
+            type="file"
+            accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg"
+            className="hidden"
+            onChange={onKnobFile}
+          />
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}

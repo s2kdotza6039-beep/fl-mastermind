@@ -83,7 +83,7 @@ export function MasterChapterCard() {
             {mixScore != null && ` Your latest mix score: ${mixScore}/100.`}
           </p>
           <Button asChild size="sm" variant="outline">
-            <Link to="/upload">← Back to the Mixing chapter</Link>
+            <Link to="/mixing">← Back to the Mixing chapter</Link>
           </Button>
         </div>
       )}
