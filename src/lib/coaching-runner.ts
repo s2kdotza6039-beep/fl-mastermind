@@ -266,7 +266,7 @@ export async function runCoachingLoop(
   audioReportId: string,
   trackVersionId: string,
   res: AudioAnalysisResult,
-) {
+): Promise<ContinuationStory> {
   // 1. Load genre target (fallback: Pop).
   const wanted = (projectGenre ?? "").trim().toLowerCase();
   const { data: allTargets, error: gErr } = await supabase
@@ -296,7 +296,7 @@ export async function runCoachingLoop(
   // 3. Fetch previous score to compute delta.
   const { data: prevScores } = await supabase
     .from("project_scores")
-    .select("id, audio_report_id, created_at")
+    .select("id, audio_report_id, created_at, mix_score")
     .eq("project_id", projectId)
     .order("created_at", { ascending: false })
     .limit(1);
@@ -312,6 +312,12 @@ export async function runCoachingLoop(
       deltaBreakdown = { delta: computeDelta(prevReport as AudioReportLike, snapshot, target) };
     }
   }
+
+  // 3b. Which bounce is this? (count of scored rounds so far + this one)
+  const { count: priorRounds } = await supabase
+    .from("project_scores")
+    .select("id", { count: "exact", head: true })
+    .eq("project_id", projectId);
 
   // 4. Score.
   const scored = computeMixScore(snapshot, target);
@@ -345,6 +351,12 @@ export async function runCoachingLoop(
     resolved_at: r.resolved_at,
   }));
   const reconciled = reconcileIssues(existing, detected);
+  const priorById = new Map(existing.map((e) => [e.detector_id, e]));
+  const resolvedThisRound = reconciled
+    .filter((i) => i.status === "resolved" && priorById.get(i.detector_id)?.status !== "resolved")
+    .map((i) => i.title);
+  const regressedThisRound = reconciled.filter((i) => i.status === "regressed").map((i) => i.title);
+  const stillOpen = reconciled.filter((i) => i.status !== "resolved").map((i) => i.title);
   for (const iss of reconciled) {
     const payload = {
       user_id: userId,
@@ -371,6 +383,7 @@ export async function runCoachingLoop(
     .eq("project_id", projectId)
     .eq("status", "active");
 
+  let nextFix: string | null = null;
   if (detected.length > 0) {
     const { data: newPlan } = await supabase
       .from("repair_plans")
@@ -384,6 +397,7 @@ export async function runCoachingLoop(
       .single();
     if (newPlan?.id) {
       const drafts = buildPlanFromIssues(detected, snapshot, target);
+      nextFix = drafts[0]?.instruction ?? null;
       if (drafts.length > 0) {
         await supabase.from("plan_steps").insert(
           drafts.map((d) => ({
@@ -399,4 +413,17 @@ export async function runCoachingLoop(
       }
     }
   }
+
+  const prevScoreValue = typeof prevScore?.mix_score === "number" ? prevScore.mix_score : null;
+  return {
+    versionNumber: (priorRounds ?? 0) + 1,
+    score: scored.score,
+    prevScore: prevScoreValue,
+    delta: prevScoreValue != null ? scored.score - prevScoreValue : null,
+    masterReady: scored.master_ready,
+    resolvedThisRound,
+    regressedThisRound,
+    stillOpen,
+    nextFix,
+  };
 }
