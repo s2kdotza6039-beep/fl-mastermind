@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { anchorFromResult, buildUploadAdvisePrompt, pickConfirmedPrev } from "@/lib/coaching-runner";
+import { anchorFromResult, buildUploadAdvisePrompt, pickConfirmedPrev, type ContinuationStory } from "@/lib/coaching-runner";
 import type { AudioAnalysisResult } from "@/lib/audio-analysis";
 
 function fakeRes(over: Partial<AudioAnalysisResult["metrics"]> = {}): AudioAnalysisResult {
@@ -68,5 +68,64 @@ describe("buildUploadAdvisePrompt — the deterministic advise message", () => {
     expect(p).toContain("112 BPM");
     expect(p).toContain("A minor");
     expect(p).toContain("newest stock plugins first");
+  });
+});
+
+function story(over: Partial<ContinuationStory> = {}): ContinuationStory {
+  return {
+    versionNumber: 3,
+    score: 74,
+    prevScore: 62,
+    delta: 12,
+    masterReady: false,
+    resolvedThisRound: [],
+    regressedThisRound: [],
+    stillOpen: [],
+    nextFix: null,
+    ...over,
+  };
+}
+
+describe("buildUploadAdvisePrompt — R12 continuation story", () => {
+  it("frames a re-bounce with the score delta", () => {
+    const p = buildUploadAdvisePrompt("v3.mp3", fakeRes(), story());
+    expect(p).toContain("re-bounce v3");
+    expect(p).toContain("74/100");
+    expect(p).toContain("was 62");
+    expect(p).toContain("up 12 points");
+  });
+
+  it("lists what was fixed and asks for the single next fix", () => {
+    const p = buildUploadAdvisePrompt("v3.mp3", fakeRes(), story({
+      resolvedThisRound: ["Muddy low-mid energy"],
+      stillOpen: ["Narrow stereo image"],
+      nextFix: "Reduce 4 kHz by 1.5 dB",
+    }));
+    expect(p).toContain("✅ Fixed since last bounce: Muddy low-mid energy.");
+    expect(p).toContain("SINGLE next fix first: Reduce 4 kHz by 1.5 dB");
+    expect(p).toContain("Still open after that: Narrow stereo image.");
+  });
+
+  it("calls out regressions and a score drop", () => {
+    const p = buildUploadAdvisePrompt("v4.mp3", fakeRes(), story({
+      score: 55, prevScore: 70, delta: -15, regressedThisRound: ["Clipping peaks"],
+    }));
+    expect(p).toContain("down 15 points");
+    expect(p).toContain("⚠️ Came back: Clipping peaks.");
+  });
+
+  it("hands off to the Mastering chapter when master-ready", () => {
+    const p = buildUploadAdvisePrompt("final.mp3", fakeRes(), story({ masterReady: true }));
+    expect(p).toContain("🏁 The mixing chapter is done");
+    expect(p).toContain("/mastering");
+  });
+
+  it("frames the very first bounce without a delta", () => {
+    const p = buildUploadAdvisePrompt("first.mp3", fakeRes(), story({
+      versionNumber: 1, prevScore: null, delta: null, score: 61,
+    }));
+    expect(p).toContain("first bounce");
+    expect(p).not.toContain("was ");
+    expect(p).toContain("61/100");
   });
 });
