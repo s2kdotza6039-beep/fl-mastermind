@@ -188,15 +188,71 @@ export async function persistAnalyzedUpload(args: {
   return out;
 }
 
-/** Deterministic "Sensei, tell me what improved" message after a chat upload. */
-export function buildUploadAdvisePrompt(fileName: string, res: AudioAnalysisResult): string {
+/**
+ * R12 — what the loop learned this round, so Sensei can continue the story
+ * instead of starting over on every bounce.
+ */
+export interface ContinuationStory {
+  versionNumber: number;
+  score: number;
+  prevScore: number | null;
+  delta: number | null;
+  masterReady: boolean;
+  resolvedThisRound: string[];
+  regressedThisRound: string[];
+  stillOpen: string[];
+  nextFix: string | null;
+}
+
+/** Deterministic "Sensei, tell me what improved" message after a bounce. */
+export function buildUploadAdvisePrompt(
+  fileName: string,
+  res: AudioAnalysisResult,
+  story?: ContinuationStory | null,
+): string {
   const m = res.metrics;
   const lufs = m.lufsEstimate != null ? `${m.lufsEstimate.toFixed(1)} LUFS` : "LUFS unmeasured";
   const bpm = m.bpm != null ? `${Math.round(m.bpm)} BPM` : "BPM unknown";
   const key = m.detectedKey ?? "key unknown";
   const peak = m.peakDb != null ? `${m.peakDb.toFixed(1)} dBFS` : "peak unmeasured";
-  return `I just uploaded "${fileName}" for you to hear (${lufs}, ${bpm}, ${key}, ${peak}). Tell me what improved, what's still off, and my next fix in FL Studio — newest stock plugins first.`;
+  const head = `I just uploaded "${fileName}" for you to hear (${lufs}, ${bpm}, ${key}, ${peak}).`;
+
+  if (!story) {
+    return `${head} Tell me what improved, what's still off, and my next fix in FL Studio — newest stock plugins first.`;
+  }
+
+  const lines: string[] = [head];
+  if (story.versionNumber > 1) {
+    lines.push(`This is re-bounce v${story.versionNumber} — continue from where we left off.`);
+  } else {
+    lines.push(`This is my first bounce for this song — start the coaching chapter.`);
+  }
+
+  const deltaTxt =
+    story.prevScore != null && story.delta != null
+      ? ` (was ${story.prevScore}, ${story.delta >= 0 ? `up ${story.delta}` : `down ${Math.abs(story.delta)}`} points)`
+      : "";
+  lines.push(`Mix score: ${story.score}/100${deltaTxt}.`);
+
+  if (story.resolvedThisRound.length) {
+    lines.push(`✅ Fixed since last bounce: ${story.resolvedThisRound.join("; ")}.`);
+  }
+  if (story.regressedThisRound.length) {
+    lines.push(`⚠️ Came back: ${story.regressedThisRound.join("; ")}.`);
+  }
+  if (story.nextFix) {
+    lines.push(`🔧 Give me the SINGLE next fix first: ${story.nextFix}`);
+  }
+  if (story.stillOpen.length) {
+    lines.push(`Still open after that: ${story.stillOpen.join("; ")}.`);
+  }
+  if (story.masterReady) {
+    lines.push(`🏁 The mixing chapter is done — next is the Mastering chapter (/mastering).`);
+  }
+  lines.push(`Answer with exact FL Studio steps — newest stock plugins first.`);
+  return lines.join("\n");
 }
+
 
 /**
  * Score a confirmed bounce and update the whole coaching surface:
