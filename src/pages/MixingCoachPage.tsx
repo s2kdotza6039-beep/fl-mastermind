@@ -166,7 +166,7 @@ export default function MixingCoachPage() {
       )}
 
       <div className="mt-8">
-        <SenseiChat />
+        <SenseiChat key={activeProject?.id ?? "none"} />
       </div>
     </div>
   );

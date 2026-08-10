@@ -33,7 +33,8 @@ import { useProject } from "@/context/ProjectContext";
 import { addTrackVersion, touchLastOpened } from "@/lib/project-memory";
 import { overrideIssue } from "@/lib/loop-guard";
 import { BANDS } from "@/lib/coaching-loop";
-import { persistAnalyzedUpload, runCoachingLoop } from "@/lib/coaching-runner";
+import { buildUploadAdvisePrompt, persistAnalyzedUpload, runCoachingLoop } from "@/lib/coaching-runner";
+import { stashChatPrompt } from "@/lib/knowledge-handoff";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -205,6 +206,7 @@ export default function UploadPage() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [waveformFocused, setWaveformFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const lastAdvisedRef = useRef<string | null>(null);
   const waveformCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const waveformRef = useRef<WaveformPlayerHandle | null>(null);
   const waveformWrapperRef = useRef<HTMLDivElement | null>(null);
@@ -384,6 +386,21 @@ export default function UploadPage() {
     }
     if (outcome.kind === "coached") {
       setLastReportId(outcome.reportId);
+      // R12 — seamless continuation: hand the story straight to Sensei.
+      if (lastAdvisedRef.current !== outcome.reportId) {
+        lastAdvisedRef.current = outcome.reportId;
+        const story = outcome.story ?? null;
+        stashChatPrompt(buildUploadAdvisePrompt(res.metrics.fileName, res, story));
+        if (!askSensei) {
+          const headline = story
+            ? story.masterReady
+              ? `Mix score ${story.score}/100 — 🏁 Mixing complete, next: Mastering`
+              : `Mix score ${story.score}/100${story.delta != null ? ` (${story.delta >= 0 ? "+" : ""}${story.delta})` : ""} — next fix inside`
+            : "Sensei is ready with your next fix";
+          toast.success(headline);
+          setTimeout(() => navigate("/chat"), 650);
+        }
+      }
     }
     if (outcome.kind === "foreign" && outcome.versionId) {
       setContinuityHold({
@@ -1173,7 +1190,7 @@ export default function UploadPage() {
 
           {result && askSensei && (
             <Card className="studio-card overflow-hidden h-[60vh] flex flex-col mt-6">
-              <SenseiChat initialPrompt={senseiPrompt} audioContext={senseiAudioContext} />
+              <SenseiChat key={`upload-${activeProject?.id ?? "none"}`} initialPrompt={senseiPrompt} audioContext={senseiAudioContext} />
             </Card>
           )}
         </>
