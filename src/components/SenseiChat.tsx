@@ -163,7 +163,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
         return; // the lock banner above carries the doors
       }
       toast.success("Sensei heard it — your new bounce is on record.");
-      send(buildUploadAdvisePrompt(f.name, res));
+      send(buildUploadAdvisePrompt(f.name, res, outcome.story));
     } catch (err: any) {
       console.warn("Option Knob upload failed:", err?.message ?? err);
       toast.error(err?.message ?? "Could not analyze that file.");
@@ -223,6 +223,10 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
 
   // Load persisted chat history for the active project (only when not in compact embed mode).
   useEffect(() => {
+    // R12 — per-song isolation: wipe the board BEFORE the fetch resolves so a
+    // previous project's chat can never bleed into the new one.
+    setMessages([]);
+    sentInitial.current = false;
     if (compact || !activeProject) { setHistoryLoaded(true); return; }
     let cancelled = false;
     setHistoryLoaded(false);

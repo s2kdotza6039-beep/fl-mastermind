@@ -63,6 +63,8 @@ export interface PersistOutcome {
   error?: string;
   loopError?: string;
   linkError?: string;
+  /** R12 — the continuation story from the coaching loop (confirmed bounces only). */
+  story?: ContinuationStory;
 }
 
 /**
@@ -175,7 +177,7 @@ export async function persistAnalyzedUpload(args: {
 
       if (!foreign) {
         try {
-          await runCoachingLoop(userId, activeProject.id, activeProject.genre, inserted.id, version.id, res);
+          out.story = await runCoachingLoop(userId, activeProject.id, activeProject.genre, inserted.id, version.id, res);
         } catch (loopErr: any) {
           out.loopError = loopErr?.message ?? String(loopErr);
         }
