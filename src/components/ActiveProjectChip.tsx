@@ -11,10 +11,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useProject } from "@/context/ProjectContext";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 export const ActiveProjectChip = () => {
   const { projects, activeProject, switchProject, create } = useProject();
+  const navigate = useNavigate();
   const [openNew, setOpenNew] = useState(false);
   const [name, setName] = useState("");
   const [genre, setGenre] = useState("");
@@ -84,6 +85,7 @@ export const ActiveProjectChip = () => {
                 setBusy(false);
                 if (p) {
                   setName(""); setGenre(""); setOpenNew(false);
+                  navigate("/upload");
                 }
               }}
             >
