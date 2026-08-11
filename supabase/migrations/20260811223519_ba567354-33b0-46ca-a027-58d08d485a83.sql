@@ -1,0 +1,1 @@
+ALTER TABLE public.audio_analysis_reports ADD COLUMN IF NOT EXISTS tonal_flatness numeric;
