@@ -102,3 +102,42 @@ export function buildBodyPhasePrompt(ctx: PromptCtx = {}): string {
 export function buildArrangePrompt(ctx: PromptCtx = {}): string {
   return `${head(ctx)} I'm in the ARRANGE phase — the beat and the body exist. Help me arrange the full song: intro, build, drop/chorus, breakdown, outro, plus transitions and energy management. Give me a bar-by-bar map I can lay out in the FL Studio playlist.`.trim();
 }
+
+export interface RebounceCtx extends PromptCtx {
+  phase: ProductionPhase;
+  scoreBefore?: number | null;
+  scoreAfter?: number | null;
+  resolvedThisRound?: string[];
+  stillOpen?: string[];
+}
+
+/** Phase-aware continuation prompt for a re-bounce (score delta + what moved + next fix). */
+export function buildRebouncePrompt(ctx: RebounceCtx): string {
+  const meta = PRODUCTION_PHASES.find((p) => p.id === ctx.phase) ?? PRODUCTION_PHASES[0];
+  const before = ctx.scoreBefore ?? null;
+  const after = ctx.scoreAfter ?? null;
+  const parts: string[] = [head(ctx)];
+
+  parts.push(`I re-bounced my track while in the ${meta.label.toUpperCase()} phase of production.`);
+
+  if (after != null && before != null) {
+    const delta = after - before;
+    const dir = delta > 0 ? `up ${delta}` : delta < 0 ? `down ${Math.abs(delta)}` : "unchanged";
+    parts.push(`Mix score: ${after}/100 (was ${before}) — ${dir} points.`);
+  } else if (after != null) {
+    parts.push(`Mix score: ${after}/100 (first scored bounce).`);
+  } else {
+    parts.push("No mix score is available yet for this bounce.");
+  }
+
+  const resolved = (ctx.resolvedThisRound ?? []).filter(Boolean);
+  const open = (ctx.stillOpen ?? []).filter(Boolean);
+  parts.push(resolved.length ? `Fixed since the last bounce: ${resolved.join("; ")}.` : "Nothing has been confirmed fixed since the last bounce.");
+  parts.push(open.length ? `Still open: ${open.join("; ")}.` : "No open issues are recorded.");
+
+  parts.push(
+    `Stay inside the ${meta.label} phase — do not judge this as a finished mix. Tell me what actually improved, then give me the SINGLE next move for this phase with exact FL Studio steps, and say whether I'm ready to move on.`,
+  );
+
+  return parts.filter(Boolean).join(" ").trim();
+}

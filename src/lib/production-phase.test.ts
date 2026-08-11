@@ -4,6 +4,7 @@ import {
   buildArrangePrompt,
   buildBeatPhasePrompt,
   buildBodyPhasePrompt,
+  buildRebouncePrompt,
   detectSketch,
   nextProductionPhase,
   prevProductionPhase,
@@ -22,13 +23,10 @@ describe("production phase", () => {
     expect(readProductionPhase({ productionPhase: "ARRANGE" })).toBe("ARRANGE");
   });
 
-  it("advances and clamps at DONE", () => {
+  it("moves between phases and clamps at both ends", () => {
     expect(nextProductionPhase("BEAT")).toBe("BODY");
     expect(nextProductionPhase("ARRANGE")).toBe("DONE");
     expect(nextProductionPhase("DONE")).toBe("DONE");
-  });
-
-  it("goes back and clamps at BEAT", () => {
     expect(prevProductionPhase("DONE")).toBe("ARRANGE");
     expect(prevProductionPhase("BEAT")).toBe("BEAT");
   });
@@ -55,5 +53,28 @@ describe("production phase", () => {
     expect(buildAddElementPrompt(ctx)).toContain("add or improve one element");
     expect(buildBodyPhasePrompt(ctx)).toContain("BODY phase");
     expect(buildArrangePrompt(ctx)).toContain("ARRANGE phase");
+  });
+
+  it("buildRebouncePrompt reports the phase, the delta and what moved", () => {
+    const up = buildRebouncePrompt({
+      phase: "BODY",
+      projectName: "Nightdrive",
+      scoreBefore: 62,
+      scoreAfter: 74,
+      resolvedThisRound: ["Muddy low-mids"],
+      stillOpen: ["Harsh 3 kHz"],
+    });
+    expect(up).toContain("BODY phase");
+    expect(up).toContain("74/100 (was 62)");
+    expect(up).toContain("up 12");
+    expect(up).toContain("Muddy low-mids");
+    expect(up).toContain("Harsh 3 kHz");
+
+    const down = buildRebouncePrompt({ phase: "BEAT", scoreBefore: 70, scoreAfter: 61 });
+    expect(down).toContain("down 9");
+    expect(down).toContain("Nothing has been confirmed fixed");
+
+    const none = buildRebouncePrompt({ phase: "ARRANGE" });
+    expect(none).toContain("No mix score is available yet");
   });
 });
