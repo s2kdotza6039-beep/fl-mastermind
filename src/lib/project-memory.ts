@@ -18,6 +18,8 @@ export interface Project {
   last_activity_at: string;
   created_at: string;
   updated_at: string;
+  // R13 — production phase lives here (existing JSONB, no migration).
+  session_notes?: any;
 }
 
 export interface ProjectAdvice {
