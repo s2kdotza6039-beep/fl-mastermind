@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Check, Lock } from "lucide-react";
+import { Check, Lock, Sliders, SlidersHorizontal, Gauge, Rocket } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useProject } from "@/context/ProjectContext";
 import {
@@ -10,13 +10,25 @@ import {
   MIX_STAGES,
   type JourneyState,
 } from "@/lib/journey";
+import { PRODUCTION_PHASES, readProductionPhase, type ProductionPhase } from "@/lib/production-phase";
 import type { LoopInputs } from "@/lib/coaching-loop";
 import { cn } from "@/lib/utils";
+
+type ChapterId = "PRODUCTION" | "MIXING" | "MASTERING" | "PUBLISH";
+
+const CHAPTERS: { id: ChapterId; label: string; href: string; icon: typeof Sliders }[] = [
+  { id: "PRODUCTION", label: "Production", href: "/production", icon: Sliders },
+  { id: "MIXING", label: "Mixing", href: "/mixing", icon: SlidersHorizontal },
+  { id: "MASTERING", label: "Mastering", href: "/mastering", icon: Gauge },
+  { id: "PUBLISH", label: "Publish", href: "/mastering", icon: Rocket },
+];
 
 export const JourneyBelt = () => {
   const { activeProject } = useProject();
   const location = useLocation();
   const [journey, setJourney] = useState<JourneyState | null>(null);
+
+  const phase: ProductionPhase = readProductionPhase((activeProject as any)?.session_notes);
 
   const refresh = useCallback(async () => {
     if (!activeProject?.id) {
@@ -56,7 +68,6 @@ export const JourneyBelt = () => {
       const inputs: LoopInputs = {
         hasProject: true,
         hasAnalysis: (reportRes.data ?? []).length > 0,
-        // Row shape includes master_ready + breakdown; cast is what NextStepCard-style code needs.
         latestScore: (scoreRes.data ?? null) as unknown as LoopInputs["latestScore"],
         plan: planRes.data ? { status: planRes.data.status } : null,
         steps,
@@ -84,54 +95,137 @@ export const JourneyBelt = () => {
 
   if (!journey) return null;
 
+  const masterReady = journey.reachedMixReady;
+  const productionDone = phase === "DONE" || masterReady;
+
+  const chapterState = (id: ChapterId): "done" | "current" | "locked" => {
+    if (id === "PRODUCTION") return productionDone ? "done" : "current";
+    if (id === "MIXING") {
+      if (!productionDone) return "locked";
+      return masterReady ? "done" : "current";
+    }
+    return masterReady ? "current" : "locked";
+  };
+
+  const onProduction = location.pathname.startsWith("/production");
+  const activeChapter: ChapterId = onProduction
+    ? "PRODUCTION"
+    : location.pathname.startsWith("/mastering")
+      ? "MASTERING"
+      : "MIXING";
+
+  const phaseIndex = PRODUCTION_PHASES.findIndex((p) => p.id === phase);
+
+  const senseiLine = onProduction
+    ? phase === "DONE"
+      ? "Production is finished — step into the Mixing chapter when you're ready."
+      : `${PRODUCTION_PHASES[Math.max(0, phaseIndex)].blurb}`
+    : journeyGuidance(journey);
+
   return (
-    <div className="border-b border-border bg-card/20 px-4 py-2">
+    <div className="border-b border-border bg-card/20 px-4 py-2 space-y-1">
+      {/* Chapters */}
       <div className="flex items-center gap-1 overflow-x-auto scrollbar-thin">
-        {MIX_STAGES.map((stage) => {
-          const isDone = journey.reachedMixReady || stage.index < journey.currentIndex;
-          const isCurrent = stage.index === journey.currentIndex;
+        {CHAPTERS.map((c, i) => {
+          const state = chapterState(c.id);
+          const isActive = c.id === activeChapter && state !== "locked";
+          const Icon = c.icon;
           return (
-            <div key={stage.id} className="flex items-center gap-1">
-              {stage.index > 0 && <span className="w-3 h-px bg-border" />}
+            <div key={c.id} className="flex items-center gap-1">
+              {i > 0 && <span className="w-3 h-px bg-border" />}
               <Link
-                to={stage.ctaHref}
-                title={stage.caption}
-                aria-current={isCurrent ? "step" : undefined}
+                to={c.href}
+                aria-current={isActive ? "step" : undefined}
                 onClick={(e) => {
-                  if (!isDone && !isCurrent) e.preventDefault();
+                  if (state === "locked") e.preventDefault();
                 }}
                 className={cn(
-                  "flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium transition-colors whitespace-nowrap",
-                  isDone && "bg-primary/15 text-primary hover:bg-primary/25",
-                  isCurrent && "bg-gradient-gold text-primary-foreground shadow-sm glow-gold",
-                  !isDone && !isCurrent && "text-muted-foreground/50 cursor-not-allowed",
+                  "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors whitespace-nowrap",
+                  isActive && "bg-gradient-gold text-primary-foreground shadow-sm glow-gold",
+                  !isActive && state === "done" && "bg-primary/15 text-primary hover:bg-primary/25",
+                  !isActive && state === "current" && "text-foreground hover:bg-primary/10",
+                  state === "locked" && "text-muted-foreground/50 cursor-not-allowed",
                 )}
               >
-                {isDone ? (
-                  <Check className="w-3 h-3" />
-                ) : !isCurrent ? (
+                {state === "locked" ? (
                   <Lock className="w-3 h-3" />
+                ) : state === "done" ? (
+                  <Check className="w-3 h-3" />
                 ) : (
-                  <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                  <Icon className="w-3 h-3" />
                 )}
-                {stage.label}
+                {c.label}
               </Link>
             </div>
           );
         })}
-
-        <span className="w-3 h-px bg-border" />
-        <span className="flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium text-muted-foreground/50 whitespace-nowrap">
-          <Lock className="w-3 h-3" /> Mastering
-        </span>
-        <span className="flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium text-muted-foreground/50 whitespace-nowrap">
-          <Lock className="w-3 h-3" /> Publish
-        </span>
       </div>
 
-      <p className="mt-1 text-[11px] text-muted-foreground">
-        <span className="text-primary font-semibold">Sensei:</span>{" "}
-        {journeyGuidance(journey)}
+      {/* Within-chapter steps */}
+      {onProduction ? (
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-thin">
+          {PRODUCTION_PHASES.filter((p) => p.id !== "DONE").map((p, i) => {
+            const isDone = phase === "DONE" || p.index < phaseIndex;
+            const isCurrent = p.id === phase;
+            return (
+              <div key={p.id} className="flex items-center gap-1">
+                {i > 0 && <span className="w-3 h-px bg-border" />}
+                <span
+                  title={p.blurb}
+                  aria-current={isCurrent ? "step" : undefined}
+                  className={cn(
+                    "flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium whitespace-nowrap",
+                    isDone && "bg-primary/15 text-primary",
+                    isCurrent && "bg-gradient-gold text-primary-foreground shadow-sm glow-gold",
+                    !isDone && !isCurrent && "text-muted-foreground/50",
+                  )}
+                >
+                  {isDone ? <Check className="w-3 h-3" /> : <span className="w-1.5 h-1.5 rounded-full bg-current" />}
+                  {p.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-thin">
+          {MIX_STAGES.map((stage) => {
+            const isDone = journey.reachedMixReady || stage.index < journey.currentIndex;
+            const isCurrent = stage.index === journey.currentIndex;
+            return (
+              <div key={stage.id} className="flex items-center gap-1">
+                {stage.index > 0 && <span className="w-3 h-px bg-border" />}
+                <Link
+                  to={stage.ctaHref}
+                  title={stage.caption}
+                  aria-current={isCurrent ? "step" : undefined}
+                  onClick={(e) => {
+                    if (!isDone && !isCurrent) e.preventDefault();
+                  }}
+                  className={cn(
+                    "flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium transition-colors whitespace-nowrap",
+                    isDone && "bg-primary/15 text-primary hover:bg-primary/25",
+                    isCurrent && "bg-gradient-gold text-primary-foreground shadow-sm glow-gold",
+                    !isDone && !isCurrent && "text-muted-foreground/50 cursor-not-allowed",
+                  )}
+                >
+                  {isDone ? (
+                    <Check className="w-3 h-3" />
+                  ) : !isCurrent ? (
+                    <Lock className="w-3 h-3" />
+                  ) : (
+                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                  )}
+                  {stage.label}
+                </Link>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <p className="text-[11px] text-muted-foreground">
+        <span className="text-primary font-semibold">Sensei:</span> {senseiLine}
       </p>
     </div>
   );
