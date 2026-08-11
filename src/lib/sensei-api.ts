@@ -9,6 +9,8 @@ export interface ChatContext {
   mode?: "guided" | "quick";
   /** R9: pre-matched FL procedure reference text (client-side matcher, D23). */
   procedures?: string;
+  /** R13.5 — which chapter Sensei is coaching (route-derived, producer-overridable). */
+  chapter?: string;
   genre?: string;
   stage?: string;
   projectName?: string;

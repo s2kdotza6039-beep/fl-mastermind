@@ -15,7 +15,7 @@ export const ContinueProjectBanner = () => {
   // Upload's job is done once analysis exists — send returning users to the loop page instead of re-uploading.
   const rawLast = activeProject.last_opened_page;
   const lastPage = rawLast === "/upload"
-    ? "/mixing"
+    ? "/production"
     : rawLast && rawLast !== "/"
       ? rawLast
       : "/projects/" + activeProject.id;

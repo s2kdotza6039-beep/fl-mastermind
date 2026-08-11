@@ -12,7 +12,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ShowMeMap } from "@/components/ShowMeMap";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import { CHAPTERS, chapterFromPath, chapterLabel, type ChatChapter } from "@/lib/chat-chapter";
 import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock, ThumbsUp, ThumbsDown, Eye, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -83,6 +84,12 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   const { toChatAudio, setActiveReport, refreshRecent } = useTrackSession();
   const { activeProject, loading: projectLoading } = useProject();
   const loopLock = useLoopLock(activeProject?.id ?? null);
+  // R13.5 — Sensei leads (route chapter), the producer steers (override).
+  const location = useLocation();
+  const routeChapter = chapterFromPath(location.pathname);
+  const [chapterOverride, setChapterOverride] = useState<ChatChapter | null>(null);
+  const chapter: ChatChapter = chapterOverride ?? routeChapter;
+  useEffect(() => { setChapterOverride(null); }, [routeChapter]);
   const [bounceHelpOpen, setBounceHelpOpen] = useState(false);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overriding, setOverriding] = useState(false);
@@ -301,7 +308,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
     await streamSenseiChat({
       messages: next,
       context: {
-        genre, stage, projectName: activeProject?.name ?? projectName,
+        chapter, genre, stage, projectName: activeProject?.name ?? projectName,
         flVersion: setup?.fl_version ?? undefined,
         flEdition: setup?.fl_edition ?? undefined,
         mainUse: setup?.main_use ?? undefined,
@@ -461,6 +468,25 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
       )}
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-4 py-6 space-y-4">
+        {/* R13.5 — let the producer steer which chapter Sensei coaches. */}
+        <div className="flex items-center gap-1.5 flex-wrap mb-1">
+          <span className="text-[10px] uppercase tracking-widest text-muted-foreground mr-1">Sensei as</span>
+          {CHAPTERS.map((c) => (
+            <button
+              key={c}
+              type="button"
+              aria-pressed={chapter === c}
+              onClick={() => setChapterOverride((prev) => (prev === c ? null : c))}
+              className={`text-[11px] rounded-full px-2.5 py-1 border transition-colors ${
+                chapter === c
+                  ? "bg-gradient-gold text-primary-foreground border-transparent"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {chapterLabel(c)}
+            </button>
+          ))}
+        </div>
         <PlanCard />
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center py-12 animate-fade-in-up">

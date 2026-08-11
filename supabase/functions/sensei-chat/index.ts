@@ -248,6 +248,22 @@ Deno.serve(async (req) => {
         system += `\n\nFL PROCEDURE REFERENCE — verified exact FL Studio steps relevant to the user's question. When answering on this topic, follow these steps EXACTLY (adapt insert/track numbers to the user's situation), and prefer newest-generation stock plugins:\n${procText}`;
       }
     }
+    // R13.5 — chapter coaching directive. Sensei wears exactly one hat: the
+    // chapter the producer is in (route-derived, producer-overridable in chat).
+    const CHAPTER_DIRECTIVES: Record<string, string> = {
+      PRODUCTION: "You are coaching the PRODUCTION chapter: writing the beat, building the body (bass, chords, melody, vocals), and arranging. Treat a beat-only upload as a sketch, not a finished song. Coach composition, sound selection, groove, and arrangement. Do NOT give mixing, mastering, or release advice unless the producer explicitly asks — instead point them to the next chapter when the song is arranged.",
+      MIXING: "You are coaching the MIXING chapter: balance, EQ, compression, stereo image, and fixing the single worst problem first. Do NOT give mastering (final loudness/limiting) or release/distribution advice unless explicitly asked — hand off to the Mastering chapter when the mix is clean.",
+      MASTERING: "You are coaching the MASTERING chapter: final loudness targets (LUFS), true peak, dynamics, tonal polish, and format. Do NOT re-open composition or deep mixing work unless a mix fault blocks mastering — in that case say so plainly and send them back to Mixing.",
+      PUBLISH: "You are coaching the PUBLISH chapter: export formats, platform loudness specs, metadata, artwork, splits, distribution and release planning. Do NOT give production, mixing, or mastering advice unless explicitly asked.",
+    };
+    const chapter =
+      ctx && typeof ctx === "object" && typeof (ctx as Record<string, unknown>).chapter === "string"
+        ? ((ctx as Record<string, unknown>).chapter as string).toUpperCase()
+        : "";
+    if (CHAPTER_DIRECTIVES[chapter]) {
+      system += `\n\nACTIVE CHAPTER (MANDATORY HAT — ${chapter}): ${CHAPTER_DIRECTIVES[chapter]}`;
+    }
+
     if (ctx && typeof ctx === "object") {
       const parts: string[] = [];
       if (typeof ctx.genre === "string") parts.push(`Current genre: ${ctx.genre.slice(0, 60)}`);

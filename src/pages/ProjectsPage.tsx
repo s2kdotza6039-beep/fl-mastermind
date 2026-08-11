@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { FolderOpen, Plus, ArrowRight, Music2, AudioLines, Trash2, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
@@ -28,6 +28,7 @@ interface ProjectStats {
 
 export default function ProjectsPage() {
   const { projects, activeProject, switchProject, create, update, remove } = useProject();
+  const navigate = useNavigate();
   const [stats, setStats] = useState<Record<string, ProjectStats>>({});
   const [openNew, setOpenNew] = useState(false);
   const [name, setName] = useState("");
@@ -293,7 +294,7 @@ export default function ProjectsPage() {
                   description: description.trim() || undefined,
                 });
                 setBusy(false);
-                if (p) { setName(""); setGenre(""); setDescription(""); setOpenNew(false); }
+                if (p) { setName(""); setGenre(""); setDescription(""); setOpenNew(false); navigate("/upload"); }
               }}
             >
               Create project
