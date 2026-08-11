@@ -12,7 +12,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ShowMeMap } from "@/components/ShowMeMap";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import { CHAPTERS, chapterFromPath, chapterLabel, type ChatChapter } from "@/lib/chat-chapter";
 import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock, ThumbsUp, ThumbsDown, Eye, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -83,6 +84,12 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   const { toChatAudio, setActiveReport, refreshRecent } = useTrackSession();
   const { activeProject, loading: projectLoading } = useProject();
   const loopLock = useLoopLock(activeProject?.id ?? null);
+  // R13.5 — Sensei leads (route chapter), the producer steers (override).
+  const location = useLocation();
+  const routeChapter = chapterFromPath(location.pathname);
+  const [chapterOverride, setChapterOverride] = useState<ChatChapter | null>(null);
+  const chapter: ChatChapter = chapterOverride ?? routeChapter;
+  useEffect(() => { setChapterOverride(null); }, [routeChapter]);
   const [bounceHelpOpen, setBounceHelpOpen] = useState(false);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overriding, setOverriding] = useState(false);
