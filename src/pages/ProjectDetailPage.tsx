@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, Navigate } from "react-router-dom";
-import { ArrowLeft, FolderOpen, MessageCircle, Trash2, Check, X, CircleDot, Loader2, Music2, AudioLines, TrendingUp, AlertTriangle, AlertCircle, Info, Save, Download } from "lucide-react";
+import { ArrowLeft, FolderOpen, MessageCircle, Trash2, Check, X, CircleDot, Loader2, Music2, AudioLines, TrendingUp, AlertTriangle, AlertCircle, Info, Save, Download, UploadCloud } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -238,7 +238,11 @@ export default function ProjectDetailPage() {
               <Download className="w-4 h-4" />
             </Button>
             <Button asChild className="bg-gradient-gold text-primary-foreground hover:opacity-90">
-              <Link to="/mixing"><MessageCircle className="w-4 h-4 mr-2" /> Continue coaching</Link>
+              {reports.length === 0 ? (
+                <Link to="/upload"><UploadCloud className="w-4 h-4 mr-2" /> First step — upload song</Link>
+              ) : (
+                <Link to="/production"><MessageCircle className="w-4 h-4 mr-2" /> Continue coaching</Link>
+              )}
             </Button>
           </div>
         }
