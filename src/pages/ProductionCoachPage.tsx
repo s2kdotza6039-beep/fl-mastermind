@@ -1,5 +1,135 @@
-import { Sliders } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Sliders, ArrowLeft, ArrowRight, Plus, RefreshCw, Upload, Flag } from "lucide-react";
 import { CoachPage } from "@/components/CoachPage";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { useProject } from "@/context/ProjectContext";
+import { useTrackSession } from "@/context/TrackSessionContext";
+import { useProductionPhase } from "@/hooks/use-production-phase";
+import { stashChatPrompt } from "@/lib/knowledge-handoff";
+import {
+  buildAddElementPrompt,
+  buildArrangePrompt,
+  buildBeatPhasePrompt,
+  buildBodyPhasePrompt,
+  detectSketch,
+  PRODUCTION_PHASES,
+  SKETCH_LABEL,
+} from "@/lib/production-phase";
+
+const PhaseDesk = () => {
+  const navigate = useNavigate();
+  const { activeProject } = useProject();
+  const { active } = useTrackSession();
+  const { phase, setPhase, saving } = useProductionPhase();
+
+  const meta = PRODUCTION_PHASES.find((p) => p.id === phase) ?? PRODUCTION_PHASES[0];
+  const guess = detectSketch({});
+  const ctx = {
+    projectName: activeProject?.name ?? null,
+    genre: activeProject?.genre ?? null,
+    fileName: (active as any)?.file_name ?? null,
+    guess,
+  };
+
+  const ask = (prompt: string) => {
+    stashChatPrompt(prompt);
+    navigate("/chat");
+  };
+
+  const rebounce = () =>
+    ask(
+      `I re-bounced my track in the ${meta.label} phase of production. Compare it to the previous bounce, tell me what actually improved, and give me the single next fix for this phase.`,
+    );
+
+  return (
+    <Card className="studio-card p-5 mb-6">
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <Badge className="bg-gradient-gold text-primary-foreground">{meta.label}</Badge>
+            <span className="text-xs text-muted-foreground">Production phase</span>
+          </div>
+          <p className="text-sm text-muted-foreground">{meta.blurb}</p>
+        </div>
+        <span className="text-[11px] text-muted-foreground max-w-[220px] text-right">
+          {active ? SKETCH_LABEL[guess] : "No bounce loaded yet."}
+        </span>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {phase === "BEAT" && (
+          <>
+            {active ? (
+              <Button size="sm" onClick={() => ask(buildBeatPhasePrompt(ctx))}>
+                Coach me on this beat
+              </Button>
+            ) : (
+              <Button size="sm" onClick={() => navigate("/upload")}>
+                <Upload className="w-4 h-4 mr-1" /> Load a beat bounce
+              </Button>
+            )}
+            <Button size="sm" variant="outline" onClick={rebounce}>
+              <RefreshCw className="w-4 h-4 mr-1" /> I re-bounced — review it
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => ask(buildAddElementPrompt(ctx))}>
+              <Plus className="w-4 h-4 mr-1" /> Add element / improve beat
+            </Button>
+            <Button size="sm" variant="secondary" disabled={saving} onClick={() => setPhase("BODY")}>
+              Continue to Body <ArrowRight className="w-4 h-4 ml-1" />
+            </Button>
+          </>
+        )}
+
+        {phase === "BODY" && (
+          <>
+            <Button size="sm" onClick={() => ask(buildBodyPhasePrompt(ctx))}>
+              Coach the body (chords/melody)
+            </Button>
+            <Button size="sm" variant="outline" onClick={rebounce}>
+              <RefreshCw className="w-4 h-4 mr-1" /> I re-bounced — review it
+            </Button>
+            <Button size="sm" variant="ghost" disabled={saving} onClick={() => setPhase("BEAT")}>
+              <ArrowLeft className="w-4 h-4 mr-1" /> Back to Beat
+            </Button>
+            <Button size="sm" variant="secondary" disabled={saving} onClick={() => setPhase("ARRANGE")}>
+              Continue to Arrange <ArrowRight className="w-4 h-4 ml-1" />
+            </Button>
+          </>
+        )}
+
+        {phase === "ARRANGE" && (
+          <>
+            <Button size="sm" onClick={() => ask(buildArrangePrompt(ctx))}>
+              Arrange the song
+            </Button>
+            <Button size="sm" variant="outline" onClick={rebounce}>
+              <RefreshCw className="w-4 h-4 mr-1" /> I re-bounced — review it
+            </Button>
+            <Button size="sm" variant="ghost" disabled={saving} onClick={() => setPhase("BODY")}>
+              <ArrowLeft className="w-4 h-4 mr-1" /> Back to Body
+            </Button>
+            <Button size="sm" variant="secondary" disabled={saving} onClick={() => setPhase("DONE")}>
+              <Flag className="w-4 h-4 mr-1" /> Finish → open Mixing
+            </Button>
+          </>
+        )}
+
+        {phase === "DONE" && (
+          <>
+            <Button size="sm" onClick={() => navigate("/mixing")}>
+              Start Mixing <ArrowRight className="w-4 h-4 ml-1" />
+            </Button>
+            <Button size="sm" variant="ghost" disabled={saving} onClick={() => setPhase("ARRANGE")}>
+              <ArrowLeft className="w-4 h-4 mr-1" /> Back to Arrange
+            </Button>
+          </>
+        )}
+      </div>
+    </Card>
+  );
+};
 
 export default function ProductionCoachPage() {
   return (
@@ -8,6 +138,7 @@ export default function ProductionCoachPage() {
       title="Production Coach"
       description="From blank canvas to a beat that hits."
       icon={Sliders}
+      above={<PhaseDesk />}
       topics={[
         { label: "Instrument selection", prompt: "Coach me on choosing instruments for my beat. Help me pick sounds that work together for my genre." },
         { label: "Drum selection & layering", prompt: "Walk me through selecting and layering drums in FL Studio for a punchy, professional sound." },
