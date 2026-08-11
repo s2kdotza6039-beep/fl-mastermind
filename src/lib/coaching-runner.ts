@@ -111,6 +111,7 @@ export async function persistAnalyzedUpload(args: {
       stereo_width: res.metrics.stereoWidth,
       bpm: res.metrics.bpm,
       detected_key: res.metrics.detectedKey,
+      tonal_flatness: res.metrics.tonalFlatness,
       band_low_db: res.metrics.bands.low,
       band_lowmid_db: res.metrics.bands.lowMid,
       band_mid_db: res.metrics.bands.mid,
