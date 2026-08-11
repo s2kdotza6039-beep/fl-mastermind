@@ -10,7 +10,8 @@ import {
   MIX_STAGES,
   type JourneyState,
 } from "@/lib/journey";
-import { PRODUCTION_PHASES, readProductionPhase, type ProductionPhase } from "@/lib/production-phase";
+import { PRODUCTION_PHASES, type ProductionPhase } from "@/lib/production-phase";
+import { useProductionPhase } from "@/hooks/use-production-phase";
 import type { LoopInputs } from "@/lib/coaching-loop";
 import { cn } from "@/lib/utils";
 
@@ -28,7 +29,7 @@ export const JourneyBelt = () => {
   const location = useLocation();
   const [journey, setJourney] = useState<JourneyState | null>(null);
 
-  const phase: ProductionPhase = readProductionPhase((activeProject as any)?.session_notes);
+  const { phase, setPhase, saving: phaseSaving } = useProductionPhase();
 
   const refresh = useCallback(async () => {
     if (!activeProject?.id) {
@@ -170,11 +171,14 @@ export const JourneyBelt = () => {
             return (
               <div key={p.id} className="flex items-center gap-1">
                 {i > 0 && <span className="w-3 h-px bg-border" />}
-                <span
+                <button
+                  type="button"
                   title={p.blurb}
+                  disabled={phaseSaving}
+                  onClick={() => { void setPhase(p.id); }}
                   aria-current={isCurrent ? "step" : undefined}
                   className={cn(
-                    "flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium whitespace-nowrap",
+                    "flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium whitespace-nowrap transition-colors hover:opacity-90 disabled:opacity-50",
                     isDone && "bg-primary/15 text-primary",
                     isCurrent && "bg-gradient-gold text-primary-foreground shadow-sm glow-gold",
                     !isDone && !isCurrent && "text-muted-foreground/50",
@@ -182,7 +186,7 @@ export const JourneyBelt = () => {
                 >
                   {isDone ? <Check className="w-3 h-3" /> : <span className="w-1.5 h-1.5 rounded-full bg-current" />}
                   {p.label}
-                </span>
+                </button>
               </div>
             );
           })}
