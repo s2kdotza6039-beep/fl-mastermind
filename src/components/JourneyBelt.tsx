@@ -10,7 +10,7 @@ import {
   MIX_STAGES,
   type JourneyState,
 } from "@/lib/journey";
-import { PRODUCTION_PHASES, type ProductionPhase } from "@/lib/production-phase";
+import { PRODUCTION_PHASES } from "@/lib/production-phase";
 import { useProductionPhase } from "@/hooks/use-production-phase";
 import type { LoopInputs } from "@/lib/coaching-loop";
 import { cn } from "@/lib/utils";
