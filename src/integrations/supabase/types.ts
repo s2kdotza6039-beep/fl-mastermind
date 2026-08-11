@@ -71,6 +71,7 @@ export type Database = {
           rms_db: number | null
           sample_rate: number | null
           stereo_width: number | null
+          tonal_flatness: number | null
           track_version_id: string | null
           updated_at: string
           user_id: string
@@ -101,6 +102,7 @@ export type Database = {
           rms_db?: number | null
           sample_rate?: number | null
           stereo_width?: number | null
+          tonal_flatness?: number | null
           track_version_id?: string | null
           updated_at?: string
           user_id: string
@@ -131,6 +133,7 @@ export type Database = {
           rms_db?: number | null
           sample_rate?: number | null
           stereo_width?: number | null
+          tonal_flatness?: number | null
           track_version_id?: string | null
           updated_at?: string
           user_id?: string

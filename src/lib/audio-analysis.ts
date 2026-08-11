@@ -35,6 +35,8 @@ export interface AudioMetrics {
   bpmConfidence: ConfidenceScore;
   detectedKey: string | null;
   keyConfidence: ConfidenceScore;
+  /** 0 = strongly tonal, 1 = flat/percussive (beat-only). */
+  tonalFlatness: number;
   bands: {
     low: number;
     lowMid: number;
@@ -126,6 +128,22 @@ function computeChroma(samples: Float32Array, sampleRate: number): number[] {
 interface KeyDetection {
   key: string | null;
   confidence: ConfidenceScore;
+  /** Raw chroma variance used for the tonal-flatness signal. */
+  variance: number;
+}
+
+/**
+ * Chroma flatness: 0 = tonal (chords/melody present), 1 = flat/percussive.
+ * Drum-only material returns a near-uniform chroma vector.
+ */
+export function chromaFlatness(chroma: number[]): number {
+  if (!chroma.length) return 1;
+  const mean = chroma.reduce((a, b) => a + b, 0) / chroma.length;
+  let variance = 0;
+  for (const v of chroma) variance += (v - mean) * (v - mean);
+  variance /= chroma.length;
+  const tonal = Math.min(1, variance / 0.0008);
+  return Math.max(0, Math.min(1, 1 - tonal));
 }
 
 function detectKeyFromChroma(chroma: number[]): KeyDetection {
@@ -169,6 +187,7 @@ function detectKeyFromChroma(chroma: number[]): KeyDetection {
   return {
     key: label === "unreliable" ? null : best.key,
     confidence: { value: Math.round(conf * 100) / 100, label, note },
+    variance,
   };
 }
 
@@ -472,6 +491,7 @@ export function runDspAnalysis(
     bpmConfidence: bpmResult.confidence,
     detectedKey: keyResult.key,
     keyConfidence: keyResult.confidence,
+    tonalFlatness: Math.round(chromaFlatness(chroma) * 100) / 100,
     bands: {
       low: Math.round(bands.low * 10) / 10,
       lowMid: Math.round(bands.lowMid * 10) / 10,

@@ -8,8 +8,10 @@ import { useProject } from "@/context/ProjectContext";
 import { useTrackSession } from "@/context/TrackSessionContext";
 import { useProductionPhase } from "@/hooks/use-production-phase";
 import { stashChatPrompt } from "@/lib/knowledge-handoff";
+import { supabase } from "@/integrations/supabase/client";
 import {
   buildAddElementPrompt,
+  buildRebouncePrompt,
   buildArrangePrompt,
   buildBeatPhasePrompt,
   buildBodyPhasePrompt,
@@ -25,7 +27,10 @@ const PhaseDesk = () => {
   const { phase, setPhase, saving } = useProductionPhase();
 
   const meta = PRODUCTION_PHASES.find((p) => p.id === phase) ?? PRODUCTION_PHASES[0];
-  const guess = detectSketch({});
+  const guess = detectSketch({
+    tonalFlatness: (active as any)?.tonal_flatness ?? null,
+    stereoWidth: active?.stereo_width ?? null,
+  });
   const ctx = {
     projectName: activeProject?.name ?? null,
     genre: activeProject?.genre ?? null,
@@ -38,10 +43,45 @@ const PhaseDesk = () => {
     navigate("/chat");
   };
 
-  const rebounce = () =>
+  const rebounce = async () => {
+    let scoreAfter: number | null = null;
+    let scoreBefore: number | null = null;
+    let resolvedThisRound: string[] = [];
+    let stillOpen: string[] = [];
+
+    if (activeProject?.id) {
+      const [scoresRes, issuesRes] = await Promise.all([
+        supabase
+          .from("project_scores")
+          .select("mix_score, created_at")
+          .eq("project_id", activeProject.id)
+          .order("created_at", { ascending: false })
+          .limit(2),
+        supabase
+          .from("project_issues")
+          .select("title, status")
+          .eq("project_id", activeProject.id)
+          .limit(50),
+      ]);
+      const scores = scoresRes.data ?? [];
+      scoreAfter = scores[0]?.mix_score ?? null;
+      scoreBefore = scores[1]?.mix_score ?? null;
+      const issues = issuesRes.data ?? [];
+      resolvedThisRound = issues.filter((i) => i.status === "resolved").map((i) => i.title);
+      stillOpen = issues.filter((i) => i.status !== "resolved").map((i) => i.title);
+    }
+
     ask(
-      `I re-bounced my track in the ${meta.label} phase of production. Compare it to the previous bounce, tell me what actually improved, and give me the single next fix for this phase.`,
+      buildRebouncePrompt({
+        ...ctx,
+        phase,
+        scoreBefore,
+        scoreAfter,
+        resolvedThisRound,
+        stillOpen,
+      }),
     );
+  };
 
   return (
     <Card className="studio-card p-5 mb-6">
@@ -70,7 +110,7 @@ const PhaseDesk = () => {
                 <Upload className="w-4 h-4 mr-1" /> Load a beat bounce
               </Button>
             )}
-            <Button size="sm" variant="outline" onClick={rebounce}>
+            <Button size="sm" variant="outline" onClick={() => { void rebounce(); }}>
               <RefreshCw className="w-4 h-4 mr-1" /> I re-bounced — review it
             </Button>
             <Button size="sm" variant="outline" onClick={() => ask(buildAddElementPrompt(ctx))}>
@@ -87,7 +127,7 @@ const PhaseDesk = () => {
             <Button size="sm" onClick={() => ask(buildBodyPhasePrompt(ctx))}>
               Coach the body (chords/melody)
             </Button>
-            <Button size="sm" variant="outline" onClick={rebounce}>
+            <Button size="sm" variant="outline" onClick={() => { void rebounce(); }}>
               <RefreshCw className="w-4 h-4 mr-1" /> I re-bounced — review it
             </Button>
             <Button size="sm" variant="ghost" disabled={saving} onClick={() => setPhase("BEAT")}>
@@ -104,7 +144,7 @@ const PhaseDesk = () => {
             <Button size="sm" onClick={() => ask(buildArrangePrompt(ctx))}>
               Arrange the song
             </Button>
-            <Button size="sm" variant="outline" onClick={rebounce}>
+            <Button size="sm" variant="outline" onClick={() => { void rebounce(); }}>
               <RefreshCw className="w-4 h-4 mr-1" /> I re-bounced — review it
             </Button>
             <Button size="sm" variant="ghost" disabled={saving} onClick={() => setPhase("BODY")}>

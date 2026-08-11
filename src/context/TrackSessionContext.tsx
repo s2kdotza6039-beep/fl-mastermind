@@ -18,6 +18,7 @@ export interface TrackReport {
   lufs_estimate: number | null;
   dynamic_range_db: number | null;
   stereo_width: number | null;
+  tonal_flatness: number | null;
   bpm: number | null;
   detected_key: string | null;
   band_low_db: number | null;
@@ -41,7 +42,7 @@ interface TrackSessionContextValue {
 }
 
 const REPORT_FIELDS =
-  "id, file_name, file_format, file_size_bytes, duration_sec, sample_rate, bit_rate, channels, peak_db, rms_db, lufs_estimate, dynamic_range_db, stereo_width, bpm, detected_key, band_low_db, band_lowmid_db, band_mid_db, band_highmid_db, band_high_db, detected_issues, recommendations, created_at";
+  "id, file_name, file_format, file_size_bytes, duration_sec, sample_rate, bit_rate, channels, peak_db, rms_db, lufs_estimate, dynamic_range_db, stereo_width, tonal_flatness, bpm, detected_key, band_low_db, band_lowmid_db, band_mid_db, band_highmid_db, band_high_db, detected_issues, recommendations, created_at";
 
 const TrackSessionCtx = createContext<TrackSessionContextValue | null>(null);
 
