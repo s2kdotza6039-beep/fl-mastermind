@@ -1165,9 +1165,10 @@ export default function UploadPage() {
                   size="sm"
                   variant="outline"
                   onClick={() => {
-                    stashChatPrompt(buildUploadAdvisePrompt(result.metrics.fileName, result, null));
-                    navigate("/chat");
+                    stashChatPrompt(buildUploadAdvisePrompt(result.metrics.fileName, result, null), "PRODUCTION:BEAT");
+                    navigate("/chat?scope=PRODUCTION%3ABEAT");
                   }}
+
                 >
                   <MessageCircle className="w-4 h-4 mr-2" /> Ask Sensei
                 </Button>
