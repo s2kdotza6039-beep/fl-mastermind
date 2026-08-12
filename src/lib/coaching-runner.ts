@@ -92,7 +92,17 @@ export async function persistAnalyzedUpload(args: {
     versionId: null,
     reasons: [],
     prevFileName: null,
+    isFirstBounce: false,
   };
+
+  // R14 — is this the project's very first bounce? (counted BEFORE we add a version)
+  if (activeProject) {
+    const { count } = await supabase
+      .from("project_track_versions")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", activeProject.id);
+    out.isFirstBounce = (count ?? 0) === 0;
+  }
 
   const { data: inserted, error: insertErr } = await supabase
     .from("audio_analysis_reports")
