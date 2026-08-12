@@ -408,7 +408,6 @@ export default function UploadPage() {
         }
       }
     }
-    }
     if (outcome.kind === "foreign" && outcome.versionId) {
       setContinuityHold({
         reportId: outcome.reportId,
