@@ -292,7 +292,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
 
     // Persist user turn to project memory.
     if (activeProject && user) {
-      appendChatMessage(user.id, activeProject.id, { role: "user", content: trimmed, source_page: "chat" })
+      appendChatMessage(user.id, activeProject.id, { role: "user", content: trimmed, source_page: "chat", scope })
         .catch((e) => {
           console.warn("Failed to persist user message:", e?.message ?? e);
           toast.error("Message sent, but it could not be saved to project memory.");
