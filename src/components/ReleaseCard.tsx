@@ -7,6 +7,8 @@ import { useProject } from "@/context/ProjectContext";
 import { PLATFORM_TARGETS, type MasterReportLike } from "@/lib/mastering";
 import { buildReleaseAdvisePrompt, buildReleasePlan, type ReleasePlan } from "@/lib/release";
 import { stashChatPrompt } from "@/lib/knowledge-handoff";
+import { useAuth } from "@/context/AuthContext";
+import { buildMixChecklistMarkdown, buildReleaseNotesMarkdown, downloadMarkdown } from "@/lib/paperwork";
 
 export function ReleaseCard() {
   const { activeProject } = useProject();
