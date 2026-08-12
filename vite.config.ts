@@ -28,6 +28,8 @@ export default defineConfig(({ mode }) => ({
           if (/[\\/]node_modules[\\/](react|react-dom|scheduler|react-router|react-router-dom)[\\/]/.test(id)) return "react-vendor";
           if (/[\\/]node_modules[\\/](jspdf|pdfjs-dist|html2canvas|canvg)[\\/]/.test(id)) return "pdf-vendor";
           if (/[\\/]node_modules[\\/](lucide-react)[\\/]/.test(id)) return "icons";
+          if (/[\\/]node_modules[\\/](@supabase|recharts|d3-|victory)[\\/]/.test(id)) return "data-vendor";
+          if (/[\\/]node_modules[\\/](@radix-ui|cmdk|vaul|embla-carousel)/.test(id)) return "ui-vendor";
         },
       },
     },
