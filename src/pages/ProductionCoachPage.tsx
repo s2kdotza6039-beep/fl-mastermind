@@ -98,6 +98,12 @@ const PhaseDesk = () => {
         </span>
       </div>
 
+      <div className="mb-3 flex items-start gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+        <Lightbulb className="w-4 h-4 mt-0.5 shrink-0 text-primary" />
+        <p className="text-xs text-muted-foreground">{phaseTip(phase as ProductionPhase, activeProject?.genre)}</p>
+      </div>
+
+
       <div className="flex flex-wrap gap-2">
         {phase === "BEAT" && (
           <>
