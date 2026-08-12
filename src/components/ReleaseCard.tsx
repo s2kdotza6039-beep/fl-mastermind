@@ -146,6 +146,30 @@ export function ReleaseCard() {
             <Button asChild size="sm" variant="outline">
               <Link to="/upload">⬆ Upload the final bounce</Link>
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                downloadMarkdown(
+                  `${activeProject.name}-final-checklist.md`,
+                  buildMixChecklistMarkdown(plan, paperworkProject),
+                )
+              }
+            >
+              📄 Final checklist (.md)
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                downloadMarkdown(
+                  `${activeProject.name}-release-notes.md`,
+                  buildReleaseNotesMarkdown(plan, paperworkProject, report),
+                )
+              }
+            >
+              📄 Release notes (.md)
+            </Button>
           </div>
         </div>
       )}
