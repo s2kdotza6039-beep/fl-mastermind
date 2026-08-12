@@ -66,6 +66,13 @@ export function ReleaseCard() {
         })
       : null;
 
+  const paperworkProject = {
+    name: activeProject?.name ?? null,
+    genre: activeProject?.genre ?? null,
+    artist: (user?.user_metadata?.full_name as string | undefined) ?? user?.email ?? null,
+    fileName: report?.file_name ?? null,
+  };
+
   const askSensei = () => {
     if (!plan) return;
     stashChatPrompt(buildReleaseAdvisePrompt(plan, report));
