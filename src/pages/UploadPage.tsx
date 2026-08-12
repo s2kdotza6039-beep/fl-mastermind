@@ -1140,7 +1140,40 @@ export default function UploadPage() {
 
           {result && <ReferenceCompareCard metrics={result.metrics} />}
 
-          {result && lastReportId && (
+          {result && showWhatNext && (
+            <Card className="studio-card-gold p-4 mt-6" data-report-id={firstBounceId ?? undefined}>
+              <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                First bounce analyzed
+              </div>
+              <div className="font-display text-base font-bold text-foreground">
+                Sensei has heard your beat — what now?
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {result.metrics.fileName} is now your active track. Pick the chapter you want to work in —
+                Sensei follows you there.
+              </p>
+              <div className="flex flex-wrap gap-2 mt-3">
+                <Button asChild size="sm" className="bg-gradient-gold text-primary-foreground hover:opacity-90">
+                  <Link to="/production"><Music className="w-4 h-4 mr-2" /> Continue in Production</Link>
+                </Button>
+                <Button asChild size="sm" variant="outline">
+                  <Link to="/mixing"><Sliders className="w-4 h-4 mr-2" /> Go to Mixing</Link>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    stashChatPrompt(buildUploadAdvisePrompt(result.metrics.fileName, result, null));
+                    navigate("/chat");
+                  }}
+                >
+                  <MessageCircle className="w-4 h-4 mr-2" /> Ask Sensei
+                </Button>
+              </div>
+            </Card>
+          )}
+
+          {result && lastReportId && !showWhatNext && (
             <Card className="studio-card-gold p-4 mt-6 flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
