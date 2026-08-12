@@ -79,6 +79,7 @@ function AppShell() {
       <Route path="/mastering" element={<ProtectedRoute><MasteringCoachPage /></ProtectedRoute>} />
       <Route path="/key" element={<ProtectedRoute><KeyDetectionPage /></ProtectedRoute>} />
       <Route path="/checklist" element={<ProtectedRoute><ChecklistPage /></ProtectedRoute>} />
+      <Route path="/publish" element={<ProtectedRoute><PublishPage /></ProtectedRoute>} />
       <Route path="/upload" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
       <Route path="/upgrade" element={<ProtectedRoute><UpgradePage /></ProtectedRoute>} />
       <Route path="/studio-setup" element={<ProtectedRoute><StudioSetupPage /></ProtectedRoute>} />
