@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
-import { Sliders, ArrowLeft, ArrowRight, Plus, RefreshCw, Upload, Flag } from "lucide-react";
+import { Sliders, ArrowLeft, ArrowRight, Plus, RefreshCw, Upload, Flag, Lightbulb } from "lucide-react";
+import { phaseTip } from "@/lib/phase-guidance";
 import { CoachPage } from "@/components/CoachPage";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
