@@ -54,17 +54,23 @@ export function buildMixChecklistMarkdown(plan: ReleasePlan, project: PaperworkP
 }
 
 /** Release notes: what to hand a distributor alongside the master. */
-export function buildReleaseNotesMarkdown(plan: ReleasePlan, project: PaperworkProject): string {
-  const m = plan.master;
+export function buildReleaseNotesMarkdown(
+  plan: ReleasePlan,
+  project: PaperworkProject,
+  report?: MasterReportLike | null,
+): string {
+  const m = report ?? null;
   const lines = [
     ...head("Release notes", project),
     "## Master measurements",
     "",
-    `- Integrated loudness: ${m?.lufs != null ? `${m.lufs} LUFS` : "—"}`,
-    `- True peak: ${m?.peakDb != null ? `${m.peakDb} dBTP` : "—"}`,
-    `- Dynamic range: ${m?.dr != null ? `${m.dr} dB` : "—"}`,
-    `- Stereo width: ${m?.width != null ? `${m.width}` : "—"}`,
+    `- Integrated loudness: ${m?.lufs_estimate != null ? `${m.lufs_estimate} LUFS` : "—"}`,
+    `- True peak: ${m?.peak_db != null ? `${m.peak_db} dBTP` : "—"}`,
+    `- Dynamic range: ${m?.dynamic_range_db != null ? `${m.dynamic_range_db} dB` : "—"}`,
+    `- Stereo width: ${m?.stereo_width != null ? `${m.stereo_width}` : "—"}`,
+    `- Master verdict: ${plan.master?.headline ?? "—"}`,
     "",
+
     "## Delivery",
     "",
     `- Target platform: ${plan.platform.label} (${plan.platform.lufs} LUFS)`,
