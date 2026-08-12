@@ -4,6 +4,8 @@
  * distributor, a collaborator, or their future self.
  */
 import type { ReleasePlan } from "@/lib/release";
+import type { MasterReportLike } from "@/lib/mastering";
+
 
 export interface PaperworkProject {
   name?: string | null;
