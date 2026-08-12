@@ -56,8 +56,10 @@ export interface ProjectChatMessage {
   content: string;
   parts: any | null;
   source_page: string | null;
+  scope: string | null;
   created_at: string;
 }
+
 
 export async function listProjects(userId: string): Promise<Project[]> {
   const { data, error } = await supabase
