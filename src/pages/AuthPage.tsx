@@ -372,7 +372,10 @@ function SignUpForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
+  const [alreadyExists, setAlreadyExists] = useState(false);
+
   const [busy, setBusy] = useState(false);
   const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string } | null>(
     () => getRateLimit("signup"),
