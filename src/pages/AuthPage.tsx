@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Crown, Loader2, Eye, EyeOff, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import { Crown, Loader2, Eye, EyeOff, AlertTriangle, CheckCircle2, XCircle, Mail } from "lucide-react";
 import { toast } from "sonner";
 import {
   friendlySignupError,
@@ -111,14 +111,19 @@ function GoogleDiagnostics({
               </li>
             </ul>
           )}
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={refreshing}
-            className="underline hover:opacity-80 mt-1"
-          >
-            {refreshing ? "Re-checking…" : "Re-check provider status"}
-          </button>
+          <div className="flex items-center gap-3 mt-1">
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={refreshing}
+              className="underline hover:opacity-80"
+            >
+              {refreshing ? "Re-checking…" : "Re-check provider status"}
+            </button>
+            <Link to="/oauth-check" className="underline hover:opacity-80">
+              Open diagnostic
+            </Link>
+          </div>
         </div>
       </div>
     </div>
