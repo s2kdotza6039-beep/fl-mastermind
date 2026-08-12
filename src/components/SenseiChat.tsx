@@ -500,7 +500,11 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
             </button>
           ))}
         </div>
-        <PlanCard />
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+          Chat: {scopeLabel(scope)}
+        </div>
+        {scope === "MIXING" && <PlanCard />}
+
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center py-12 animate-fade-in-up">
             <div className="w-16 h-16 rounded-2xl bg-gradient-gold flex items-center justify-center mb-4 glow-gold">
