@@ -1191,7 +1191,7 @@ export default function UploadPage() {
               </div>
               <div className="flex gap-2">
                 <Button
-                  onClick={() => navigate("/chat")}
+                  onClick={() => navigate("/chat?scope=MIXING")}
                   className="bg-gradient-gold text-primary-foreground hover:opacity-90"
                 >
                   <MessageCircle className="w-4 h-4 mr-2" /> Start coaching this track
