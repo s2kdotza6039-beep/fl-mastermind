@@ -250,7 +250,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
     if (compact || !activeProject) { setHistoryLoaded(true); return; }
     let cancelled = false;
     setHistoryLoaded(false);
-    listChatMessages(activeProject.id, 100)
+    listChatMessages(activeProject.id, 100, scope)
       .then((msgs) => {
         if (cancelled) return;
         setMessages(msgs.map((m) => ({ role: m.role === "system" ? "assistant" : m.role, content: m.content })));
