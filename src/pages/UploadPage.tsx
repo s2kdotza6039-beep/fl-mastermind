@@ -179,6 +179,9 @@ export default function UploadPage() {
   const { activeProject } = useProject();
   const navigate = useNavigate();
   const [lastReportId, setLastReportId] = useState<string | null>(null);
+  // R14 — first bounce ends in a decision, not an auto-jump to chat.
+  const [showWhatNext, setShowWhatNext] = useState(false);
+  const [firstBounceId, setFirstBounceId] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [continuityHold, setContinuityHold] = useState<{ reportId: string; versionId: string; reasons: string[]; prevFileName: string | null } | null>(null);
   const [decoded, setDecoded] = useState<DecodedAudio | null>(null);
