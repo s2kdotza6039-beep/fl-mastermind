@@ -35,7 +35,8 @@ import { overrideIssue } from "@/lib/loop-guard";
 import { BANDS } from "@/lib/coaching-loop";
 import { buildUploadAdvisePrompt, persistAnalyzedUpload, runCoachingLoop } from "@/lib/coaching-runner";
 import { stashChatPrompt } from "@/lib/knowledge-handoff";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { Music, Sliders } from "lucide-react";
 import { toast } from "sonner";
 
 const MAX_FILE_MB = 50;
@@ -179,6 +180,9 @@ export default function UploadPage() {
   const { activeProject } = useProject();
   const navigate = useNavigate();
   const [lastReportId, setLastReportId] = useState<string | null>(null);
+  // R14 — first bounce ends in a decision, not an auto-jump to chat.
+  const [showWhatNext, setShowWhatNext] = useState(false);
+  const [firstBounceId, setFirstBounceId] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [continuityHold, setContinuityHold] = useState<{ reportId: string; versionId: string; reasons: string[]; prevFileName: string | null } | null>(null);
   const [decoded, setDecoded] = useState<DecodedAudio | null>(null);
@@ -337,6 +341,8 @@ export default function UploadPage() {
     setBpmNudge(0);
     setDownbeatOffsetSec(0);
     setDiagnostics(null);
+    setShowWhatNext(false);
+    setFirstBounceId(null);
   };
 
   const pushStatus = useCallback((pct: number, label: string) => {
@@ -386,8 +392,14 @@ export default function UploadPage() {
     }
     if (outcome.kind === "coached") {
       setLastReportId(outcome.reportId);
-      // R12 — seamless continuation: hand the story straight to Sensei.
-      if (lastAdvisedRef.current !== outcome.reportId) {
+      if (outcome.isFirstBounce && !askSensei) {
+        // R14 — the first bounce is an ANALYSIS, not a lecture. Let the producer choose.
+        lastAdvisedRef.current = outcome.reportId;
+        setFirstBounceId(outcome.reportId);
+        setShowWhatNext(true);
+        toast.success("Analysis complete — Sensei has heard your beat.");
+      } else if (lastAdvisedRef.current !== outcome.reportId) {
+        // R12 — seamless continuation: hand the story straight to Sensei.
         lastAdvisedRef.current = outcome.reportId;
         const story = outcome.story ?? null;
         stashChatPrompt(buildUploadAdvisePrompt(res.metrics.fileName, res, story));
@@ -1129,7 +1141,40 @@ export default function UploadPage() {
 
           {result && <ReferenceCompareCard metrics={result.metrics} />}
 
-          {result && lastReportId && (
+          {result && showWhatNext && (
+            <Card className="studio-card-gold p-4 mt-6" data-report-id={firstBounceId ?? undefined}>
+              <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                First bounce analyzed
+              </div>
+              <div className="font-display text-base font-bold text-foreground">
+                Sensei has heard your beat — what now?
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {result.metrics.fileName} is now your active track. Pick the chapter you want to work in —
+                Sensei follows you there.
+              </p>
+              <div className="flex flex-wrap gap-2 mt-3">
+                <Button asChild size="sm" className="bg-gradient-gold text-primary-foreground hover:opacity-90">
+                  <Link to="/production"><Music className="w-4 h-4 mr-2" /> Continue in Production</Link>
+                </Button>
+                <Button asChild size="sm" variant="outline">
+                  <Link to="/mixing"><Sliders className="w-4 h-4 mr-2" /> Go to Mixing</Link>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    stashChatPrompt(buildUploadAdvisePrompt(result.metrics.fileName, result, null));
+                    navigate("/chat");
+                  }}
+                >
+                  <MessageCircle className="w-4 h-4 mr-2" /> Ask Sensei
+                </Button>
+              </div>
+            </Card>
+          )}
+
+          {result && lastReportId && !showWhatNext && (
             <Card className="studio-card-gold p-4 mt-6 flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <div className="text-[10px] uppercase tracking-widest text-muted-foreground">

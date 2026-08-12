@@ -43,6 +43,7 @@ import StatusPage from "./pages/StatusPage";
 import SettingsPage from "./pages/SettingsPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import ProjectDetailPage from "./pages/ProjectDetailPage";
+import PublishPage from "./pages/PublishPage";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -78,6 +79,7 @@ function AppShell() {
       <Route path="/mastering" element={<ProtectedRoute><MasteringCoachPage /></ProtectedRoute>} />
       <Route path="/key" element={<ProtectedRoute><KeyDetectionPage /></ProtectedRoute>} />
       <Route path="/checklist" element={<ProtectedRoute><ChecklistPage /></ProtectedRoute>} />
+      <Route path="/publish" element={<ProtectedRoute><PublishPage /></ProtectedRoute>} />
       <Route path="/upload" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
       <Route path="/upgrade" element={<ProtectedRoute><UpgradePage /></ProtectedRoute>} />
       <Route path="/studio-setup" element={<ProtectedRoute><StudioSetupPage /></ProtectedRoute>} />

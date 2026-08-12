@@ -21,7 +21,7 @@ const CHAPTERS: { id: ChapterId; label: string; href: string; icon: typeof Slide
   { id: "PRODUCTION", label: "Production", href: "/production", icon: Sliders },
   { id: "MIXING", label: "Mixing", href: "/mixing", icon: SlidersHorizontal },
   { id: "MASTERING", label: "Mastering", href: "/mastering", icon: Gauge },
-  { id: "PUBLISH", label: "Publish", href: "/mastering", icon: Rocket },
+  { id: "PUBLISH", label: "Publish", href: "/publish", icon: Rocket },
 ];
 
 export const JourneyBelt = () => {

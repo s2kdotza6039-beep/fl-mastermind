@@ -63,6 +63,8 @@ export interface PersistOutcome {
   error?: string;
   loopError?: string;
   linkError?: string;
+  /** R14 — true when this is the very first bounce logged for the project. */
+  isFirstBounce: boolean;
   /** R12 — the continuation story from the coaching loop (confirmed bounces only). */
   story?: ContinuationStory;
 }
@@ -90,7 +92,17 @@ export async function persistAnalyzedUpload(args: {
     versionId: null,
     reasons: [],
     prevFileName: null,
+    isFirstBounce: false,
   };
+
+  // R14 — is this the project's very first bounce? (counted BEFORE we add a version)
+  if (activeProject) {
+    const { count } = await supabase
+      .from("project_track_versions")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", activeProject.id);
+    out.isFirstBounce = (count ?? 0) === 0;
+  }
 
   const { data: inserted, error: insertErr } = await supabase
     .from("audio_analysis_reports")

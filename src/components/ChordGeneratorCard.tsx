@@ -128,8 +128,18 @@ export const ChordGeneratorCard = ({ genre, detectedKey, bpm, projectName }: Pro
       <p className="text-xs text-muted-foreground mt-2">
         Endless progressions in your song's key and direction — zero guesswork. Cycle sets, voice
         them, preview the grid, then drop a 3-track MIDI straight into FL Studio.
-        {parsed && <span> Key read from your last bounce: <span className="text-primary">{detectedKey}</span>.</span>}
       </p>
+
+      {parsed ? (
+        <div className="mt-3 rounded-md border border-primary/40 bg-primary/5 px-3 py-2 text-xs">
+          Sensei hears <span className="text-primary font-semibold">{detectedKey}</span>. Wrong? Change the
+          key/mode below and Chord Forge follows.
+        </div>
+      ) : (
+        <div className="mt-3 rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
+          Key not confidently detected. Pick your key below — Chord Forge will lock to it.
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2 mt-4">
         <select value={key} onChange={(e) => setKey(e.target.value)} aria-label="Key"

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Volume2, RefreshCcw, AlertTriangle, AlertCircle, Info } from "lucide-react";
+import { Volume2, RefreshCcw, AlertTriangle, AlertCircle, Info, Lightbulb } from "lucide-react";
+import { mixingTip } from "@/lib/phase-guidance";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -162,6 +163,11 @@ export default function MixingCoachPage() {
           </Card>
 
           <RepairPlanCard planId={planId} steps={steps} onChange={setSteps} />
+
+          <div className="mt-4 flex items-start gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+            <Lightbulb className="w-4 h-4 mt-0.5 shrink-0 text-primary" />
+            <p className="text-xs text-muted-foreground">{mixingTip(activeProject?.genre)}</p>
+          </div>
         </>
       )}
 

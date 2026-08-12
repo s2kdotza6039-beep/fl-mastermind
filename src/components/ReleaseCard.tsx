@@ -7,10 +7,13 @@ import { useProject } from "@/context/ProjectContext";
 import { PLATFORM_TARGETS, type MasterReportLike } from "@/lib/mastering";
 import { buildReleaseAdvisePrompt, buildReleasePlan, type ReleasePlan } from "@/lib/release";
 import { stashChatPrompt } from "@/lib/knowledge-handoff";
+import { useAuth } from "@/context/AuthContext";
+import { buildMixChecklistMarkdown, buildReleaseNotesMarkdown, downloadMarkdown } from "@/lib/paperwork";
 
 export function ReleaseCard() {
   const { activeProject } = useProject();
   const [masterReady, setMasterReady] = useState<boolean | null>(null);
+  const { user } = useAuth();
   const [mixScore, setMixScore] = useState<number | null>(null);
   const [report, setReport] = useState<(MasterReportLike & { file_name: string | null }) | null>(null);
   const [genreOpts, setGenreOpts] = useState<{ drMin?: number; widthMin?: number; widthMax?: number }>({});
@@ -63,6 +66,13 @@ export function ReleaseCard() {
           genreOpts,
         })
       : null;
+
+  const paperworkProject = {
+    name: activeProject?.name ?? null,
+    genre: activeProject?.genre ?? null,
+    artist: (user?.user_metadata?.full_name as string | undefined) ?? user?.email ?? null,
+    fileName: report?.file_name ?? null,
+  };
 
   const askSensei = () => {
     if (!plan) return;
@@ -145,6 +155,30 @@ export function ReleaseCard() {
             </Button>
             <Button asChild size="sm" variant="outline">
               <Link to="/upload">⬆ Upload the final bounce</Link>
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                downloadMarkdown(
+                  `${activeProject.name}-final-checklist.md`,
+                  buildMixChecklistMarkdown(plan, paperworkProject),
+                )
+              }
+            >
+              📄 Final checklist (.md)
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                downloadMarkdown(
+                  `${activeProject.name}-release-notes.md`,
+                  buildReleaseNotesMarkdown(plan, paperworkProject, report),
+                )
+              }
+            >
+              📄 Release notes (.md)
             </Button>
           </div>
         </div>
