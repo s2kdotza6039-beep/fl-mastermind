@@ -258,7 +258,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
       })
       .catch(() => setHistoryLoaded(true));
     return () => { cancelled = true; };
-  }, [activeProject?.id, compact]);
+  }, [activeProject?.id, compact, scope]);
 
   useEffect(() => {
     if (loopLock.lockKind) return; // R9.7 — while locked, nothing lands in the chat
