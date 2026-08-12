@@ -401,7 +401,9 @@ function SignUpForm() {
     if (!nv.success) return toast.error("Invalid display name");
     setBusy(true);
 
-    const { error } = await supabase.auth.signUp({
+    setAlreadyExists(false);
+
+    const { data, error } = await supabase.auth.signUp({
       email: ev.data,
       password: pv.data,
       options: {
@@ -414,6 +416,9 @@ function SignUpForm() {
     setBusy(false);
     if (error) {
       const friendly = friendlySignupError(error);
+      if (/already registered|already exists|user already/i.test(error.message || "")) {
+        setAlreadyExists(true);
+      }
       if (isRateLimited(error)) {
         const retryAfterSec = parseRetryAfterSec(error);
         persistRateLimit("signup", retryAfterSec, friendly);
@@ -427,8 +432,62 @@ function SignUpForm() {
       }
     } else {
       dismissRateLimit();
-      toast.success("Account created — check your email to verify.");
+      if (data.session) {
+        toast.success("Welcome to the studio");
+      } else {
+        setSentTo(ev.data);
+      }
     }
+  }
+
+  async function resendVerification() {
+    if (!sentTo) return;
+    setResending(true);
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: sentTo,
+      options: { emailRedirectTo: window.location.origin },
+    });
+    setResending(false);
+    if (error) toast.error(friendlySignupError(error));
+    else toast.success("Verification email sent again — check your inbox and spam.");
+  }
+
+  if (sentTo) {
+    return (
+      <div className="space-y-4 text-center">
+        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
+          <Mail className="w-6 h-6 text-primary" />
+        </div>
+        <div>
+          <h2 className="font-display text-lg font-bold text-foreground">Check your inbox</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            We sent a verification link to <span className="text-foreground font-medium">{sentTo}</span>.
+            Click it to activate your studio. Check spam if it isn't there in a minute.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={resendVerification}
+          disabled={resending}
+        >
+          {resending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+          Resend verification email
+        </Button>
+        <button
+          type="button"
+          onClick={() => {
+            setSentTo(null);
+            setPassword("");
+          }}
+          className="text-xs text-muted-foreground hover:text-primary underline"
+        >
+          Use a different email
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -440,6 +499,12 @@ function SignUpForm() {
           onRetry={dismissRateLimit}
           onDismiss={dismissRateLimit}
         />
+      )}
+      {alreadyExists && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-200">
+          That email already has an account. Switch to the <span className="font-semibold">Sign In</span> tab to sign in
+          instead, or use “Forgot password?” there.
+        </div>
       )}
       <div>
         <Label htmlFor="su-name">Display name</Label>
@@ -458,6 +523,5 @@ function SignUpForm() {
         {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Create account
       </Button>
     </form>
-
   );
 }
