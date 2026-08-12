@@ -77,9 +77,11 @@ interface SenseiChatProps {
   initialPrompt?: string;
   compact?: boolean;
   audioContext?: import("@/lib/sensei-api").ChatContext["audio"];
+  /** R14.2 — per-stage chat; falls back to ?scope= then the route chapter/phase. */
+  scope?: string;
 }
 
-export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatProps) => {
+export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeProp }: SenseiChatProps) => {
   const { genre, stage, projectName, saveAdvice } = useSession();
   const { isPaid, user } = useAuth();
   const { setup } = useStudioSetup();
@@ -89,10 +91,18 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   const loopLock = useLoopLock(activeProject?.id ?? null);
   // R13.5 — Sensei leads (route chapter), the producer steers (override).
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const routeChapter = chapterFromPath(location.pathname);
   const [chapterOverride, setChapterOverride] = useState<ChatChapter | null>(null);
   const chapter: ChatChapter = chapterOverride ?? routeChapter;
+  const { phase } = useProductionPhase();
+  const scope =
+    (chapterOverride ? makeScope(chapterOverride, chapterOverride === "PRODUCTION" ? phase : null) : null) ??
+    scopeProp ??
+    searchParams.get("scope") ??
+    makeScope(chapter, chapter === "PRODUCTION" ? phase : null);
   useEffect(() => { setChapterOverride(null); }, [routeChapter]);
+
   const [bounceHelpOpen, setBounceHelpOpen] = useState(false);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overriding, setOverriding] = useState(false);
