@@ -13,6 +13,7 @@ import { buildMixChecklistMarkdown, buildReleaseNotesMarkdown, downloadMarkdown 
 export function ReleaseCard() {
   const { activeProject } = useProject();
   const [masterReady, setMasterReady] = useState<boolean | null>(null);
+  const { user } = useAuth();
   const [mixScore, setMixScore] = useState<number | null>(null);
   const [report, setReport] = useState<(MasterReportLike & { file_name: string | null }) | null>(null);
   const [genreOpts, setGenreOpts] = useState<{ drMin?: number; widthMin?: number; widthMax?: number }>({});
