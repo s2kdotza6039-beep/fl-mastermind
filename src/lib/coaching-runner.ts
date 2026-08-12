@@ -63,6 +63,8 @@ export interface PersistOutcome {
   error?: string;
   loopError?: string;
   linkError?: string;
+  /** R14 — true when this is the very first bounce logged for the project. */
+  isFirstBounce: boolean;
   /** R12 — the continuation story from the coaching loop (confirmed bounces only). */
   story?: ContinuationStory;
 }
