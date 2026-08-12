@@ -35,7 +35,8 @@ import { overrideIssue } from "@/lib/loop-guard";
 import { BANDS } from "@/lib/coaching-loop";
 import { buildUploadAdvisePrompt, persistAnalyzedUpload, runCoachingLoop } from "@/lib/coaching-runner";
 import { stashChatPrompt } from "@/lib/knowledge-handoff";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { Music, Sliders } from "lucide-react";
 import { toast } from "sonner";
 
 const MAX_FILE_MB = 50;
