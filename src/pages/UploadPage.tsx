@@ -340,6 +340,8 @@ export default function UploadPage() {
     setBpmNudge(0);
     setDownbeatOffsetSec(0);
     setDiagnostics(null);
+    setShowWhatNext(false);
+    setFirstBounceId(null);
   };
 
   const pushStatus = useCallback((pct: number, label: string) => {
