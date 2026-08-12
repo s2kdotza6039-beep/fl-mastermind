@@ -9,6 +9,8 @@ import { useProject } from "@/context/ProjectContext";
 import { useTrackSession } from "@/context/TrackSessionContext";
 import { useProductionPhase } from "@/hooks/use-production-phase";
 import { stashChatPrompt } from "@/lib/knowledge-handoff";
+import { makeScope } from "@/lib/chat-scope";
+
 import { supabase } from "@/integrations/supabase/client";
 import {
   buildAddElementPrompt,
