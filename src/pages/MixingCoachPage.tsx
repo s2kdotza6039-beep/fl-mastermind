@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Volume2, RefreshCcw, AlertTriangle, AlertCircle, Info } from "lucide-react";
+import { Volume2, RefreshCcw, AlertTriangle, AlertCircle, Info, Lightbulb } from "lucide-react";
+import { mixingTip } from "@/lib/phase-guidance";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
