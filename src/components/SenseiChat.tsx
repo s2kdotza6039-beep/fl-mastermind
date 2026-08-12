@@ -341,7 +341,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
         setLoading(false);
         // Persist the assistant turn once streaming finishes.
         if (activeProject && user && acc.trim()) {
-          appendChatMessage(user.id, activeProject.id, { role: "assistant", content: acc, source_page: "chat" })
+          appendChatMessage(user.id, activeProject.id, { role: "assistant", content: acc, source_page: "chat", scope })
             .catch((e) => {
               console.warn("Failed to persist assistant message:", e?.message ?? e);
               toast.error("Sensei's reply could not be saved to project memory.");
