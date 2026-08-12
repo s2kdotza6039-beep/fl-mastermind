@@ -386,8 +386,14 @@ export default function UploadPage() {
     }
     if (outcome.kind === "coached") {
       setLastReportId(outcome.reportId);
-      // R12 — seamless continuation: hand the story straight to Sensei.
-      if (lastAdvisedRef.current !== outcome.reportId) {
+      if (outcome.isFirstBounce && !askSensei) {
+        // R14 — the first bounce is an ANALYSIS, not a lecture. Let the producer choose.
+        lastAdvisedRef.current = outcome.reportId;
+        setFirstBounceId(outcome.reportId);
+        setShowWhatNext(true);
+        toast.success("Analysis complete — Sensei has heard your beat.");
+      } else if (lastAdvisedRef.current !== outcome.reportId) {
+        // R12 — seamless continuation: hand the story straight to Sensei.
         lastAdvisedRef.current = outcome.reportId;
         const story = outcome.story ?? null;
         stashChatPrompt(buildUploadAdvisePrompt(res.metrics.fileName, res, story));
@@ -401,6 +407,7 @@ export default function UploadPage() {
           setTimeout(() => navigate("/chat"), 650);
         }
       }
+    }
     }
     if (outcome.kind === "foreign" && outcome.versionId) {
       setContinuityHold({
