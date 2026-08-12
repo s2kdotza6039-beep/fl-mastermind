@@ -402,7 +402,7 @@ export default function UploadPage() {
         // R12 — seamless continuation: hand the story straight to Sensei.
         lastAdvisedRef.current = outcome.reportId;
         const story = outcome.story ?? null;
-        stashChatPrompt(buildUploadAdvisePrompt(res.metrics.fileName, res, story));
+        stashChatPrompt(buildUploadAdvisePrompt(res.metrics.fileName, res, story), "MIXING");
         if (!askSensei) {
           const headline = story
             ? story.masterReady
@@ -410,8 +410,9 @@ export default function UploadPage() {
               : `Mix score ${story.score}/100${story.delta != null ? ` (${story.delta >= 0 ? "+" : ""}${story.delta})` : ""} — next fix inside`
             : "Sensei is ready with your next fix";
           toast.success(headline);
-          setTimeout(() => navigate("/chat"), 650);
+          setTimeout(() => navigate("/chat?scope=MIXING"), 650);
         }
+
       }
     }
     if (outcome.kind === "foreign" && outcome.versionId) {
@@ -1164,9 +1165,10 @@ export default function UploadPage() {
                   size="sm"
                   variant="outline"
                   onClick={() => {
-                    stashChatPrompt(buildUploadAdvisePrompt(result.metrics.fileName, result, null));
-                    navigate("/chat");
+                    stashChatPrompt(buildUploadAdvisePrompt(result.metrics.fileName, result, null), "PRODUCTION:BEAT");
+                    navigate("/chat?scope=PRODUCTION%3ABEAT");
                   }}
+
                 >
                   <MessageCircle className="w-4 h-4 mr-2" /> Ask Sensei
                 </Button>
@@ -1189,7 +1191,7 @@ export default function UploadPage() {
               </div>
               <div className="flex gap-2">
                 <Button
-                  onClick={() => navigate("/chat")}
+                  onClick={() => navigate("/chat?scope=MIXING")}
                   className="bg-gradient-gold text-primary-foreground hover:opacity-90"
                 >
                   <MessageCircle className="w-4 h-4 mr-2" /> Start coaching this track

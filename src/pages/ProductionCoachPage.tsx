@@ -9,6 +9,8 @@ import { useProject } from "@/context/ProjectContext";
 import { useTrackSession } from "@/context/TrackSessionContext";
 import { useProductionPhase } from "@/hooks/use-production-phase";
 import { stashChatPrompt } from "@/lib/knowledge-handoff";
+import { makeScope } from "@/lib/chat-scope";
+
 import { supabase } from "@/integrations/supabase/client";
 import {
   buildAddElementPrompt,
@@ -41,9 +43,12 @@ const PhaseDesk = () => {
   };
 
   const ask = (prompt: string) => {
-    stashChatPrompt(prompt);
-    navigate("/chat");
+    // R14.2 — production coaching opens the Production chat for this phase.
+    const scope = makeScope("PRODUCTION", phase);
+    stashChatPrompt(prompt, scope);
+    navigate(`/chat?scope=${encodeURIComponent(scope)}`);
   };
+
 
   const rebounce = async () => {
     let scoreAfter: number | null = null;

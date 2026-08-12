@@ -532,6 +532,7 @@ export type Database = {
           parts: Json | null
           project_id: string
           role: Database["public"]["Enums"]["chat_role"]
+          scope: string | null
           source_page: string | null
           user_id: string
         }
@@ -542,6 +543,7 @@ export type Database = {
           parts?: Json | null
           project_id: string
           role: Database["public"]["Enums"]["chat_role"]
+          scope?: string | null
           source_page?: string | null
           user_id: string
         }
@@ -552,6 +554,7 @@ export type Database = {
           parts?: Json | null
           project_id?: string
           role?: Database["public"]["Enums"]["chat_role"]
+          scope?: string | null
           source_page?: string | null
           user_id?: string
         }

@@ -1,0 +1,2 @@
+ALTER TABLE public.project_chat_messages ADD COLUMN IF NOT EXISTS scope text;
+CREATE INDEX IF NOT EXISTS idx_project_chat_messages_scope ON public.project_chat_messages (project_id, scope, created_at DESC);

@@ -7,21 +7,38 @@
 // ============================================================================
 
 const KEY = "sensei.knowledge.handoff";
+const SCOPE_KEY = "sensei.knowledge.handoff.scope";
 
-export function stashChatPrompt(prompt: string) {
-  try { sessionStorage.setItem(KEY, prompt); } catch { /* storage unavailable */ }
+export function stashChatPrompt(prompt: string, scope?: string) {
+  try {
+    sessionStorage.setItem(KEY, prompt);
+    if (scope) sessionStorage.setItem(SCOPE_KEY, scope);
+    else sessionStorage.removeItem(SCOPE_KEY);
+  } catch { /* storage unavailable */ }
 }
 
-/** Reads and clears the pending prompt (one-shot). */
-export function takeChatPrompt(): string | null {
+/** Reads the pending scope without clearing it. */
+export function peekChatScope(): string | null {
   try {
-    const v = sessionStorage.getItem(KEY);
-    if (v) sessionStorage.removeItem(KEY);
+    const v = sessionStorage.getItem(SCOPE_KEY);
     return v && v.trim() ? v : null;
   } catch {
     return null;
   }
 }
+
+/** Reads and clears the pending prompt (one-shot). Clears the scope too. */
+export function takeChatPrompt(): string | null {
+  try {
+    const v = sessionStorage.getItem(KEY);
+    if (v) sessionStorage.removeItem(KEY);
+    sessionStorage.removeItem(SCOPE_KEY);
+    return v && v.trim() ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 
 // ============================================================================
 // R9.5 REWRITE CONSTRAINT CHIPS (D29 / s10)

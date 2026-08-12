@@ -12,8 +12,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ShowMeMap } from "@/components/ShowMeMap";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { CHAPTERS, chapterFromPath, chapterLabel, type ChatChapter } from "@/lib/chat-chapter";
+import { makeScope, scopeLabel } from "@/lib/chat-scope";
+import { useProductionPhase } from "@/hooks/use-production-phase";
+
 import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock, ThumbsUp, ThumbsDown, Eye, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -74,9 +77,11 @@ interface SenseiChatProps {
   initialPrompt?: string;
   compact?: boolean;
   audioContext?: import("@/lib/sensei-api").ChatContext["audio"];
+  /** R14.2 — per-stage chat; falls back to ?scope= then the route chapter/phase. */
+  scope?: string;
 }
 
-export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatProps) => {
+export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeProp }: SenseiChatProps) => {
   const { genre, stage, projectName, saveAdvice } = useSession();
   const { isPaid, user } = useAuth();
   const { setup } = useStudioSetup();
@@ -86,10 +91,18 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
   const loopLock = useLoopLock(activeProject?.id ?? null);
   // R13.5 — Sensei leads (route chapter), the producer steers (override).
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const routeChapter = chapterFromPath(location.pathname);
   const [chapterOverride, setChapterOverride] = useState<ChatChapter | null>(null);
   const chapter: ChatChapter = chapterOverride ?? routeChapter;
+  const { phase } = useProductionPhase();
+  const scope =
+    (chapterOverride ? makeScope(chapterOverride, chapterOverride === "PRODUCTION" ? phase : null) : null) ??
+    scopeProp ??
+    searchParams.get("scope") ??
+    makeScope(chapter, chapter === "PRODUCTION" ? phase : null);
   useEffect(() => { setChapterOverride(null); }, [routeChapter]);
+
   const [bounceHelpOpen, setBounceHelpOpen] = useState(false);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overriding, setOverriding] = useState(false);
@@ -237,7 +250,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
     if (compact || !activeProject) { setHistoryLoaded(true); return; }
     let cancelled = false;
     setHistoryLoaded(false);
-    listChatMessages(activeProject.id, 100)
+    listChatMessages(activeProject.id, 100, scope)
       .then((msgs) => {
         if (cancelled) return;
         setMessages(msgs.map((m) => ({ role: m.role === "system" ? "assistant" : m.role, content: m.content })));
@@ -245,7 +258,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
       })
       .catch(() => setHistoryLoaded(true));
     return () => { cancelled = true; };
-  }, [activeProject?.id, compact]);
+  }, [activeProject?.id, compact, scope]);
 
   useEffect(() => {
     if (loopLock.lockKind) return; // R9.7 — while locked, nothing lands in the chat
@@ -279,7 +292,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
 
     // Persist user turn to project memory.
     if (activeProject && user) {
-      appendChatMessage(user.id, activeProject.id, { role: "user", content: trimmed, source_page: "chat" })
+      appendChatMessage(user.id, activeProject.id, { role: "user", content: trimmed, source_page: "chat", scope })
         .catch((e) => {
           console.warn("Failed to persist user message:", e?.message ?? e);
           toast.error("Message sent, but it could not be saved to project memory.");
@@ -328,7 +341,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
         setLoading(false);
         // Persist the assistant turn once streaming finishes.
         if (activeProject && user && acc.trim()) {
-          appendChatMessage(user.id, activeProject.id, { role: "assistant", content: acc, source_page: "chat" })
+          appendChatMessage(user.id, activeProject.id, { role: "assistant", content: acc, source_page: "chat", scope })
             .catch((e) => {
               console.warn("Failed to persist assistant message:", e?.message ?? e);
               toast.error("Sensei's reply could not be saved to project memory.");
@@ -487,7 +500,11 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext }: SenseiChatP
             </button>
           ))}
         </div>
-        <PlanCard />
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+          Chat: {scopeLabel(scope)}
+        </div>
+        {scope === "MIXING" && <PlanCard />}
+
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center py-12 animate-fade-in-up">
             <div className="w-16 h-16 rounded-2xl bg-gradient-gold flex items-center justify-center mb-4 glow-gold">
