@@ -20,6 +20,7 @@ import {
   PRODUCTION_PHASES,
   SKETCH_LABEL,
 } from "@/lib/production-phase";
+import type { ProductionPhase } from "@/lib/production-phase";
 
 const PhaseDesk = () => {
   const navigate = useNavigate();
