@@ -388,6 +388,15 @@ function SignUpForm() {
     if (hydrated) setRateLimit(hydrated);
   }, []);
 
+  // R14.3 — throttle resend clicks so we never trip the provider's own rate limit.
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = setTimeout(() => setResendCooldown((s) => Math.max(0, s - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [resendCooldown]);
+
+
+
   const dismissRateLimit = () => {
     clearRateLimit("signup");
     setRateLimit(null);
