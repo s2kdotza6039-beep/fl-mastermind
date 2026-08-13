@@ -292,6 +292,11 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
   const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
+    // R14.4b — Proof Lock: checklist complete, demand a new bounce before chat continues.
+    if (awaitingProof) {
+      toast.error("Upload your new bounce to continue — Sensei is waiting for proof.");
+      return;
+    }
     // Don't let users send before their project memory has hydrated — a
     // message sent in that window was neither persisted nor given project
     // context, which read as "Sensei forgot everything".
