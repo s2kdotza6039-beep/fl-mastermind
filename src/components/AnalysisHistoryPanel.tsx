@@ -682,8 +682,6 @@ export const AnalysisHistoryPanel = ({ className }: { className?: string }) => {
                       await refreshRecent();
                     }}
                   />
-
-                  </Button>
                 </div>
               </div>
             );
