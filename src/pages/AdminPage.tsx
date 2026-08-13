@@ -289,7 +289,34 @@ export default function AdminPage() {
               </div>
             )}
           </Card>
+
+          <Dialog open={!!confirmDelete} onOpenChange={(o) => !o && !deleting && setConfirmDelete(null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete this user permanently?</DialogTitle>
+                <DialogDescription>
+                  {confirmDelete?.email || confirmDelete?.user_id} will be removed from
+                  authentication along with all of their projects, analyses, scores and chats.
+                  This cannot be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" disabled={deleting} onClick={() => setConfirmDelete(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={deleting}
+                  onClick={() => confirmDelete && deleteUser(confirmDelete)}
+                >
+                  {deleting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Delete permanently
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
+
 
         <TabsContent value="setups">
           <SetupsTab setups={setups} users={users} loading={loading} />
