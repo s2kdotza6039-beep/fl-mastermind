@@ -86,7 +86,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
   const { isPaid, user } = useAuth();
   const { setup } = useStudioSetup();
   const { inventory, isComplete: inventoryComplete } = usePluginInventory();
-  const { toChatAudio, setActiveReport, refreshRecent } = useTrackSession();
+  const { toChatAudio, setActiveReport, refreshRecent, active } = useTrackSession();
   const { activeProject, loading: projectLoading } = useProject();
   const loopLock = useLoopLock(activeProject?.id ?? null);
   // R13.5 — Sensei leads (route chapter), the producer steers (override).
