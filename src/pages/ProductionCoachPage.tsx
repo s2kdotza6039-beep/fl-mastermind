@@ -10,6 +10,8 @@ import { useTrackSession } from "@/context/TrackSessionContext";
 import { useProductionPhase } from "@/hooks/use-production-phase";
 import { stashChatPrompt } from "@/lib/knowledge-handoff";
 import { makeScope } from "@/lib/chat-scope";
+import { ProductionTools } from "@/components/ProductionTools";
+
 
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -191,7 +193,7 @@ export default function ProductionCoachPage() {
       title="Production Coach"
       description="From blank canvas to a beat that hits."
       icon={Sliders}
-      above={<PhaseDesk />}
+      above={<><PhaseDesk /><ProductionTools /></>}
       topics={[
         { label: "Instrument selection", prompt: "Coach me on choosing instruments for my beat. Help me pick sounds that work together for my genre." },
         { label: "Drum selection & layering", prompt: "Walk me through selecting and layering drums in FL Studio for a punchy, professional sound." },

@@ -17,6 +17,8 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useTrackSession, type TrackReport } from "@/context/TrackSessionContext";
+import { DeleteReportButton } from "@/components/DeleteReportButton";
+
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -671,6 +673,15 @@ export const AnalysisHistoryPanel = ({ className }: { className?: string }) => {
                   >
                     <Trash2 className="w-3 h-3 mr-1" /> Remove reference
                   </Button>
+                  <DeleteReportButton
+                    size="icon"
+                    reportId={r.id}
+                    fileName={r.file_name}
+                    onDeleted={async () => {
+                      if (isActive) await clearActive();
+                      await refreshRecent();
+                    }}
+                  />
                 </div>
               </div>
             );

@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageHeader } from "@/components/PageHeader";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Shield, Users, Activity, AlertTriangle, Crown, Loader2, Search, X, Sliders, Download, Eye } from "lucide-react";
+import { Shield, Users, Activity, AlertTriangle, Crown, Loader2, Search, X, Sliders, Download, Eye, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { friendlyRoleAssignmentError } from "@/lib/friendly-errors";
 import { editionToTier, tierLabel, eligiblePlugins, forbiddenPlugins, type FlEditionTier } from "@/lib/fl-plugin-eligibility";
@@ -64,6 +64,9 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [userQuery, setUserQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "paid" | "free" | "none">("all");
+  const [confirmDelete, setConfirmDelete] = useState<UserRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
 
   const filteredUsers = useMemo(() => {
     const q = userQuery.trim().toLowerCase();
@@ -139,6 +142,20 @@ export default function AdminPage() {
     toast.success("Role updated");
     load();
   }
+
+  async function deleteUser(target: UserRow) {
+    setDeleting(true);
+    const { data, error } = await supabase.functions.invoke("admin-delete-user", {
+      body: { user_id: target.user_id },
+    });
+    setDeleting(false);
+    const errMsg = error?.message || (data as any)?.error;
+    if (errMsg) return toast.error(errMsg);
+    setConfirmDelete(null);
+    toast.success("User deleted permanently");
+    load();
+  }
+
 
   async function resolveAlert(id: string) {
     await supabase.from("security_alerts").update({ resolved: true }).eq("id", id);
@@ -253,7 +270,18 @@ export default function AdminPage() {
                           ) : (
                             <Button size="sm" variant="secondary" onClick={() => setRole(u.user_id, "admin", "add")}>Make Admin</Button>
                           )}
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="text-destructive hover:text-destructive"
+                            title={`Delete ${u.email || u.user_id} permanently`}
+                            aria-label={`Delete user ${u.email || u.user_id}`}
+                            onClick={() => setConfirmDelete(u)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         </>
+
                       )}
                     </div>
                   </div>
@@ -261,7 +289,34 @@ export default function AdminPage() {
               </div>
             )}
           </Card>
+
+          <Dialog open={!!confirmDelete} onOpenChange={(o) => !o && !deleting && setConfirmDelete(null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete this user permanently?</DialogTitle>
+                <DialogDescription>
+                  {confirmDelete?.email || confirmDelete?.user_id} will be removed from
+                  authentication along with all of their projects, analyses, scores and chats.
+                  This cannot be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" disabled={deleting} onClick={() => setConfirmDelete(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={deleting}
+                  onClick={() => confirmDelete && deleteUser(confirmDelete)}
+                >
+                  {deleting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Delete permanently
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
+
 
         <TabsContent value="setups">
           <SetupsTab setups={setups} users={users} loading={loading} />

@@ -16,6 +16,8 @@ import { SetupChecklistCard } from "@/components/SetupChecklistCard";
 import { PluginInventoryCard } from "@/components/PluginInventoryCard";
 import { ActiveTrackChip } from "@/components/ActiveTrackChip";
 import { CoachThisTrackButton } from "@/components/CoachThisTrackButton";
+import { DeleteReportButton } from "@/components/DeleteReportButton";
+
 import { AnalysisHistoryPanel } from "@/components/AnalysisHistoryPanel";
 import { BetaNotice } from "@/components/BetaNotice";
 import { StatusBanner } from "@/components/StatusBanner";
@@ -218,7 +220,15 @@ export default function Dashboard() {
                   <div className="text-[10px] text-muted-foreground/60 mt-2">
                     {new Date(a.created_at).toLocaleString()}
                   </div>
-                  <CoachThisTrackButton reportId={a.id} fileName={a.file_name} />
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <CoachThisTrackButton reportId={a.id} fileName={a.file_name} />
+                    <DeleteReportButton
+                      reportId={a.id}
+                      fileName={a.file_name}
+                      onDeleted={() => setRecentAudio((prev) => prev.filter((x) => x.id !== a.id))}
+                    />
+                  </div>
+
                 </Card>
               );
             })}
