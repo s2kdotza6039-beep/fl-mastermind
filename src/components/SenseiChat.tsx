@@ -863,14 +863,16 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
                 send(input);
               }
             }}
-            placeholder={loopLock.lockKind === "foreign"
-              ? "🔒 Beat not recognized — load the correct bounce above to continue…"
-              : loopLock.lockKind === "rebounce"
-                ? "🔒 Waiting for your new bounce — Sensei will verify it…"
-                : projectLoading ? "Restoring project memory…" : "Ask Sensei anything... (Shift+Enter for new line)"}
+            placeholder={awaitingProof
+              ? "Sensei is waiting for your new bounce — upload it using the paperclip…"
+              : loopLock.lockKind === "foreign"
+                ? "🔒 Beat not recognized — load the correct bounce above to continue…"
+                : loopLock.lockKind === "rebounce"
+                  ? "🔒 Waiting for your new bounce — Sensei will verify it…"
+                  : projectLoading ? "Restoring project memory…" : "Ask Sensei anything... (Shift+Enter for new line)"}
             rows={1}
             className="resize-none bg-input border-border focus-visible:ring-primary min-h-[44px]"
-            disabled={loading || projectLoading || loopLock.lockKind != null}
+            disabled={loading || projectLoading || loopLock.lockKind != null || awaitingProof != null}
           />
           <Button
             type="submit"
