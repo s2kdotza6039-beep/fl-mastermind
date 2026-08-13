@@ -86,7 +86,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
   const { isPaid, user } = useAuth();
   const { setup } = useStudioSetup();
   const { inventory, isComplete: inventoryComplete } = usePluginInventory();
-  const { toChatAudio, setActiveReport, refreshRecent } = useTrackSession();
+  const { toChatAudio, setActiveReport, refreshRecent, active } = useTrackSession();
   const { activeProject, loading: projectLoading } = useProject();
   const loopLock = useLoopLock(activeProject?.id ?? null);
   // R13.5 — Sensei leads (route chapter), the producer steers (override).
@@ -202,6 +202,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
   const [loading, setLoading] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string; lastInput: string } | null>(null);
+  const [awaitingProof, setAwaitingProof] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentInitial = useRef(false);
 
@@ -273,9 +274,29 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  // R14.4b — Proof Lock: when every checkbox in a Sensei message is ticked,
+  // lock the composer until a new bounce is uploaded and activated.
+  useEffect(() => {
+    const handler = () => setAwaitingProof(active?.id ?? null);
+    window.addEventListener("sensei:proof-required", handler);
+    return () => window.removeEventListener("sensei:proof-required", handler);
+  }, [active?.id]);
+
+  useEffect(() => {
+    if (!awaitingProof) return;
+    if (active?.id && active.id !== awaitingProof) {
+      setAwaitingProof(null);
+    }
+  }, [active?.id, awaitingProof]);
+
   const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
+    // R14.4b — Proof Lock: checklist complete, demand a new bounce before chat continues.
+    if (awaitingProof) {
+      toast.error("Upload your new bounce to continue — Sensei is waiting for proof.");
+      return;
+    }
     // Don't let users send before their project memory has hydrated — a
     // message sent in that window was neither persisted nor given project
     // context, which read as "Sensei forgot everything".
@@ -769,6 +790,22 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
       )}
 
 
+      {awaitingProof && (
+        <div className="px-4 pb-2">
+          <div className="rounded-lg border border-warning/40 bg-warning/10 p-3">
+            <div className="flex items-start gap-3">
+              <Lock className="w-4 h-4 text-warning mt-0.5 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-sm text-foreground">🥋 Sensei: checklist complete — proof required</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  All steps are ticked. Upload your new bounce using the paperclip to continue. A wrong or foreign beat will keep this locked.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="border-t border-border p-4 bg-card/50 backdrop-blur">
         <div className="flex gap-2 items-end">
           <select
@@ -826,18 +863,20 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
                 send(input);
               }
             }}
-            placeholder={loopLock.lockKind === "foreign"
-              ? "🔒 Beat not recognized — load the correct bounce above to continue…"
-              : loopLock.lockKind === "rebounce"
-                ? "🔒 Waiting for your new bounce — Sensei will verify it…"
-                : projectLoading ? "Restoring project memory…" : "Ask Sensei anything... (Shift+Enter for new line)"}
+            placeholder={awaitingProof
+              ? "Sensei is waiting for your new bounce — upload it using the paperclip…"
+              : loopLock.lockKind === "foreign"
+                ? "🔒 Beat not recognized — load the correct bounce above to continue…"
+                : loopLock.lockKind === "rebounce"
+                  ? "🔒 Waiting for your new bounce — Sensei will verify it…"
+                  : projectLoading ? "Restoring project memory…" : "Ask Sensei anything... (Shift+Enter for new line)"}
             rows={1}
             className="resize-none bg-input border-border focus-visible:ring-primary min-h-[44px]"
-            disabled={loading || projectLoading || loopLock.lockKind != null}
+            disabled={loading || projectLoading || loopLock.lockKind != null || awaitingProof != null}
           />
           <Button
             type="submit"
-            disabled={loading || projectLoading || loopLock.lockKind != null || !input.trim()}
+            disabled={loading || projectLoading || loopLock.lockKind != null || awaitingProof != null || !input.trim()}
             className="bg-gradient-gold text-primary-foreground hover:opacity-90 h-[44px] px-4"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
