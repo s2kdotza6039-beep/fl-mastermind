@@ -17,6 +17,8 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useTrackSession, type TrackReport } from "@/context/TrackSessionContext";
+import { DeleteReportButton } from "@/components/DeleteReportButton";
+
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
