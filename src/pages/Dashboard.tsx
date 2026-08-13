@@ -16,6 +16,8 @@ import { SetupChecklistCard } from "@/components/SetupChecklistCard";
 import { PluginInventoryCard } from "@/components/PluginInventoryCard";
 import { ActiveTrackChip } from "@/components/ActiveTrackChip";
 import { CoachThisTrackButton } from "@/components/CoachThisTrackButton";
+import { DeleteReportButton } from "@/components/DeleteReportButton";
+
 import { AnalysisHistoryPanel } from "@/components/AnalysisHistoryPanel";
 import { BetaNotice } from "@/components/BetaNotice";
 import { StatusBanner } from "@/components/StatusBanner";
