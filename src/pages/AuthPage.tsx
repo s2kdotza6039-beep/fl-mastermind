@@ -374,6 +374,8 @@ function SignUpForm() {
   const [name, setName] = useState("");
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [resending, setResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
   const [alreadyExists, setAlreadyExists] = useState(false);
 
   const [busy, setBusy] = useState(false);
