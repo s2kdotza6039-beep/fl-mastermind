@@ -274,6 +274,21 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  // R14.4b — Proof Lock: when every checkbox in a Sensei message is ticked,
+  // lock the composer until a new bounce is uploaded and activated.
+  useEffect(() => {
+    const handler = () => setAwaitingProof(active?.id ?? null);
+    window.addEventListener("sensei:proof-required", handler);
+    return () => window.removeEventListener("sensei:proof-required", handler);
+  }, [active?.id]);
+
+  useEffect(() => {
+    if (!awaitingProof) return;
+    if (active?.id && active.id !== awaitingProof) {
+      setAwaitingProof(null);
+    }
+  }, [active?.id, awaitingProof]);
+
   const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
