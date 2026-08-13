@@ -876,7 +876,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
           />
           <Button
             type="submit"
-            disabled={loading || projectLoading || loopLock.lockKind != null || !input.trim()}
+            disabled={loading || projectLoading || loopLock.lockKind != null || awaitingProof != null || !input.trim()}
             className="bg-gradient-gold text-primary-foreground hover:opacity-90 h-[44px] px-4"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
