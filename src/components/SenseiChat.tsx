@@ -790,6 +790,22 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
       )}
 
 
+      {awaitingProof && (
+        <div className="px-4 pb-2">
+          <div className="rounded-lg border border-warning/40 bg-warning/10 p-3">
+            <div className="flex items-start gap-3">
+              <Lock className="w-4 h-4 text-warning mt-0.5 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-sm text-foreground">🥋 Sensei: checklist complete — proof required</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  All steps are ticked. Upload your new bounce using the paperclip to continue. A wrong or foreign beat will keep this locked.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="border-t border-border p-4 bg-card/50 backdrop-blur">
         <div className="flex gap-2 items-end">
           <select
