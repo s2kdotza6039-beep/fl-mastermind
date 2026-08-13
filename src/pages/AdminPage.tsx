@@ -64,6 +64,9 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [userQuery, setUserQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "paid" | "free" | "none">("all");
+  const [confirmDelete, setConfirmDelete] = useState<UserRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
 
   const filteredUsers = useMemo(() => {
     const q = userQuery.trim().toLowerCase();
