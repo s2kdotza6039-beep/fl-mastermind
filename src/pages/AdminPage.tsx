@@ -143,6 +143,20 @@ export default function AdminPage() {
     load();
   }
 
+  async function deleteUser(target: UserRow) {
+    setDeleting(true);
+    const { data, error } = await supabase.functions.invoke("admin-delete-user", {
+      body: { user_id: target.user_id },
+    });
+    setDeleting(false);
+    const errMsg = error?.message || (data as any)?.error;
+    if (errMsg) return toast.error(errMsg);
+    setConfirmDelete(null);
+    toast.success("User deleted permanently");
+    load();
+  }
+
+
   async function resolveAlert(id: string) {
     await supabase.from("security_alerts").update({ resolved: true }).eq("id", id);
     load();
