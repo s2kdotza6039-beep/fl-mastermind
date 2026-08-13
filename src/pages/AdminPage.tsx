@@ -270,7 +270,18 @@ export default function AdminPage() {
                           ) : (
                             <Button size="sm" variant="secondary" onClick={() => setRole(u.user_id, "admin", "add")}>Make Admin</Button>
                           )}
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="text-destructive hover:text-destructive"
+                            title={`Delete ${u.email || u.user_id} permanently`}
+                            aria-label={`Delete user ${u.email || u.user_id}`}
+                            onClick={() => setConfirmDelete(u)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         </>
+
                       )}
                     </div>
                   </div>
