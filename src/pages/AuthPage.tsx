@@ -452,7 +452,7 @@ function SignUpForm() {
   }
 
   async function resendVerification() {
-    if (!sentTo) return;
+    if (!sentTo || resendCooldown > 0) return;
     setResending(true);
     const { error } = await supabase.auth.resend({
       type: "signup",
@@ -461,7 +461,10 @@ function SignUpForm() {
     });
     setResending(false);
     if (error) toast.error(friendlySignupError(error));
-    else toast.success("Verification email sent again — check your inbox and spam.");
+    else {
+      setResendCooldown(60);
+      toast.success("Verification email sent again — check your inbox and spam.");
+    }
   }
 
   if (sentTo) {
@@ -482,11 +485,12 @@ function SignUpForm() {
           variant="outline"
           className="w-full"
           onClick={resendVerification}
-          disabled={resending}
+          disabled={resending || resendCooldown > 0}
         >
           {resending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-          Resend verification email
+          {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend verification email"}
         </Button>
+
         <button
           type="button"
           onClick={() => {
