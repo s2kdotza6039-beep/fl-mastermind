@@ -202,6 +202,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
   const [loading, setLoading] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string; lastInput: string } | null>(null);
+  const [awaitingProof, setAwaitingProof] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentInitial = useRef(false);
 
