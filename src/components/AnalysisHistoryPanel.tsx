@@ -673,6 +673,17 @@ export const AnalysisHistoryPanel = ({ className }: { className?: string }) => {
                   >
                     <Trash2 className="w-3 h-3 mr-1" /> Remove reference
                   </Button>
+                  <DeleteReportButton
+                    size="icon"
+                    reportId={r.id}
+                    fileName={r.file_name}
+                    onDeleted={async () => {
+                      if (isActive) await clearActive();
+                      await refreshRecent();
+                    }}
+                  />
+
+                  </Button>
                 </div>
               </div>
             );
