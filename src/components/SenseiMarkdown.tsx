@@ -18,6 +18,28 @@ export const SenseiMarkdown = ({ content, className, messageId = "msg" }: Sensei
   const itemCounter = { n: 0 };
   const [checked, setChecked] = useState<Record<string, boolean>>(() => loadChatChecks(messageId));
 
+  // R14.4b — Proof Lock: detect when every checkbox in this message is ticked
+  // and tell the chat composer to demand a new bounce before continuing.
+  const taskCount = useMemo(() => {
+    const regex = /^\s*(?:[-*]|\d+\.)\s+\[\s*[xX ]\s*\]/gm;
+    return Array.from(content.matchAll(regex)).length;
+  }, [content]);
+
+  const taskIds = useMemo(
+    () => Array.from({ length: taskCount }, (_, i) => `${messageId}-${i}`),
+    [taskCount, messageId],
+  );
+
+  const allDone = taskIds.length > 0 && taskIds.every((id) => checked[id]);
+
+  const prevAllDone = useRef(false);
+  useEffect(() => {
+    if (allDone && !prevAllDone.current) {
+      window.dispatchEvent(new CustomEvent("sensei:proof-required", { detail: { messageId } }));
+    }
+    prevAllDone.current = allDone;
+  }, [allDone, messageId]);
+
   return (
     <div className={cn("prose prose-invert prose-sm max-w-none", className)}>
       <ReactMarkdown
