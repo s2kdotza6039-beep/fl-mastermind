@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageHeader } from "@/components/PageHeader";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Shield, Users, Activity, AlertTriangle, Crown, Loader2, Search, X, Sliders, Download, Eye } from "lucide-react";
+import { Shield, Users, Activity, AlertTriangle, Crown, Loader2, Search, X, Sliders, Download, Eye, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { friendlyRoleAssignmentError } from "@/lib/friendly-errors";
 import { editionToTier, tierLabel, eligiblePlugins, forbiddenPlugins, type FlEditionTier } from "@/lib/fl-plugin-eligibility";
