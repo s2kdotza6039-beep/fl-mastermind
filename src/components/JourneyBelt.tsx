@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Check, Lock, Sliders, SlidersHorizontal, Gauge, Rocket } from "lucide-react";
+import { Check, Lock, Sliders, SlidersHorizontal, Gauge, Rocket, Mic2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useProject } from "@/context/ProjectContext";
 import {
@@ -162,30 +162,41 @@ export const JourneyBelt = () => {
         })}
       </div>
 
-      {/* Within-chapter steps */}
+      {/* Within-chapter steps — R15 Vocals: VOCALS is optional, shown with dashed style */}
       {onProduction ? (
         <div className="flex items-center gap-1 overflow-x-auto scrollbar-thin">
           {PRODUCTION_PHASES.filter((p) => p.id !== "DONE").map((p, i) => {
             const isDone = phase === "DONE" || p.index < phaseIndex;
             const isCurrent = p.id === phase;
+            const isVocals = p.id === "VOCALS";
             return (
               <div key={p.id} className="flex items-center gap-1">
                 {i > 0 && <span className="w-3 h-px bg-border" />}
                 <button
                   type="button"
-                  title={p.blurb}
+                  title={p.blurb + (isVocals ? " — Optional. Skip if instrumental." : "")}
                   disabled={phaseSaving}
-                  onClick={() => { void setPhase(p.id); }}
+                  onClick={() => { void setPhase(p.id as any); }}
                   aria-current={isCurrent ? "step" : undefined}
                   className={cn(
                     "flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium whitespace-nowrap transition-colors hover:opacity-90 disabled:opacity-50",
-                    isDone && "bg-primary/15 text-primary",
-                    isCurrent && "bg-gradient-gold text-primary-foreground shadow-sm glow-gold",
-                    !isDone && !isCurrent && "text-muted-foreground/50",
+                    isDone && !isVocals && "bg-primary/15 text-primary",
+                    isDone && isVocals && "bg-primary/10 text-primary border border-dashed border-primary/30",
+                    isCurrent && !isVocals && "bg-gradient-gold text-primary-foreground shadow-sm glow-gold",
+                    isCurrent && isVocals && "bg-gradient-gold text-primary-foreground shadow-sm glow-gold ring-1 ring-amber-400/30",
+                    !isDone && !isCurrent && !isVocals && "text-muted-foreground/50",
+                    !isDone && !isCurrent && isVocals && "text-amber-600 border border-dashed border-amber-400/40 bg-amber-500/5",
                   )}
                 >
-                  {isDone ? <Check className="w-3 h-3" /> : <span className="w-1.5 h-1.5 rounded-full bg-current" />}
+                  {isVocals ? (
+                    <Mic2 className="w-3 h-3" />
+                  ) : isDone ? (
+                    <Check className="w-3 h-3" />
+                  ) : (
+                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                  )}
                   {p.label}
+                  {isVocals && !isDone && !isCurrent && <span className="text-[8px] opacity-70 ml-0.5">OPT</span>}
                 </button>
               </div>
             );
@@ -230,6 +241,7 @@ export const JourneyBelt = () => {
 
       <p className="text-[11px] text-muted-foreground">
         <span className="text-primary font-semibold">Sensei:</span> {senseiLine}
+        {onProduction && phase === "ARRANGE" && <span className="ml-2 text-amber-600">· Vocals is optional — click Vocals if you have leads to lay, or Finish to go Mixing.</span>}
       </p>
     </div>
   );

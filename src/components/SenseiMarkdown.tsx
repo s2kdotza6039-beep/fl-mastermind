@@ -1,44 +1,57 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Check } from "lucide-react";
+import { Check, UploadCloud, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { loadChatChecks, saveChatChecks } from "@/lib/chat-checks";
+import { loadChatChecks, saveChatChecks, type ChatChecks } from "@/lib/chat-checks";
 
 interface SenseiMarkdownProps {
   content: string;
   className?: string;
   /** Stable ID per message so checkbox state is keyed correctly */
   messageId?: string;
+  /** Which chat scope this message lives in — drives the "next step" button. */
+  scope?: string;
 }
 
-export const SenseiMarkdown = ({ content, className, messageId = "msg" }: SenseiMarkdownProps) => {
-  // Fresh counter every render — render order is stable, so ids are stable.
-  // (A memoized mutable counter drifts upward across renders and breaks keys.)
+/** Count GFM task-list items in markdown so we know when a checklist is complete. */
+function countTasks(content: string): { total: number } {
+  const matches = content.match(/^\s*[-*]\s+\[( |x|X)\]/gm);
+  return { total: matches ? matches.length : 0 };
+}
+
+export const SenseiMarkdown = ({ content, className, messageId = "msg", scope }: SenseiMarkdownProps) => {
+  const navigate = useNavigate();
+  const [checked, setChecked] = useState<ChatChecks>(() => loadChatChecks(messageId));
+  const taskTotal = useMemo(() => countTasks(content).total, [content]);
   const itemCounter = { n: 0 };
-  const [checked, setChecked] = useState<Record<string, boolean>>(() => loadChatChecks(messageId));
 
-  // R14.4b — Proof Lock: detect when every checkbox in this message is ticked
-  // and tell the chat composer to demand a new bounce before continuing.
-  const taskCount = useMemo(() => {
-    const regex = /^\s*(?:[-*]|\d+\.)\s+\[\s*[xX ]\s*\]/gm;
-    return Array.from(content.matchAll(regex)).length;
-  }, [content]);
+  const checkedCount = useMemo(() => {
+    // only count keys that belong to THIS message's checklist items
+    return Object.values(checked).filter(Boolean).length;
+  }, [checked]);
 
-  const taskIds = useMemo(
-    () => Array.from({ length: taskCount }, (_, i) => `${messageId}-${i}`),
-    [taskCount, messageId],
-  );
+  const allDone = taskTotal > 0 && checkedCount >= taskTotal;
 
-  const allDone = taskIds.length > 0 && taskIds.every((id) => checked[id]);
-
-  const prevAllDone = useRef(false);
+  // When the final box is ticked, tell the chat to demand proof (a new bounce).
   useEffect(() => {
-    if (allDone && !prevAllDone.current) {
+    if (allDone) {
+      try { console.info("[SenseiProof] proof-required", { messageId, taskTotal, scope }); } catch {}
       window.dispatchEvent(new CustomEvent("sensei:proof-required", { detail: { messageId } }));
     }
-    prevAllDone.current = allDone;
-  }, [allDone, messageId]);
+  }, [allDone, messageId, taskTotal, scope]);
+
+  const goUpload = () => {
+    // Route to upload; the loop/re-bounce continuation picks up from there.
+    navigate("/upload");
+  };
+  const goContinue = () => {
+    if (scope?.startsWith("PRODUCTION")) navigate("/production");
+    else if (scope === "MASTERING") navigate("/mastering");
+    else if (scope === "PUBLISH") navigate("/publish");
+    else navigate("/mixing");
+  };
 
   return (
     <div className={cn("prose prose-invert prose-sm max-w-none", className)}>
@@ -56,12 +69,10 @@ export const SenseiMarkdown = ({ content, className, messageId = "msg" }: Sensei
             <ol className="list-decimal list-inside space-y-1 mb-2 text-foreground/90">{children}</ol>
           ),
           li: ({ children, ...props }) => {
-            // react-markdown + remark-gfm marks task list items
             const isTask = (props as { className?: string }).className?.includes("task-list-item");
             if (isTask) {
               const id = `${messageId}-${itemCounter.n++}`;
               const isChecked = checked[id] ?? false;
-              // Strip the rendered raw checkbox; we render our own
               const filtered = Array.isArray(children)
                 ? children.filter((c) => {
                     if (typeof c === "object" && c !== null && "type" in c) {
@@ -121,6 +132,32 @@ export const SenseiMarkdown = ({ content, className, messageId = "msg" }: Sensei
       >
         {content}
       </ReactMarkdown>
+
+      {/* R14.4 — when the WHOLE checklist is ticked, Sensei asks for proof and
+          gives the clean next step instead of leaving the producer stranded. */}
+      {allDone && (
+        <div className="mt-3 rounded-md border border-primary/40 bg-primary/5 p-3">
+          <p className="text-xs font-semibold text-foreground">
+            ✅ Checklist complete. Now show Sensei the proof — upload the new version so he can re-analyze:
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={goUpload}
+              className="inline-flex items-center gap-1.5 rounded-md bg-gradient-gold px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+            >
+              <UploadCloud className="w-3.5 h-3.5" /> Upload new version
+            </button>
+            <button
+              type="button"
+              onClick={goContinue}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:text-primary"
+            >
+              Continue coaching <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

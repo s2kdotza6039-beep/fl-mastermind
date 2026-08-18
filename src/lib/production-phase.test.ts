@@ -5,6 +5,7 @@ import {
   buildBeatPhasePrompt,
   buildBodyPhasePrompt,
   buildRebouncePrompt,
+  buildVocalsPrompt,
   detectSketch,
   nextProductionPhase,
   prevProductionPhase,
@@ -21,18 +22,27 @@ describe("production phase", () => {
 
   it("reads a stored phase", () => {
     expect(readProductionPhase({ productionPhase: "ARRANGE" })).toBe("ARRANGE");
+    expect(readProductionPhase({ productionPhase: "VOCALS" })).toBe("VOCALS");
   });
 
   it("moves between phases and clamps at both ends", () => {
     expect(nextProductionPhase("BEAT")).toBe("BODY");
-    expect(nextProductionPhase("ARRANGE")).toBe("DONE");
+    expect(nextProductionPhase("ARRANGE")).toBe("VOCALS");
+    expect(nextProductionPhase("VOCALS")).toBe("DONE");
     expect(nextProductionPhase("DONE")).toBe("DONE");
-    expect(prevProductionPhase("DONE")).toBe("ARRANGE");
+    expect(prevProductionPhase("DONE")).toBe("VOCALS");
+    expect(prevProductionPhase("VOCALS")).toBe("ARRANGE");
     expect(prevProductionPhase("BEAT")).toBe("BEAT");
   });
 
   it("keeps phase order stable", () => {
-    expect(PRODUCTION_PHASES.map((p) => p.id)).toEqual(["BEAT", "BODY", "ARRANGE", "DONE"]);
+    expect(PRODUCTION_PHASES.map((p) => p.id)).toEqual(["BEAT", "BODY", "ARRANGE", "VOCALS", "DONE"]);
+  });
+
+  it("VOCALS is marked optional and blurb is vocal-specific", () => {
+    const vocals = PRODUCTION_PHASES.find(p => p.id === "VOCALS");
+    expect(vocals?.optional).toBe(true);
+    expect(vocals?.blurb.toLowerCase()).toContain("vocal");
   });
 
   it("detectSketch is honest when tonal information is missing", () => {
@@ -53,6 +63,7 @@ describe("production phase", () => {
     expect(buildAddElementPrompt(ctx)).toContain("add or improve one element");
     expect(buildBodyPhasePrompt(ctx)).toContain("BODY phase");
     expect(buildArrangePrompt(ctx)).toContain("ARRANGE phase");
+    expect(buildVocalsPrompt(ctx)).toContain("VOCALS phase");
   });
 
   it("buildRebouncePrompt reports the phase, the delta and what moved", () => {
@@ -76,5 +87,9 @@ describe("production phase", () => {
 
     const none = buildRebouncePrompt({ phase: "ARRANGE" });
     expect(none).toContain("No mix score is available yet");
+
+    const vocalBounce = buildRebouncePrompt({ phase: "VOCALS", scoreBefore: 70, scoreAfter: 78 });
+    expect(vocalBounce).toContain("VOCALS phase");
+    expect(vocalBounce).toContain("up 8");
   });
 });
