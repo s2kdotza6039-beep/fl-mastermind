@@ -5,7 +5,7 @@ import { useLoopLock } from "@/hooks/use-loop-lock";
 import { decodeAudioToChannels, detectFormat, runAnalysisOnDecoded } from "@/lib/audio-analysis";
 import { buildUploadAdvisePrompt, persistAnalyzedUpload } from "@/lib/coaching-runner";
 import { CONTINUITY_OVERRIDE_ID, overrideIssue } from "@/lib/loop-guard";
-import { loadProofLock, saveProofLock, shouldUnlockProof, proofLog, type ProofLockState } from "@/lib/proof-lock";
+import { loadProofLock, saveProofLock, shouldUnlockProof, proofLog, describeProofStatus, recordProofAttempt, type ProofLockState } from "@/lib/proof-lock";
 import { supabase } from "@/integrations/supabase/client";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
