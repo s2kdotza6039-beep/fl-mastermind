@@ -169,3 +169,14 @@ export function saveProofLock(projectId: string | null, lock: ProofLockState | n
     else sessionStorage.setItem(key, JSON.stringify(lock));
   } catch { /* ignore */ }
 }
+
+// Dev console helper: window.senseiProofDebug(true|false)
+try {
+  if (typeof window !== "undefined") {
+    (window as any).senseiProofDebug = (on = true) => {
+      setProofDebug(on);
+      console.info(`[SenseiProof] debug logging ${on ? "ENABLED" : "disabled"}`);
+      return on;
+    };
+  }
+} catch { /* ignore */ }
