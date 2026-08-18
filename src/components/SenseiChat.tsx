@@ -119,14 +119,24 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
       proofLog("unlock", { from: awaitingProof.lockedReportId, to: proofReportId, projectId: awaitingProof.projectId });
       setAwaitingProof(null);
     } else if (proofReportId && proofReportId !== awaitingProof.lockedReportId) {
+      const reason = loopLock.lockKind === "foreign" ? "foreign" : !lockedIsCurrentProject ? "other-project" : null;
       proofLog("unlock-blocked", {
-        reason: loopLock.lockKind === "foreign" ? "foreign-beat" : !lockedIsCurrentProject ? "other-project" : "unknown",
+        reason: reason ?? "unknown",
         lockedId: awaitingProof.lockedReportId,
         attemptedId: proofReportId,
         lockKind: loopLock.lockKind ?? null,
       });
+      setAwaitingProof((cur) => recordProofAttempt(cur, proofReportId, reason as any));
     }
   }, [proofReportId, awaitingProof, lockedIsCurrentProject, loopLock.lockKind, activeProject?.id]);
+
+  const proofStatus = describeProofStatus(
+    awaitingProof,
+    proofReportId,
+    activeProject?.id ?? null,
+    loopLock.lockKind ?? null,
+  );
+
 
   // R13.5 — Sensei leads (route chapter), the producer steers (override).
   const location = useLocation();
