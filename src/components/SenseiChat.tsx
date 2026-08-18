@@ -5,6 +5,7 @@ import { useLoopLock } from "@/hooks/use-loop-lock";
 import { decodeAudioToChannels, detectFormat, runAnalysisOnDecoded } from "@/lib/audio-analysis";
 import { buildUploadAdvisePrompt, persistAnalyzedUpload } from "@/lib/coaching-runner";
 import { CONTINUITY_OVERRIDE_ID, overrideIssue } from "@/lib/loop-guard";
+import { loadProofLock, saveProofLock, shouldUnlockProof, proofLog, type ProofLockState } from "@/lib/proof-lock";
 import { supabase } from "@/integrations/supabase/client";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -90,28 +91,43 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
   const { activeProject, loading: projectLoading } = useProject();
   const loopLock = useLoopLock(activeProject?.id ?? null);
   // R14.4b + R15 — proof lock: after a checklist completes, Sensei demands proof (a new bounce).
-  // R15 hardening: lightweight analytics + extra guard so foreign uploads never clear the lock.
-  type ProofLock = { lockedReportId: string; projectId: string | null; messageId: string | null };
-  const [awaitingProof, setAwaitingProof] = useState<ProofLock | null>(null);
+  // R15 hardening: persisted per project so switching scope / navigating away keeps the lock,
+  // plus dev logging so lock/unlock transitions are easy to diagnose.
+  type ProofLock = ProofLockState;
+  const [awaitingProof, setAwaitingProof] = useState<ProofLock | null>(() => loadProofLock(activeProject?.id ?? null));
   const proofReportId = (active as any)?.id ?? null;
   const lockedIsCurrentProject = awaitingProof ? (awaitingProof.projectId === (activeProject?.id ?? null)) : true;
+  // Re-hydrate when the project resolves/changes (context loads async, component remounts on scope change).
+  useEffect(() => {
+    const stored = loadProofLock(activeProject?.id ?? null);
+    setAwaitingProof((cur) => {
+      if (cur && cur.projectId === (activeProject?.id ?? null)) return cur;
+      if (stored) proofLog("restore", { lockedReportId: stored.lockedReportId, projectId: stored.projectId });
+      return stored;
+    });
+  }, [activeProject?.id]);
+  // Persist every transition.
+  useEffect(() => {
+    saveProofLock(activeProject?.id ?? null, awaitingProof);
+  }, [awaitingProof, activeProject?.id]);
   useEffect(() => {
     if (!awaitingProof) return;
     // Extra guard: only unlock when a DIFFERENT report for the SAME project becomes active
     // and the same-beat guard is not flagging foreign. This prevents a foreign upload
     // that somehow still sets active from clearing the proof lock.
-    if (
-      proofReportId &&
-      proofReportId !== awaitingProof.lockedReportId &&
-      lockedIsCurrentProject &&
-      loopLock.lockKind !== "foreign"
-    ) {
-      try { console.info("[SenseiProof] unlock", { from: awaitingProof.lockedReportId, to: proofReportId, projectId: awaitingProof.projectId }); } catch {}
+    if (shouldUnlockProof(awaitingProof, proofReportId, activeProject?.id ?? null, loopLock.lockKind ?? null)) {
+      proofLog("unlock", { from: awaitingProof.lockedReportId, to: proofReportId, projectId: awaitingProof.projectId });
       setAwaitingProof(null);
-    } else if (proofReportId && proofReportId !== awaitingProof.lockedReportId && loopLock.lockKind === "foreign") {
-      try { console.info("[SenseiProof] unlock-blocked-foreign", { lockedId: awaitingProof.lockedReportId, attemptedId: proofReportId }); } catch {}
+    } else if (proofReportId && proofReportId !== awaitingProof.lockedReportId) {
+      proofLog("unlock-blocked", {
+        reason: loopLock.lockKind === "foreign" ? "foreign-beat" : !lockedIsCurrentProject ? "other-project" : "unknown",
+        lockedId: awaitingProof.lockedReportId,
+        attemptedId: proofReportId,
+        lockKind: loopLock.lockKind ?? null,
+      });
     }
-  }, [proofReportId, awaitingProof, lockedIsCurrentProject, loopLock.lockKind]);
+  }, [proofReportId, awaitingProof, lockedIsCurrentProject, loopLock.lockKind, activeProject?.id]);
+
   // R13.5 — Sensei leads (route chapter), the producer steers (override).
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -134,7 +150,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
           projectId: activeProject?.id ?? null,
           messageId: detail?.messageId ?? null,
         };
-        try { console.info("[SenseiProof] proof-required", { messageId: next.messageId, lockedReportId: next.lockedReportId, projectId: next.projectId, scope }); } catch {}
+        proofLog("proof-required", { messageId: next.messageId, lockedReportId: next.lockedReportId, projectId: next.projectId, scope });
         return next;
       });
     };
@@ -317,8 +333,10 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
     const trimmed = text.trim();
     if (!trimmed || loading) return;
     if (awaitingProof) {
-      try { console.info("[SenseiProof] locked-send-attempt", { lockedReportId: awaitingProof.lockedReportId, projectId: awaitingProof.projectId }); } catch {}
-      toast.info("Sensei is waiting for your new bounce. Upload it (paperclip) to continue.");
+      proofLog("locked-send-attempt", { lockedReportId: awaitingProof.lockedReportId, projectId: awaitingProof.projectId, scope });
+      toast.info("Sensei is waiting for proof", {
+        description: "Upload a NEW bounce of this same song (📎 paperclip or /upload). A different track is flagged foreign and the chat stays locked.",
+      });
       return;
     }
     // Don't let users send before their project memory has hydrated — a
@@ -819,13 +837,17 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
           <div className="flex items-start gap-2">
             <span className="text-amber-400 mt-0.5">🔒</span>
             <div className="flex-1">
-              <p className="font-semibold">Sensei is waiting for <strong>proof</strong> — upload your new bounce to continue.</p>
+              <p className="font-semibold">Chat locked — Sensei is waiting for <strong>proof</strong> of your fixes.</p>
+              <p className="mt-1 text-[11px] text-amber-200/80">You ticked every step of the checklist. Sensei won't keep coaching on words alone: he needs to hear the result before the next round.</p>
               <ul className="mt-1.5 space-y-0.5 list-disc list-inside text-amber-300/90 text-[11px]">
-                <li>Same <strong>project</strong> & same <strong>song</strong> — a continuation, not a different track</li>
-                <li>New bounce (re-export from FL Studio) — not the same file</li>
-                <li>Upload via the <strong>📎 paperclip</strong> in this chat or <strong>/upload</strong></li>
+                <li>Apply the fixes in FL Studio, then <strong>re-export (bounce)</strong> the track</li>
+                <li>Upload it with the <strong>📎 paperclip</strong> below, or on the <strong>/upload</strong> page</li>
+                <li>It must be the <strong>same song in this project</strong> — a newer version, not the same file again</li>
               </ul>
-              <p className="mt-1.5 text-[11px] text-amber-200/70">A wrong or foreign beat will keep this locked — Sensei checks beat DNA.</p>
+              <p className="mt-1.5 text-[11px] text-amber-200/70">
+                If the upload is a <strong>different track</strong>, the beat-DNA check flags it <em>foreign</em>: it will not count as proof and this chat stays locked. Upload the correct bounce (or use the override above if the change was intentional) to unlock.
+              </p>
+              <p className="mt-1 text-[11px] text-amber-200/60">The lock stays put if you switch stage or navigate away and come back.</p>
             </div>
           </div>
         </div>
