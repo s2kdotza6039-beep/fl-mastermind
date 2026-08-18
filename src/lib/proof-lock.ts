@@ -4,7 +4,85 @@ export interface ProofLockState {
   lockedReportId: string;
   projectId: string | null;
   messageId: string | null;
+  /** R15.1 — how many bounces the producer has offered as proof while locked. */
+  attempts?: number;
+  /** R15.1 — id of the last bounce that was rejected as proof. */
+  lastRejectedReportId?: string | null;
+  /** R15.1 — why the last attempt was rejected. */
+  lastRejectReason?: "foreign" | "same-file" | "other-project" | null;
 }
+
+export type ProofMatch = "waiting" | "checking" | "rejected" | "matched";
+
+export interface ProofStatus {
+  match: ProofMatch;
+  attempts: number;
+  title: string;
+  detail: string;
+}
+
+/** UI status panel model — does the current bounce count as proof, and how many tries so far. */
+export function describeProofStatus(
+  lock: ProofLockState | null,
+  currentReportId: string | null,
+  projectId: string | null,
+  loopLockKind: string | null,
+): ProofStatus {
+  const attempts = lock?.attempts ?? 0;
+  if (!lock) {
+    return { match: "matched", attempts, title: "Proof accepted", detail: "Coaching is open — no proof pending." };
+  }
+  if (loopLockKind === "foreign") {
+    return {
+      match: "rejected",
+      attempts,
+      title: "Bounce rejected — different song",
+      detail: "The beat DNA of this upload doesn't match the project. Export the SAME song again (same tempo/key/arrangement) and upload that.",
+    };
+  }
+  if (lock.projectId !== projectId) {
+    return {
+      match: "rejected",
+      attempts,
+      title: "Bounce rejected — wrong project",
+      detail: "That bounce belongs to another project. Switch back to the locked project or upload this song's bounce.",
+    };
+  }
+  if (currentReportId && currentReportId === lock.lockedReportId) {
+    return {
+      match: "waiting",
+      attempts,
+      title: "Waiting for a NEW bounce",
+      detail: "Still hearing the same file you were coached on. Apply the fixes in FL Studio, re-export, then upload the new WAV/MP3.",
+    };
+  }
+  if (loopLockKind === "rebounce") {
+    return { match: "checking", attempts, title: "Checking your bounce…", detail: "Sensei is comparing beat DNA against the locked version." };
+  }
+  return {
+    match: "waiting",
+    attempts,
+    title: "Waiting for proof",
+    detail: "Upload the re-exported bounce of this same song with the 📎 paperclip or on /upload.",
+  };
+}
+
+/** Record a rejected proof attempt (increments the counter shown in the status panel). */
+export function recordProofAttempt(
+  lock: ProofLockState | null,
+  rejectedReportId: string | null,
+  reason: ProofLockState["lastRejectReason"],
+): ProofLockState | null {
+  if (!lock) return lock;
+  if (rejectedReportId && rejectedReportId === lock.lastRejectedReportId) return lock;
+  return {
+    ...lock,
+    attempts: (lock.attempts ?? 0) + 1,
+    lastRejectedReportId: rejectedReportId,
+    lastRejectReason: reason ?? null,
+  };
+}
+
 
 /**
  * Returns true only if the new active report should clear the proof lock.
