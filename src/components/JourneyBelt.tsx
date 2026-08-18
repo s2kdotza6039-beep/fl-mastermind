@@ -279,7 +279,7 @@ export const JourneyBelt = () => {
 
       <p className="text-[11px] text-muted-foreground">
         <span className="text-primary font-semibold">Sensei:</span> {senseiLine}
-        {onProduction && phase === "ARRANGE" && <span className="ml-2 text-amber-600">· Vocals is optional — click Vocals if you have leads to lay, or Finish to go Mixing.</span>}
+        {onProduction && phase === "ARRANGE" && <span className="ml-2 text-amber-600">· Vocals is optional — click Vocals on the belt (top or below) if you have leads to lay, or Finish to go Mixing.</span>}
       </p>
     </div>
   );
