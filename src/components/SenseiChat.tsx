@@ -837,13 +837,17 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
           <div className="flex items-start gap-2">
             <span className="text-amber-400 mt-0.5">🔒</span>
             <div className="flex-1">
-              <p className="font-semibold">Sensei is waiting for <strong>proof</strong> — upload your new bounce to continue.</p>
+              <p className="font-semibold">Chat locked — Sensei is waiting for <strong>proof</strong> of your fixes.</p>
+              <p className="mt-1 text-[11px] text-amber-200/80">You ticked every step of the checklist. Sensei won't keep coaching on words alone: he needs to hear the result before the next round.</p>
               <ul className="mt-1.5 space-y-0.5 list-disc list-inside text-amber-300/90 text-[11px]">
-                <li>Same <strong>project</strong> & same <strong>song</strong> — a continuation, not a different track</li>
-                <li>New bounce (re-export from FL Studio) — not the same file</li>
-                <li>Upload via the <strong>📎 paperclip</strong> in this chat or <strong>/upload</strong></li>
+                <li>Apply the fixes in FL Studio, then <strong>re-export (bounce)</strong> the track</li>
+                <li>Upload it with the <strong>📎 paperclip</strong> below, or on the <strong>/upload</strong> page</li>
+                <li>It must be the <strong>same song in this project</strong> — a newer version, not the same file again</li>
               </ul>
-              <p className="mt-1.5 text-[11px] text-amber-200/70">A wrong or foreign beat will keep this locked — Sensei checks beat DNA.</p>
+              <p className="mt-1.5 text-[11px] text-amber-200/70">
+                If the upload is a <strong>different track</strong>, the beat-DNA check flags it <em>foreign</em>: it will not count as proof and this chat stays locked. Upload the correct bounce (or use the override above if the change was intentional) to unlock.
+              </p>
+              <p className="mt-1 text-[11px] text-amber-200/60">The lock stays put if you switch stage or navigate away and come back.</p>
             </div>
           </div>
         </div>
