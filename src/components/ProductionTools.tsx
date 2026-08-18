@@ -6,6 +6,10 @@ import { GrooveEngineCard } from "@/components/GrooveEngineCard";
 import { ChordGeneratorCard } from "@/components/ChordGeneratorCard";
 import { GenrePlaybookCard } from "@/components/GenrePlaybookCard";
 import { PlaybookChecklistCard } from "@/components/PlaybookChecklistCard";
+import { VocalChainCard } from "@/components/VocalChainCard";
+import { LyricPadCard } from "@/components/LyricPadCard";
+import { VocalTuningCard } from "@/components/VocalTuningCard";
+import { VocalStackCard } from "@/components/VocalStackCard";
 
 interface LatestReport {
   detected_key: string | null;
@@ -14,7 +18,7 @@ interface LatestReport {
 
 /**
  * R14.3 — the body tools live inside the Production chapter, surfaced by phase:
- * BEAT → groove engine, BODY → chords + playbook, ARRANGE → playbook checklist.
+ * BEAT → groove engine, BODY → chords + playbook, ARRANGE → playbook checklist, VOCALS → vocal chain + lyrics + tuning + stack.
  */
 export const ProductionTools = () => {
   const { activeProject } = useProject();
@@ -71,6 +75,15 @@ export const ProductionTools = () => {
           projectId={activeProject?.id ?? null}
           projectName={projectName}
         />
+      )}
+
+      {phase === "VOCALS" && (
+        <div className="space-y-4">
+          <VocalChainCard genre={genre} projectName={projectName} />
+          <LyricPadCard projectId={activeProject?.id ?? null} projectName={projectName} genre={genre} />
+          <VocalTuningCard genre={genre} projectName={projectName} />
+          <VocalStackCard genre={genre} projectName={projectName} />
+        </div>
       )}
     </div>
   );

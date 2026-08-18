@@ -6,6 +6,7 @@ const PHASE_LABEL: Record<string, string> = {
   BEAT: "Beat",
   BODY: "Body",
   ARRANGE: "Arrange",
+  VOCALS: "Vocals",
   DONE: "Done",
 };
 

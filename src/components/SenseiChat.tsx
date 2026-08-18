@@ -89,6 +89,46 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
   const { toChatAudio, setActiveReport, refreshRecent, active } = useTrackSession();
   const { activeProject, loading: projectLoading } = useProject();
   const loopLock = useLoopLock(activeProject?.id ?? null);
+  // R14.4b + R15 — proof lock: after a checklist completes, Sensei demands proof (a new bounce).
+  // R15 hardening: lightweight analytics + extra guard so foreign uploads never clear the lock.
+  type ProofLock = { lockedReportId: string; projectId: string | null; messageId: string | null };
+  const [awaitingProof, setAwaitingProof] = useState<ProofLock | null>(null);
+  const proofReportId = (active as any)?.id ?? null;
+  const lockedIsCurrentProject = awaitingProof ? (awaitingProof.projectId === (activeProject?.id ?? null)) : true;
+  useEffect(() => {
+    if (!awaitingProof) return;
+    // Extra guard: only unlock when a DIFFERENT report for the SAME project becomes active
+    // and the same-beat guard is not flagging foreign. This prevents a foreign upload
+    // that somehow still sets active from clearing the proof lock.
+    if (
+      proofReportId &&
+      proofReportId !== awaitingProof.lockedReportId &&
+      lockedIsCurrentProject &&
+      loopLock.lockKind !== "foreign"
+    ) {
+      try { console.info("[SenseiProof] unlock", { from: awaitingProof.lockedReportId, to: proofReportId, projectId: awaitingProof.projectId }); } catch {}
+      setAwaitingProof(null);
+    } else if (proofReportId && proofReportId !== awaitingProof.lockedReportId && loopLock.lockKind === "foreign") {
+      try { console.info("[SenseiProof] unlock-blocked-foreign", { lockedId: awaitingProof.lockedReportId, attemptedId: proofReportId }); } catch {}
+    }
+  }, [proofReportId, awaitingProof, lockedIsCurrentProject, loopLock.lockKind]);
+  useEffect(() => {
+    const onProof = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { messageId?: string } | undefined;
+      setAwaitingProof((cur) => {
+        if (cur) return cur; // already locked
+        const next: ProofLock = {
+          lockedReportId: proofReportId || detail?.messageId || "proof",
+          projectId: activeProject?.id ?? null,
+          messageId: detail?.messageId ?? null,
+        };
+        try { console.info("[SenseiProof] proof-required", { messageId: next.messageId, lockedReportId: next.lockedReportId, projectId: next.projectId, scope }); } catch {}
+        return next;
+      });
+    };
+    window.addEventListener("sensei:proof-required", onProof as EventListener);
+    return () => window.removeEventListener("sensei:proof-required", onProof as EventListener);
+  }, [proofReportId, activeProject?.id, scope]);
   // R13.5 — Sensei leads (route chapter), the producer steers (override).
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -202,7 +242,6 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
   const [loading, setLoading] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string; lastInput: string } | null>(null);
-  const [awaitingProof, setAwaitingProof] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentInitial = useRef(false);
 
@@ -274,27 +313,12 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  // R14.4b — Proof Lock: when every checkbox in a Sensei message is ticked,
-  // lock the composer until a new bounce is uploaded and activated.
-  useEffect(() => {
-    const handler = () => setAwaitingProof(active?.id ?? null);
-    window.addEventListener("sensei:proof-required", handler);
-    return () => window.removeEventListener("sensei:proof-required", handler);
-  }, [active?.id]);
-
-  useEffect(() => {
-    if (!awaitingProof) return;
-    if (active?.id && active.id !== awaitingProof) {
-      setAwaitingProof(null);
-    }
-  }, [active?.id, awaitingProof]);
-
   const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
-    // R14.4b — Proof Lock: checklist complete, demand a new bounce before chat continues.
     if (awaitingProof) {
-      toast.error("Upload your new bounce to continue — Sensei is waiting for proof.");
+      try { console.info("[SenseiProof] locked-send-attempt", { lockedReportId: awaitingProof.lockedReportId, projectId: awaitingProof.projectId }); } catch {}
+      toast.info("Sensei is waiting for your new bounce. Upload it (paperclip) to continue.");
       return;
     }
     // Don't let users send before their project memory has hydrated — a
@@ -570,7 +594,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
                 <p className="text-sm leading-relaxed">{m.content}</p>
               ) : (
                 <>
-                  <SenseiMarkdown content={m.content || "…"} messageId={messageKey(m.content)} />
+                  <SenseiMarkdown content={m.content || "…"} messageId={messageKey(m.content)} scope={scope} />
                   {(() => {
                     const hits = findPrioritized(m.content, ownedAll);
                     if (hits.length === 0) return null;
@@ -791,21 +815,21 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
 
 
       {awaitingProof && (
-        <div className="px-4 pb-2">
-          <div className="rounded-lg border border-warning/40 bg-warning/10 p-3">
-            <div className="flex items-start gap-3">
-              <Lock className="w-4 h-4 text-warning mt-0.5 flex-shrink-0" />
-              <div className="min-w-0 flex-1">
-                <div className="font-semibold text-sm text-foreground">🥋 Sensei: checklist complete — proof required</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  All steps are ticked. Upload your new bounce using the paperclip to continue. A wrong or foreign beat will keep this locked.
-                </p>
-              </div>
+        <div className="border-t border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
+          <div className="flex items-start gap-2">
+            <span className="text-amber-400 mt-0.5">🔒</span>
+            <div className="flex-1">
+              <p className="font-semibold">Sensei is waiting for <strong>proof</strong> — upload your new bounce to continue.</p>
+              <ul className="mt-1.5 space-y-0.5 list-disc list-inside text-amber-300/90 text-[11px]">
+                <li>Same <strong>project</strong> & same <strong>song</strong> — a continuation, not a different track</li>
+                <li>New bounce (re-export from FL Studio) — not the same file</li>
+                <li>Upload via the <strong>📎 paperclip</strong> in this chat or <strong>/upload</strong></li>
+              </ul>
+              <p className="mt-1.5 text-[11px] text-amber-200/70">A wrong or foreign beat will keep this locked — Sensei checks beat DNA.</p>
             </div>
           </div>
         </div>
       )}
-
       <form onSubmit={handleSubmit} className="border-t border-border p-4 bg-card/50 backdrop-blur">
         <div className="flex gap-2 items-end">
           <select
@@ -864,19 +888,19 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
               }
             }}
             placeholder={awaitingProof
-              ? "Sensei is waiting for your new bounce — upload it using the paperclip…"
+              ? "🔒 Sensei is waiting for your new bounce — upload it using the paperclip…"
               : loopLock.lockKind === "foreign"
-                ? "🔒 Beat not recognized — load the correct bounce above to continue…"
-                : loopLock.lockKind === "rebounce"
-                  ? "🔒 Waiting for your new bounce — Sensei will verify it…"
-                  : projectLoading ? "Restoring project memory…" : "Ask Sensei anything... (Shift+Enter for new line)"}
+              ? "🔒 Beat not recognized — load the correct bounce above to continue…"
+              : loopLock.lockKind === "rebounce"
+                ? "🔒 Waiting for your new bounce — Sensei will verify it…"
+                : projectLoading ? "Restoring project memory…" : "Ask Sensei anything... (Shift+Enter for new line)"}
             rows={1}
             className="resize-none bg-input border-border focus-visible:ring-primary min-h-[44px]"
-            disabled={loading || projectLoading || loopLock.lockKind != null || awaitingProof != null}
+            disabled={loading || projectLoading || loopLock.lockKind != null || !!awaitingProof}
           />
           <Button
             type="submit"
-            disabled={loading || projectLoading || loopLock.lockKind != null || awaitingProof != null || !input.trim()}
+            disabled={loading || projectLoading || loopLock.lockKind != null || !!awaitingProof || !input.trim()}
             className="bg-gradient-gold text-primary-foreground hover:opacity-90 h-[44px] px-4"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

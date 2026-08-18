@@ -27,6 +27,8 @@ export function phaseTip(phase: ProductionPhase, genre?: string | null): string 
       return "Write the chords first, then the melody on top — 4 or 8 bars is enough. Keep the bass out of the chord range.";
     case "ARRANGE":
       return "Copy your 8-bar loop into intro / verse / chorus / bridge and remove one element per section so the drop feels bigger.";
+    case "VOCALS":
+      return "Record 3 full takes of every line, comp the best words, tune gently with NewTone (keep it human), then stack doubles only on the chorus.";
     case "DONE":
       return "Bounce a 24-bit WAV with the master fader at 0 dB and no limiter — the Mixing chapter needs headroom to work with.";
     default:
@@ -43,4 +45,15 @@ export function mixingTip(genre?: string | null): string {
     return "Sidechain the 808 to the kick by 2–3 dB — the low end stops flapping and the kick reads on phone speakers.";
   }
   return "Fix the loudest problem first: one EQ cut on the worst resonance beats ten small moves.";
+}
+
+export function vocalsTip(genre?: string | null): string {
+  const g = (genre ?? "").trim().toLowerCase();
+  if (g.includes("amapiano") || g.includes("afro") || g.includes("soul") || g.includes("rnb")) {
+    return "Keep the lead intimate and centered — doubles -6 dB, panned ±12%, harmonies tucked 2–3 dB below lead. Let the groove breathe around the vocal.";
+  }
+  if (g.includes("trap") || g.includes("drill") || g.includes("hip")) {
+    return "Stack ad-libs hard-panned and drenched (reverb/delay throw), but keep the main rap dry and forward — presence over wash.";
+  }
+  return "Lead at -6 dB peak, doubles -6 dB under lead, harmonies -9 dB. Tune transparently — if you hear the correction, back off.";
 }
