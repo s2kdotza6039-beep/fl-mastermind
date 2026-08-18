@@ -854,10 +854,52 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
                 <li>Upload it with the <strong>📎 paperclip</strong> below, or on the <strong>/upload</strong> page</li>
                 <li>It must be the <strong>same song in this project</strong> — a newer version, not the same file again</li>
               </ul>
+
+              {/* R15.1 — proof status panel: does the current bounce match, and how many tries */}
+              <div
+                data-testid="proof-status-panel"
+                className={cn(
+                  "mt-2 rounded-md border px-2.5 py-2",
+                  proofStatus.match === "rejected"
+                    ? "border-red-500/50 bg-red-500/10"
+                    : proofStatus.match === "checking"
+                      ? "border-sky-500/40 bg-sky-500/10"
+                      : "border-amber-500/40 bg-amber-500/5",
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-[11px]">
+                    {proofStatus.match === "rejected" ? "❌" : proofStatus.match === "checking" ? "🎧" : "⏳"} {proofStatus.title}
+                  </span>
+                  <span className="text-[10px] opacity-80" data-testid="proof-attempts">
+                    Proof attempts: {proofStatus.attempts}
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] opacity-90">{proofStatus.detail}</p>
+                {proofStatus.match === "rejected" && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-7 text-[11px]"
+                      disabled={knobBusy}
+                      onClick={() => knobFileRef.current?.click()}
+                    >
+                      {knobBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3 mr-1" />}
+                      Re-upload the correct bounce
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" className="h-7 text-[11px]" onClick={loopLock.refresh}>
+                      Re-check now
+                    </Button>
+                  </div>
+                )}
+              </div>
+
               <p className="mt-1.5 text-[11px] text-amber-200/70">
-                If the upload is a <strong>different track</strong>, the beat-DNA check flags it <em>foreign</em>: it will not count as proof and this chat stays locked. Upload the correct bounce (or use the override above if the change was intentional) to unlock.
+                If the upload is a <strong>different track</strong>, the beat-DNA check flags it <em>foreign</em>: it will not count as proof and this chat stays locked. Fix it right here — pick the correct file with the button above, no page refresh needed.
               </p>
               <p className="mt-1 text-[11px] text-amber-200/60">The lock stays put if you switch stage or navigate away and come back.</p>
+
             </div>
           </div>
         </div>
