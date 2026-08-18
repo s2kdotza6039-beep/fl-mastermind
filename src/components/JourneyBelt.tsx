@@ -29,7 +29,9 @@ const CHAPTERS: { id: ChapterId; label: string; href: string; icon: typeof Slide
 export const JourneyBelt = () => {
   const { activeProject } = useProject();
   const location = useLocation();
+  const navigate = useNavigate();
   const [journey, setJourney] = useState<JourneyState | null>(null);
+
 
   const { phase, setPhase, saving: phaseSaving } = useProductionPhase();
 
