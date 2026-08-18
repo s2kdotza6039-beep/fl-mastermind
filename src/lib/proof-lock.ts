@@ -119,12 +119,36 @@ export function proofLockKey(projectId: string | null): string {
 }
 
 /** Dev-only structured logging for lock/unlock diagnosis. */
+/**
+ * R15.1 — dev-only toggle, no code change needed:
+ *   localStorage.setItem("sensei.proofDebug", "on")  // or window.senseiProofDebug(true)
+ * Defaults: on in dev, off in production builds.
+ */
+const DEBUG_KEY = "sensei.proofDebug";
+
+export function setProofDebug(on: boolean) {
+  try { localStorage.setItem(DEBUG_KEY, on ? "on" : "off"); } catch { /* ignore */ }
+}
+
+export function isProofDebugEnabled(): boolean {
+  let flag: string | null = null;
+  try { flag = localStorage.getItem(DEBUG_KEY); } catch { /* ignore */ }
+  if (flag === "on") return true;
+  if (flag === "off") return false;
+  try {
+    return !(typeof import.meta !== "undefined" && (import.meta as any).env?.PROD);
+  } catch {
+    return false;
+  }
+}
+
 export function proofLog(event: string, data?: Record<string, unknown>) {
   try {
-    if (typeof import.meta !== "undefined" && (import.meta as any).env?.PROD) return;
+    if (!isProofDebugEnabled()) return;
     console.info(`[SenseiProof] ${event}`, data ?? {});
   } catch { /* ignore */ }
 }
+
 
 export function loadProofLock(projectId: string | null): ProofLockState | null {
   try {
