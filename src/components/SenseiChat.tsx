@@ -90,28 +90,43 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
   const { activeProject, loading: projectLoading } = useProject();
   const loopLock = useLoopLock(activeProject?.id ?? null);
   // R14.4b + R15 — proof lock: after a checklist completes, Sensei demands proof (a new bounce).
-  // R15 hardening: lightweight analytics + extra guard so foreign uploads never clear the lock.
-  type ProofLock = { lockedReportId: string; projectId: string | null; messageId: string | null };
-  const [awaitingProof, setAwaitingProof] = useState<ProofLock | null>(null);
+  // R15 hardening: persisted per project so switching scope / navigating away keeps the lock,
+  // plus dev logging so lock/unlock transitions are easy to diagnose.
+  type ProofLock = ProofLockState;
+  const [awaitingProof, setAwaitingProof] = useState<ProofLock | null>(() => loadProofLock(activeProject?.id ?? null));
   const proofReportId = (active as any)?.id ?? null;
   const lockedIsCurrentProject = awaitingProof ? (awaitingProof.projectId === (activeProject?.id ?? null)) : true;
+  // Re-hydrate when the project resolves/changes (context loads async, component remounts on scope change).
+  useEffect(() => {
+    const stored = loadProofLock(activeProject?.id ?? null);
+    setAwaitingProof((cur) => {
+      if (cur && cur.projectId === (activeProject?.id ?? null)) return cur;
+      if (stored) proofLog("restore", { lockedReportId: stored.lockedReportId, projectId: stored.projectId });
+      return stored;
+    });
+  }, [activeProject?.id]);
+  // Persist every transition.
+  useEffect(() => {
+    saveProofLock(activeProject?.id ?? null, awaitingProof);
+  }, [awaitingProof, activeProject?.id]);
   useEffect(() => {
     if (!awaitingProof) return;
     // Extra guard: only unlock when a DIFFERENT report for the SAME project becomes active
     // and the same-beat guard is not flagging foreign. This prevents a foreign upload
     // that somehow still sets active from clearing the proof lock.
-    if (
-      proofReportId &&
-      proofReportId !== awaitingProof.lockedReportId &&
-      lockedIsCurrentProject &&
-      loopLock.lockKind !== "foreign"
-    ) {
-      try { console.info("[SenseiProof] unlock", { from: awaitingProof.lockedReportId, to: proofReportId, projectId: awaitingProof.projectId }); } catch {}
+    if (shouldUnlockProof(awaitingProof, proofReportId, activeProject?.id ?? null, loopLock.lockKind ?? null)) {
+      proofLog("unlock", { from: awaitingProof.lockedReportId, to: proofReportId, projectId: awaitingProof.projectId });
       setAwaitingProof(null);
-    } else if (proofReportId && proofReportId !== awaitingProof.lockedReportId && loopLock.lockKind === "foreign") {
-      try { console.info("[SenseiProof] unlock-blocked-foreign", { lockedId: awaitingProof.lockedReportId, attemptedId: proofReportId }); } catch {}
+    } else if (proofReportId && proofReportId !== awaitingProof.lockedReportId) {
+      proofLog("unlock-blocked", {
+        reason: loopLock.lockKind === "foreign" ? "foreign-beat" : !lockedIsCurrentProject ? "other-project" : "unknown",
+        lockedId: awaitingProof.lockedReportId,
+        attemptedId: proofReportId,
+        lockKind: loopLock.lockKind ?? null,
+      });
     }
-  }, [proofReportId, awaitingProof, lockedIsCurrentProject, loopLock.lockKind]);
+  }, [proofReportId, awaitingProof, lockedIsCurrentProject, loopLock.lockKind, activeProject?.id]);
+
   // R13.5 — Sensei leads (route chapter), the producer steers (override).
   const location = useLocation();
   const [searchParams] = useSearchParams();
