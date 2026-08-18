@@ -103,8 +103,15 @@ export const JourneyBelt = () => {
   const masterReady = journey.reachedMixReady;
   const productionDone = phase === "DONE" || masterReady;
 
-  const chapterState = (id: ChapterId): "done" | "current" | "locked" => {
-    if (id === "PRODUCTION") return productionDone ? "done" : "current";
+  const isVocalsPhase = phase === "VOCALS";
+
+  const chapterState = (id: ChapterId): "done" | "current" | "locked" | "optional" => {
+    if (id === "PRODUCTION") return productionDone || isVocalsPhase ? "done" : "current";
+    if (id === "VOCALS") {
+      if (phase === "DONE") return "done";
+      if (isVocalsPhase) return "current";
+      return "optional"; // dashed, always clickable — never locked
+    }
     if (id === "MIXING") {
       if (!productionDone) return "locked";
       return masterReady ? "done" : "current";
@@ -114,7 +121,9 @@ export const JourneyBelt = () => {
 
   const onProduction = location.pathname.startsWith("/production");
   const activeChapter: ChapterId = onProduction
-    ? "PRODUCTION"
+    ? isVocalsPhase
+      ? "VOCALS"
+      : "PRODUCTION"
     : location.pathname.startsWith("/mastering")
       ? "MASTERING"
       : "MIXING";
@@ -124,12 +133,33 @@ export const JourneyBelt = () => {
   const senseiLine = onProduction
     ? phase === "DONE"
       ? "Production is finished — step into the Mixing chapter when you're ready."
-      : `${PRODUCTION_PHASES[Math.max(0, phaseIndex)].blurb}`
+      : isVocalsPhase
+        ? "Vocals — record, tune and stack. Optional: skip if this is an instrumental."
+        : `${PRODUCTION_PHASES[Math.max(0, phaseIndex)].blurb}`
     : journeyGuidance(journey);
+
+  const handleChapterClick = (
+    e: React.MouseEvent<HTMLAnchorElement>,
+    c: (typeof CHAPTERS)[number],
+    state: ReturnType<typeof chapterState>,
+  ) => {
+    if (c.id === "VOCALS") {
+      e.preventDefault();
+      void setPhase("VOCALS" as any);
+      if (!onProduction) navigate("/production");
+      return;
+    }
+    if (c.id === "PRODUCTION" && onProduction && isVocalsPhase) {
+      e.preventDefault();
+      void setPhase("BEAT" as any);
+      return;
+    }
+    if (state === "locked") e.preventDefault();
+  };
 
   return (
     <div className="border-b border-border bg-card/20 px-4 py-2 space-y-1">
-      {/* Chapters */}
+      {/* Chapters — R15.1: Vocals is a top-level OPTIONAL chapter between Production and Mixing */}
       <div className="flex items-center gap-1 overflow-x-auto scrollbar-thin">
         {CHAPTERS.map((c, i) => {
           const state = chapterState(c.id);
@@ -141,14 +171,14 @@ export const JourneyBelt = () => {
               <Link
                 to={c.href}
                 aria-current={isActive ? "step" : undefined}
-                onClick={(e) => {
-                  if (state === "locked") e.preventDefault();
-                }}
+                title={c.optional ? "Optional chapter — skip if this is an instrumental." : undefined}
+                onClick={(e) => handleChapterClick(e, c, state)}
                 className={cn(
                   "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors whitespace-nowrap",
                   isActive && "bg-gradient-gold text-primary-foreground shadow-sm glow-gold",
                   !isActive && state === "done" && "bg-primary/15 text-primary hover:bg-primary/25",
                   !isActive && state === "current" && "text-foreground hover:bg-primary/10",
+                  !isActive && state === "optional" && "text-amber-600 border border-dashed border-amber-400/50 bg-amber-500/5 hover:bg-amber-500/10",
                   state === "locked" && "text-muted-foreground/50 cursor-not-allowed",
                 )}
               >
@@ -160,9 +190,13 @@ export const JourneyBelt = () => {
                   <Icon className="w-3 h-3" />
                 )}
                 {c.label}
+                {c.optional && state !== "done" && (
+                  <span className="text-[8px] opacity-70 ml-0.5">OPT</span>
+                )}
               </Link>
             </div>
           );
+
         })}
       </div>
 
