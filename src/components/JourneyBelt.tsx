@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Check, Lock, Sliders, SlidersHorizontal, Gauge, Rocket, Mic2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useProject } from "@/context/ProjectContext";
@@ -15,19 +15,23 @@ import { useProductionPhase } from "@/hooks/use-production-phase";
 import type { LoopInputs } from "@/lib/coaching-loop";
 import { cn } from "@/lib/utils";
 
-type ChapterId = "PRODUCTION" | "MIXING" | "MASTERING" | "PUBLISH";
+type ChapterId = "PRODUCTION" | "VOCALS" | "MIXING" | "MASTERING" | "PUBLISH";
 
-const CHAPTERS: { id: ChapterId; label: string; href: string; icon: typeof Sliders }[] = [
+const CHAPTERS: { id: ChapterId; label: string; href: string; icon: typeof Sliders; optional?: boolean }[] = [
   { id: "PRODUCTION", label: "Production", href: "/production", icon: Sliders },
+  { id: "VOCALS", label: "Vocals", href: "/production", icon: Mic2, optional: true },
   { id: "MIXING", label: "Mixing", href: "/mixing", icon: SlidersHorizontal },
   { id: "MASTERING", label: "Mastering", href: "/mastering", icon: Gauge },
   { id: "PUBLISH", label: "Publish", href: "/publish", icon: Rocket },
 ];
 
+
 export const JourneyBelt = () => {
   const { activeProject } = useProject();
   const location = useLocation();
+  const navigate = useNavigate();
   const [journey, setJourney] = useState<JourneyState | null>(null);
+
 
   const { phase, setPhase, saving: phaseSaving } = useProductionPhase();
 
@@ -99,8 +103,15 @@ export const JourneyBelt = () => {
   const masterReady = journey.reachedMixReady;
   const productionDone = phase === "DONE" || masterReady;
 
-  const chapterState = (id: ChapterId): "done" | "current" | "locked" => {
-    if (id === "PRODUCTION") return productionDone ? "done" : "current";
+  const isVocalsPhase = phase === "VOCALS";
+
+  const chapterState = (id: ChapterId): "done" | "current" | "locked" | "optional" => {
+    if (id === "PRODUCTION") return productionDone || isVocalsPhase ? "done" : "current";
+    if (id === "VOCALS") {
+      if (phase === "DONE") return "done";
+      if (isVocalsPhase) return "current";
+      return "optional"; // dashed, always clickable — never locked
+    }
     if (id === "MIXING") {
       if (!productionDone) return "locked";
       return masterReady ? "done" : "current";
@@ -110,7 +121,9 @@ export const JourneyBelt = () => {
 
   const onProduction = location.pathname.startsWith("/production");
   const activeChapter: ChapterId = onProduction
-    ? "PRODUCTION"
+    ? isVocalsPhase
+      ? "VOCALS"
+      : "PRODUCTION"
     : location.pathname.startsWith("/mastering")
       ? "MASTERING"
       : "MIXING";
@@ -120,12 +133,33 @@ export const JourneyBelt = () => {
   const senseiLine = onProduction
     ? phase === "DONE"
       ? "Production is finished — step into the Mixing chapter when you're ready."
-      : `${PRODUCTION_PHASES[Math.max(0, phaseIndex)].blurb}`
+      : isVocalsPhase
+        ? "Vocals — record, tune and stack. Optional: skip if this is an instrumental."
+        : `${PRODUCTION_PHASES[Math.max(0, phaseIndex)].blurb}`
     : journeyGuidance(journey);
+
+  const handleChapterClick = (
+    e: React.MouseEvent<HTMLAnchorElement>,
+    c: (typeof CHAPTERS)[number],
+    state: ReturnType<typeof chapterState>,
+  ) => {
+    if (c.id === "VOCALS") {
+      e.preventDefault();
+      void setPhase("VOCALS" as any);
+      if (!onProduction) navigate("/production");
+      return;
+    }
+    if (c.id === "PRODUCTION" && onProduction && isVocalsPhase) {
+      e.preventDefault();
+      void setPhase("BEAT" as any);
+      return;
+    }
+    if (state === "locked") e.preventDefault();
+  };
 
   return (
     <div className="border-b border-border bg-card/20 px-4 py-2 space-y-1">
-      {/* Chapters */}
+      {/* Chapters — R15.1: Vocals is a top-level OPTIONAL chapter between Production and Mixing */}
       <div className="flex items-center gap-1 overflow-x-auto scrollbar-thin">
         {CHAPTERS.map((c, i) => {
           const state = chapterState(c.id);
@@ -137,14 +171,14 @@ export const JourneyBelt = () => {
               <Link
                 to={c.href}
                 aria-current={isActive ? "step" : undefined}
-                onClick={(e) => {
-                  if (state === "locked") e.preventDefault();
-                }}
+                title={c.optional ? "Optional chapter — skip if this is an instrumental." : undefined}
+                onClick={(e) => handleChapterClick(e, c, state)}
                 className={cn(
                   "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors whitespace-nowrap",
                   isActive && "bg-gradient-gold text-primary-foreground shadow-sm glow-gold",
                   !isActive && state === "done" && "bg-primary/15 text-primary hover:bg-primary/25",
                   !isActive && state === "current" && "text-foreground hover:bg-primary/10",
+                  !isActive && state === "optional" && "text-amber-600 border border-dashed border-amber-400/50 bg-amber-500/5 hover:bg-amber-500/10",
                   state === "locked" && "text-muted-foreground/50 cursor-not-allowed",
                 )}
               >
@@ -156,9 +190,13 @@ export const JourneyBelt = () => {
                   <Icon className="w-3 h-3" />
                 )}
                 {c.label}
+                {c.optional && state !== "done" && (
+                  <span className="text-[8px] opacity-70 ml-0.5">OPT</span>
+                )}
               </Link>
             </div>
           );
+
         })}
       </div>
 
@@ -241,7 +279,7 @@ export const JourneyBelt = () => {
 
       <p className="text-[11px] text-muted-foreground">
         <span className="text-primary font-semibold">Sensei:</span> {senseiLine}
-        {onProduction && phase === "ARRANGE" && <span className="ml-2 text-amber-600">· Vocals is optional — click Vocals if you have leads to lay, or Finish to go Mixing.</span>}
+        {onProduction && phase === "ARRANGE" && <span className="ml-2 text-amber-600">· Vocals is optional — click Vocals on the belt (top or below) if you have leads to lay, or Finish to go Mixing.</span>}
       </p>
     </div>
   );
