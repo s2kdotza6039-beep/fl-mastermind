@@ -150,7 +150,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
           projectId: activeProject?.id ?? null,
           messageId: detail?.messageId ?? null,
         };
-        try { console.info("[SenseiProof] proof-required", { messageId: next.messageId, lockedReportId: next.lockedReportId, projectId: next.projectId, scope }); } catch {}
+        proofLog("proof-required", { messageId: next.messageId, lockedReportId: next.lockedReportId, projectId: next.projectId, scope });
         return next;
       });
     };
