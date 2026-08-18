@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Check, Lock, Sliders, SlidersHorizontal, Gauge, Rocket, Mic2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useProject } from "@/context/ProjectContext";
@@ -15,14 +15,16 @@ import { useProductionPhase } from "@/hooks/use-production-phase";
 import type { LoopInputs } from "@/lib/coaching-loop";
 import { cn } from "@/lib/utils";
 
-type ChapterId = "PRODUCTION" | "MIXING" | "MASTERING" | "PUBLISH";
+type ChapterId = "PRODUCTION" | "VOCALS" | "MIXING" | "MASTERING" | "PUBLISH";
 
-const CHAPTERS: { id: ChapterId; label: string; href: string; icon: typeof Sliders }[] = [
+const CHAPTERS: { id: ChapterId; label: string; href: string; icon: typeof Sliders; optional?: boolean }[] = [
   { id: "PRODUCTION", label: "Production", href: "/production", icon: Sliders },
+  { id: "VOCALS", label: "Vocals", href: "/production", icon: Mic2, optional: true },
   { id: "MIXING", label: "Mixing", href: "/mixing", icon: SlidersHorizontal },
   { id: "MASTERING", label: "Mastering", href: "/mastering", icon: Gauge },
   { id: "PUBLISH", label: "Publish", href: "/publish", icon: Rocket },
 ];
+
 
 export const JourneyBelt = () => {
   const { activeProject } = useProject();
