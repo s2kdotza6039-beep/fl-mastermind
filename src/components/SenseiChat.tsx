@@ -112,6 +112,18 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
       try { console.info("[SenseiProof] unlock-blocked-foreign", { lockedId: awaitingProof.lockedReportId, attemptedId: proofReportId }); } catch {}
     }
   }, [proofReportId, awaitingProof, lockedIsCurrentProject, loopLock.lockKind]);
+  // R13.5 — Sensei leads (route chapter), the producer steers (override).
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const routeChapter = chapterFromPath(location.pathname);
+  const [chapterOverride, setChapterOverride] = useState<ChatChapter | null>(null);
+  const chapter: ChatChapter = chapterOverride ?? routeChapter;
+  const { phase } = useProductionPhase();
+  const scope =
+    (chapterOverride ? makeScope(chapterOverride, chapterOverride === "PRODUCTION" ? phase : null) : null) ??
+    scopeProp ??
+    searchParams.get("scope") ??
+    makeScope(chapter, chapter === "PRODUCTION" ? phase : null);
   useEffect(() => {
     const onProof = (e: Event) => {
       const detail = (e as CustomEvent).detail as { messageId?: string } | undefined;
@@ -129,18 +141,6 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
     window.addEventListener("sensei:proof-required", onProof as EventListener);
     return () => window.removeEventListener("sensei:proof-required", onProof as EventListener);
   }, [proofReportId, activeProject?.id, scope]);
-  // R13.5 — Sensei leads (route chapter), the producer steers (override).
-  const location = useLocation();
-  const [searchParams] = useSearchParams();
-  const routeChapter = chapterFromPath(location.pathname);
-  const [chapterOverride, setChapterOverride] = useState<ChatChapter | null>(null);
-  const chapter: ChatChapter = chapterOverride ?? routeChapter;
-  const { phase } = useProductionPhase();
-  const scope =
-    (chapterOverride ? makeScope(chapterOverride, chapterOverride === "PRODUCTION" ? phase : null) : null) ??
-    scopeProp ??
-    searchParams.get("scope") ??
-    makeScope(chapter, chapter === "PRODUCTION" ? phase : null);
   useEffect(() => { setChapterOverride(null); }, [routeChapter]);
 
   const [bounceHelpOpen, setBounceHelpOpen] = useState(false);
