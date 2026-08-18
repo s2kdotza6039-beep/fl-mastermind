@@ -333,8 +333,10 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
     const trimmed = text.trim();
     if (!trimmed || loading) return;
     if (awaitingProof) {
-      try { console.info("[SenseiProof] locked-send-attempt", { lockedReportId: awaitingProof.lockedReportId, projectId: awaitingProof.projectId }); } catch {}
-      toast.info("Sensei is waiting for your new bounce. Upload it (paperclip) to continue.");
+      proofLog("locked-send-attempt", { lockedReportId: awaitingProof.lockedReportId, projectId: awaitingProof.projectId, scope });
+      toast.info("Sensei is waiting for proof", {
+        description: "Upload a NEW bounce of this same song (📎 paperclip or /upload). A different track is flagged foreign and the chat stays locked.",
+      });
       return;
     }
     // Don't let users send before their project memory has hydrated — a
