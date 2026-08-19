@@ -94,12 +94,18 @@ export const GrooveEngineCard = ({ genre, bpm, projectName }: Props) => {
     <Card className="studio-card space-y-4 p-6">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-sm font-semibold">🥁 Groove Engine</h3>
-        {matched.has(groove.id) && (
+        {matched.has(base.id) && (
           <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
             matches your genre
           </span>
         )}
+        {generated && (
+          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-400">
+            ✨ Generated — endless options
+          </span>
+        )}
       </div>
+
       <p className="text-xs text-muted-foreground">
         Genre-true drum patterns: preview the grid, set BPM/bars/swing, then drop the MIDI
         straight into FL Studio (drums → channel 10, bass melody → channel 1).
