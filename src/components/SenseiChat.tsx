@@ -942,12 +942,24 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
             type="button"
             onClick={() => knobFileRef.current?.click()}
             disabled={knobBusy}
-            title="Let Sensei hear a bounce (MP3/WAV) — it goes through the same-beat check"
-            aria-label="Let Sensei hear a bounce (MP3/WAV)"
-            className="h-[44px] px-2 rounded-md border border-border text-muted-foreground hover:text-primary disabled:opacity-50"
+            autoFocus={!!awaitingProof}
+            title={awaitingProof
+              ? "Upload the new bounced version — this is how you unlock the chat"
+              : "Let Sensei hear a bounce (MP3/WAV) — it goes through the same-beat check"}
+            aria-label={awaitingProof
+              ? "Upload new bounced version for proof"
+              : "Let Sensei hear a bounce (MP3/WAV)"}
+            className={cn(
+              "h-[44px] px-2 rounded-md border flex items-center gap-1 disabled:opacity-50",
+              awaitingProof
+                ? "border-amber-500 bg-amber-500/20 text-amber-200 animate-pulse"
+                : "border-border text-muted-foreground hover:text-primary",
+            )}
           >
             {knobBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Paperclip className="w-3.5 h-3.5" />}
+            {awaitingProof && <span className="text-[10px] font-medium">Upload bounce</span>}
           </button>
+
           <input
             ref={knobFileRef}
             type="file"
