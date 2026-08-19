@@ -18,7 +18,7 @@ import { CHAPTERS, chapterFromPath, chapterLabel, type ChatChapter } from "@/lib
 import { makeScope, scopeLabel } from "@/lib/chat-scope";
 import { useProductionPhase } from "@/hooks/use-production-phase";
 
-import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock, ThumbsUp, ThumbsDown, Eye, Paperclip } from "lucide-react";
+import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock, ThumbsUp, ThumbsDown, Eye, Paperclip, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/context/SessionContext";
