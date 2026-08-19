@@ -162,6 +162,32 @@ export const GrooveEngineCard = ({ genre, bpm, projectName }: Props) => {
 
       <p className="text-xs text-muted-foreground">💡 {groove.note}</p>
 
+      <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+        <p className="text-xs font-semibold text-amber-300">Groove Generator — More Options</p>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={() => apply(generateGrooveVariant(groove, nextSeed()), "New variation generated")}>
+            <Wand2 className="mr-1 h-3.5 w-3.5" /> Generate Variation
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => apply(surpriseGroove(base, nextSeed() * 7), "Surprise groove ready")}>
+            <Dices className="mr-1 h-3.5 w-3.5" /> Surprise Me
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => apply(humanize(groove, nextSeed()), "Velocities humanized")}>
+            <Sparkles className="mr-1 h-3.5 w-3.5" /> Humanize
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => apply(ghostify(groove, nextSeed()), "Ghost notes added")}>
+            <Ghost className="mr-1 h-3.5 w-3.5" /> Ghost Notes
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => apply(fillify(groove, nextSeed()), "Fill written into the last quarter")}>
+            <Plus className="mr-1 h-3.5 w-3.5" /> Add Fill
+          </Button>
+          <Button size="sm" variant="ghost" disabled={!generated} onClick={() => { setGenerated(null); toast.info("Back to the original pattern"); }}>
+            <RotateCcw className="mr-1 h-3.5 w-3.5" /> Reset
+          </Button>
+        </div>
+      </div>
+
+
+
       <div className="flex flex-wrap gap-2">
         <Button size="sm" onClick={download}>
           <Download className="mr-1 h-3.5 w-3.5" /> MIDI
