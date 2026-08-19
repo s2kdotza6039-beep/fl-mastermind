@@ -2,15 +2,17 @@ import { useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Copy, Download, MessageCircle } from "lucide-react";
+import { Copy, Download, MessageCircle, Wand2, Dices, RotateCcw, Ghost, Sparkles, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
-  GROOVES, grooveToMidi, lanesToText, matchGrooves, sortGroovesForGenre,
+  GROOVES, grooveToMidi, lanesToText, matchGrooves, sortGroovesForGenre, type Groove,
 } from "@/lib/grooves";
+import { fillify, generateGrooveVariant, ghostify, humanize, surpriseGroove } from "@/lib/groove-generator";
 import { downloadBlob, safeFileName } from "@/lib/midi";
 import { stashChatPrompt } from "@/lib/knowledge-handoff";
 import { GrooveGrid } from "@/components/GrooveGrid";
+
 
 interface Props {
   genre?: string | null;
@@ -32,16 +34,31 @@ export const GrooveEngineCard = ({ genre, bpm, projectName }: Props) => {
   const matched = useMemo(() => new Set(matchGrooves(genre).map((g) => g.id)), [genre]);
 
   const [grooveId, setGrooveId] = useState(sorted[0]?.id ?? GROOVES[0].id);
-  const groove = GROOVES.find((g) => g.id === grooveId) ?? GROOVES[0];
-  const [bpmVal, setBpmVal] = useState(bpm ?? groove.bpm);
+  const base = GROOVES.find((g) => g.id === grooveId) ?? GROOVES[0];
+  const [generated, setGenerated] = useState<Groove | null>(null);
+  const groove = generated ?? base;
+  const [bpmVal, setBpmVal] = useState(bpm ?? base.bpm);
   const [bars, setBars] = useState(4);
   const [swing, setSwing] = useState(0.5);
+  const [seed, setSeed] = useState(1);
 
   const pickGroove = (id: string) => {
     setGrooveId(id);
+    setGenerated(null);
     const g = GROOVES.find((x) => x.id === id);
     if (g && bpm == null) setBpmVal(g.bpm);
   };
+
+  const nextSeed = () => {
+    const s = seed + 1;
+    setSeed(s);
+    return s;
+  };
+  const apply = (g: Groove, msg: string) => {
+    setGenerated(g);
+    toast.success(msg);
+  };
+
 
   const download = () => {
     const bytes = grooveToMidi(groove, { bars, bpm: clampBpm(bpmVal), swing });
@@ -77,12 +94,18 @@ export const GrooveEngineCard = ({ genre, bpm, projectName }: Props) => {
     <Card className="studio-card space-y-4 p-6">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-sm font-semibold">🥁 Groove Engine</h3>
-        {matched.has(groove.id) && (
+        {matched.has(base.id) && (
           <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
             matches your genre
           </span>
         )}
+        {generated && (
+          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-400">
+            ✨ Generated — endless options
+          </span>
+        )}
       </div>
+
       <p className="text-xs text-muted-foreground">
         Genre-true drum patterns: preview the grid, set BPM/bars/swing, then drop the MIDI
         straight into FL Studio (drums → channel 10, bass melody → channel 1).
@@ -138,6 +161,32 @@ export const GrooveEngineCard = ({ genre, bpm, projectName }: Props) => {
       <GrooveGrid groove={groove} bars={bars} />
 
       <p className="text-xs text-muted-foreground">💡 {groove.note}</p>
+
+      <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+        <p className="text-xs font-semibold text-amber-300">Groove Generator — More Options</p>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={() => apply(generateGrooveVariant(groove, nextSeed()), "New variation generated")}>
+            <Wand2 className="mr-1 h-3.5 w-3.5" /> Generate Variation
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => apply(surpriseGroove(base, nextSeed() * 7), "Surprise groove ready")}>
+            <Dices className="mr-1 h-3.5 w-3.5" /> Surprise Me
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => apply(humanize(groove, nextSeed()), "Velocities humanized")}>
+            <Sparkles className="mr-1 h-3.5 w-3.5" /> Humanize
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => apply(ghostify(groove, nextSeed()), "Ghost notes added")}>
+            <Ghost className="mr-1 h-3.5 w-3.5" /> Ghost Notes
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => apply(fillify(groove, nextSeed()), "Fill written into the last quarter")}>
+            <Plus className="mr-1 h-3.5 w-3.5" /> Add Fill
+          </Button>
+          <Button size="sm" variant="ghost" disabled={!generated} onClick={() => { setGenerated(null); toast.info("Back to the original pattern"); }}>
+            <RotateCcw className="mr-1 h-3.5 w-3.5" /> Reset
+          </Button>
+        </div>
+      </div>
+
+
 
       <div className="flex flex-wrap gap-2">
         <Button size="sm" onClick={download}>

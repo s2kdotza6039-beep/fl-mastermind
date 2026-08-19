@@ -18,7 +18,7 @@ import { CHAPTERS, chapterFromPath, chapterLabel, type ChatChapter } from "@/lib
 import { makeScope, scopeLabel } from "@/lib/chat-scope";
 import { useProductionPhase } from "@/hooks/use-production-phase";
 
-import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock, ThumbsUp, ThumbsDown, Eye, Paperclip } from "lucide-react";
+import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock, ThumbsUp, ThumbsDown, Eye, Paperclip, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/context/SessionContext";
@@ -843,7 +843,8 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
 
 
       {awaitingProof && (
-        <div className="border-t border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
+        <div role="alert" className="border-t border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
+
           <div className="flex items-start gap-2">
             <span className="text-amber-400 mt-0.5">🔒</span>
             <div className="flex-1">
@@ -876,29 +877,31 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
                   </span>
                 </div>
                 <p className="mt-1 text-[11px] opacity-90">{proofStatus.detail}</p>
-                {proofStatus.match === "rejected" && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="h-7 text-[11px]"
-                      disabled={knobBusy}
-                      onClick={() => knobFileRef.current?.click()}
-                    >
-                      {knobBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3 mr-1" />}
-                      Re-upload the correct bounce
-                    </Button>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    data-testid="proof-upload-button"
+                    className="h-8 text-[11px] bg-gradient-gold text-primary-foreground hover:opacity-90"
+                    disabled={knobBusy}
+                    onClick={() => knobFileRef.current?.click()}
+                  >
+                    {knobBusy ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Upload className="w-3 h-3 mr-1" />}
+                    Upload new Bounced Version for Sensei — Prove We're Working
+                  </Button>
+                  {proofStatus.match === "rejected" && (
                     <Button type="button" size="sm" variant="ghost" className="h-7 text-[11px]" onClick={loopLock.refresh}>
                       Re-check now
                     </Button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
 
               <p className="mt-1.5 text-[11px] text-amber-200/70">
-                If the upload is a <strong>different track</strong>, the beat-DNA check flags it <em>foreign</em>: it will not count as proof and this chat stays locked. Fix it right here — pick the correct file with the button above, no page refresh needed.
+                Or press the <strong>amber paperclip below ⬇️</strong>. If the upload is a <strong>different track</strong>, the beat-DNA check flags it <em>foreign</em>: it will not count as proof and this chat stays locked. Fix it right here — pick the correct file, no page refresh needed.
               </p>
               <p className="mt-1 text-[11px] text-amber-200/60">The lock stays put if you switch stage or navigate away and come back.</p>
+
 
             </div>
           </div>
@@ -939,12 +942,24 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
             type="button"
             onClick={() => knobFileRef.current?.click()}
             disabled={knobBusy}
-            title="Let Sensei hear a bounce (MP3/WAV) — it goes through the same-beat check"
-            aria-label="Let Sensei hear a bounce (MP3/WAV)"
-            className="h-[44px] px-2 rounded-md border border-border text-muted-foreground hover:text-primary disabled:opacity-50"
+            autoFocus={!!awaitingProof}
+            title={awaitingProof
+              ? "Upload the new bounced version — this is how you unlock the chat"
+              : "Let Sensei hear a bounce (MP3/WAV) — it goes through the same-beat check"}
+            aria-label={awaitingProof
+              ? "Upload new bounced version for proof"
+              : "Let Sensei hear a bounce (MP3/WAV)"}
+            className={cn(
+              "h-[44px] px-2 rounded-md border flex items-center gap-1 disabled:opacity-50",
+              awaitingProof
+                ? "border-amber-500 bg-amber-500/20 text-amber-200 animate-pulse"
+                : "border-border text-muted-foreground hover:text-primary",
+            )}
           >
             {knobBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Paperclip className="w-3.5 h-3.5" />}
+            {awaitingProof && <span className="text-[10px] font-medium">Upload bounce</span>}
           </button>
+
           <input
             ref={knobFileRef}
             type="file"
