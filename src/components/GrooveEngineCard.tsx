@@ -2,15 +2,17 @@ import { useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Copy, Download, MessageCircle } from "lucide-react";
+import { Copy, Download, MessageCircle, Wand2, Dices, RotateCcw, Ghost, Sparkles, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
-  GROOVES, grooveToMidi, lanesToText, matchGrooves, sortGroovesForGenre,
+  GROOVES, grooveToMidi, lanesToText, matchGrooves, sortGroovesForGenre, type Groove,
 } from "@/lib/grooves";
+import { fillify, generateGrooveVariant, ghostify, humanize, surpriseGroove } from "@/lib/groove-generator";
 import { downloadBlob, safeFileName } from "@/lib/midi";
 import { stashChatPrompt } from "@/lib/knowledge-handoff";
 import { GrooveGrid } from "@/components/GrooveGrid";
+
 
 interface Props {
   genre?: string | null;
