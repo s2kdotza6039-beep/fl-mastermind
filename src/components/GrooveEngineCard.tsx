@@ -34,16 +34,31 @@ export const GrooveEngineCard = ({ genre, bpm, projectName }: Props) => {
   const matched = useMemo(() => new Set(matchGrooves(genre).map((g) => g.id)), [genre]);
 
   const [grooveId, setGrooveId] = useState(sorted[0]?.id ?? GROOVES[0].id);
-  const groove = GROOVES.find((g) => g.id === grooveId) ?? GROOVES[0];
-  const [bpmVal, setBpmVal] = useState(bpm ?? groove.bpm);
+  const base = GROOVES.find((g) => g.id === grooveId) ?? GROOVES[0];
+  const [generated, setGenerated] = useState<Groove | null>(null);
+  const groove = generated ?? base;
+  const [bpmVal, setBpmVal] = useState(bpm ?? base.bpm);
   const [bars, setBars] = useState(4);
   const [swing, setSwing] = useState(0.5);
+  const [seed, setSeed] = useState(1);
 
   const pickGroove = (id: string) => {
     setGrooveId(id);
+    setGenerated(null);
     const g = GROOVES.find((x) => x.id === id);
     if (g && bpm == null) setBpmVal(g.bpm);
   };
+
+  const nextSeed = () => {
+    const s = seed + 1;
+    setSeed(s);
+    return s;
+  };
+  const apply = (g: Groove, msg: string) => {
+    setGenerated(g);
+    toast.success(msg);
+  };
+
 
   const download = () => {
     const bytes = grooveToMidi(groove, { bars, bpm: clampBpm(bpmVal), swing });
