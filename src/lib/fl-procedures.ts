@@ -128,7 +128,46 @@ export const FL_PROCEDURES: FlProcedure[] = [
     ],
     zones: ["menu", "menu", "menu"],
     keywords: ["backup", "crash", "lost project", "autosave", "revert"] },
+
+  // ── R15.4: PATCHER MASTERY — Sensei must know when Patcher beats stock ──────
+  { id: "patcher-basics", title: "Create an effects chain in Patcher", flVersions: "FL 21 / FL 2024+",
+    steps: [
+      "Mixer (F9) → click the track → empty SLOT → Patcher",
+      "Right-click the canvas → Add → Effects → pick your first plugin",
+      "Drag from the From-node output into the plugin input, then out to the To-node",
+      "Add more plugins in series, or split to a second path for parallel processing",
+    ],
+    zones: ["mixer", "mixer", "mixer", "mixer"],
+    keywords: ["patcher", "patcher chain", "wrapper", "modular", "parallel processing", "build a chain in patcher"] },
+  { id: "patcher-vocal-chain", title: "Patcher vocal chain that beats stock alone", flVersions: "FL 21 / FL 2024+",
+    steps: [
+      "Vocal insert → SLOT → Patcher",
+      "Series: Fruity Parametric EQ 2 → Fruity Limiter (COMP) → Fruity Convolver → Fruity Delay 3",
+      "Split a parallel branch into a second Limiter squashed hard, blend it ~30%",
+      "Why it beats stock: one preset recalls the whole chain plus the parallel blend",
+    ],
+    zones: ["mixer", "mixer", "mixer", "mixer"],
+    keywords: ["patcher vocal", "vocal patcher", "better than stock", "vocal effect", "vocal preset"] },
+  { id: "patcher-808-punch", title: "Patcher 808 punch that beats Maximus alone", flVersions: "FL 21 / FL 2024+",
+    steps: [
+      "808 insert → SLOT → Patcher",
+      "Series: EQ 2 (high-pass 25 Hz) → Fruity Soft Clipper → Fruity Bass Boost → Love Philter",
+      "Clip before boosting so the sub stays tight instead of pumping",
+      "Why it beats Maximus alone: clip + tone + filter move together in one recallable patch",
+    ],
+    zones: ["mixer", "mixer", "mixer", "mixer"],
+    keywords: ["patcher 808", "808 punch", "808 muddy", "sub bass patcher", "808 patcher"] },
+  { id: "patcher-stereo-widener", title: "Patcher widener that beats Stereo Shaper alone", flVersions: "FL 21 / FL 2024+",
+    steps: [
+      "Lead insert → SLOT → Patcher",
+      "Series: EQ 2 → Fruity Stereo Shaper → Fruity Delay 3 (15 ms, one side) → Fruity Reeverb 2 at 18%",
+      "Keep everything under 200 Hz mono inside the EQ to protect the low end",
+      "Why it beats one plugin: haas width plus tail width in a single mono-safe patch",
+    ],
+    zones: ["mixer", "mixer", "mixer", "mixer"],
+    keywords: ["patcher wide", "wider lead", "stereo width", "widener", "patcher stereo"] },
 ];
+
 
 /**
  * Deterministic keyword matcher. Multi-word keywords weigh more (they're more
