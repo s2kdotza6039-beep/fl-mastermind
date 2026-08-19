@@ -108,17 +108,17 @@ function keyToHz(k: string | null | undefined): number {
   const root = k.replace(/\s*(maj(or)?|min(or)?|m)\s*$/i, "").trim();
   return NOTE_HZ[root] ?? NOTE_HZ[root[0]?.toUpperCase()] ?? 220;
 }
-function playPreview(r: TrackReport, onEnd: () => void): PreviewState | null {
+async function playPreviewAsync(r: TrackReport, onEnd: () => void): Promise<PreviewState | null> {
   try {
     const Ctx = window.AudioContext || (window as any).webkitAudioContext;
     if (!Ctx) return null;
     const ctx: AudioContext = new Ctx();
-    // Fire-and-forget resume — don't await, so we keep the click's gesture link
-    // and still schedule oscillators against ctx.currentTime immediately after.
+    // AWAIT the resume: scheduling against currentTime while the context is
+    // still suspended is what made Chrome play nothing at all (R15.3).
     if (ctx.state === "suspended") {
-      ctx.resume().catch(() => {});
+      try { await ctx.resume(); } catch { /* keep going — some browsers resolve late */ }
     }
-    const now = ctx.currentTime + 0.02; // tiny lead-in avoids clicks / pre-resume race
+    const now = ctx.currentTime + 0.08; // lead-in after resume avoids clicks
     const dur = 1.6;
     const hz = keyToHz(r.detected_key);
     const bpm = Math.max(40, Math.min(220, r.bpm ?? 100));
@@ -126,8 +126,9 @@ function playPreview(r: TrackReport, onEnd: () => void): PreviewState | null {
     const master = ctx.createGain();
     master.gain.value = 0.0001;
     master.connect(ctx.destination);
-    master.gain.exponentialRampToValueAtTime(0.25, now + 0.04);
+    master.gain.exponentialRampToValueAtTime(0.35, now + 0.04);
     master.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+
     // pitched tone (root + fifth)
     [hz, hz * 1.5].forEach((f, i) => {
       const o = ctx.createOscillator();
