@@ -843,7 +843,8 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
 
 
       {awaitingProof && (
-        <div className="border-t border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
+        <div role="alert" className="border-t border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
+
           <div className="flex items-start gap-2">
             <span className="text-amber-400 mt-0.5">🔒</span>
             <div className="flex-1">
