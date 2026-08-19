@@ -359,7 +359,7 @@ export const AnalysisHistoryPanel = ({ className }: { className?: string }) => {
   // Stop any preview on unmount
   useEffect(() => () => { currentPreview?.stop(); currentPreview = null; }, []);
 
-  const togglePreview = (r: TrackReport) => {
+  const togglePreview = async (r: TrackReport) => {
     if (currentPreview?.id === r.id) {
       currentPreview.stop();
       currentPreview = null;
@@ -368,17 +368,19 @@ export const AnalysisHistoryPanel = ({ className }: { className?: string }) => {
     }
     currentPreview?.stop();
     currentPreview = null;
-    // Call playPreview synchronously inside the click handler so the
-    // AudioContext is created within the user-gesture window (Chrome/Safari).
-    const state = playPreview(r, () => setPlayingId(null));
+    // Flip the UI first so the click stays inside the user-gesture window and
+    // the producer sees the ⏸️ immediately, even while resume() settles.
+    setPlayingId(r.id);
+    const state = await playPreviewAsync(r, () => setPlayingId(null));
     if (!state) {
       setPlayingId(null);
       toast.error("Preview unavailable in this browser");
       return;
     }
-    setPlayingId(r.id);
     currentPreview = state;
+    toast.success(`Preview: ${r.detected_key ?? "—"} · ${Math.round(r.bpm ?? 0)} BPM — ${r.file_name ?? "track"}`);
   };
+
 
   const clearFilters = () => {
     setQuery(""); setDateRange("any"); setStageFilter("any"); setGenreFilter("any");
