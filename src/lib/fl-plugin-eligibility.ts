@@ -33,8 +33,16 @@ const STOCK_BASE = [
   "Wave Candy",
 ];
 
-// Producer Edition adds recording / audio editing / basic Patcher.
-const PRODUCER_EXTRA = ["Edison", "Patcher (basic)", "Slicex", "Vocodex"];
+// Producer Edition adds recording / audio editing / Patcher.
+const PRODUCER_EXTRA = [
+  "Edison",
+  "Patcher",
+  "Patcher: EQ→Comp — beats Fruity Limiter alone",
+  "Patcher: EQ→Soft Clipper→Bass Boost→Love Philter — 808 punch",
+  "Patcher: EQ→Stereo Shaper→Delay 3→Reeverb 2 — mono-safe widener",
+  "Slicex",
+  "Vocodex",
+];
 
 // Signature Bundle adds advanced plugins.
 const SIGNATURE_EXTRA = [
@@ -46,6 +54,8 @@ const SIGNATURE_EXTRA = [
   "Sytrus",
   "Toxic Biohazard",
   "Hardcore",
+  "Patcher: Pitcher→EQ→parallel Limiter — vocal stack",
+  "Patcher: Gross Beat→Delay 3 — stutter FX",
 ];
 
 // All Plugins Edition unlocks the entire factory bundle.
@@ -59,7 +69,23 @@ const ALL_EXTRA = [
   "Transistor Bass",
   "Vintage Chorus",
   "Vintage Phaser",
+  "Patcher: Drumaxx→Maximus multiband — drum bus",
 ];
+
+/** Best Patcher routing per coaching topic — Sensei quotes this verbatim. */
+export function patcherAdvantage(topic: "vocal" | "808" | "wide" | "effect"): string {
+  switch (topic) {
+    case "vocal":
+      return "Patcher: EQ 2 → Fruity Limiter (COMP) → Convolver → Delay 3, with a parallel squashed Limiter at ~30% — recalls as one preset, which beats stacking stock plugins by hand.";
+    case "808":
+      return "Patcher: EQ 2 (HP 25 Hz) → Soft Clipper → Bass Boost → Love Philter — clip before boost keeps the sub tight; beats Maximus alone for punch.";
+    case "wide":
+      return "Patcher: EQ 2 (mono below 200 Hz) → Stereo Shaper → Delay 3 at 15 ms one side → Reeverb 2 at 18% — wider and mono-safe versus Stereo Shaper alone.";
+    default:
+      return "Patcher: chain stock plugins in series and split a parallel branch — the same stock DSP, but recallable as one preset with wet/dry control.";
+  }
+}
+
 
 export function eligiblePlugins(tier: FlEditionTier): string[] {
   switch (tier) {
