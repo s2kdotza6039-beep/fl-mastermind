@@ -84,8 +84,10 @@ export interface MasterVerdict {
 const LUFS_WINDOW = 1.0;   // ±1 LU around the target is on-target
 const QUIET_MARGIN = 2.0;  // more than 2 LU under target = leaving loudness on the table
 
-function issuesArr(detected: unknown): any[] {
-  return Array.isArray(detected) ? (detected as any[]) : [];
+interface MasterIssue { id?: string; detector_id?: string; severity?: string; title?: string; }
+
+function issuesArr(detected: unknown): MasterIssue[] {
+  return Array.isArray(detected) ? (detected as MasterIssue[]) : [];
 }
 
 function hasIssue(detected: unknown, id: string): boolean {

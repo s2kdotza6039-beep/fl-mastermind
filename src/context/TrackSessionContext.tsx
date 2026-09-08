@@ -26,8 +26,8 @@ export interface TrackReport {
   band_mid_db: number | null;
   band_highmid_db: number | null;
   band_high_db: number | null;
-  detected_issues: any;
-  recommendations: any;
+  detected_issues: unknown;
+  recommendations: unknown;
   created_at: string;
 }
 
@@ -217,14 +217,14 @@ export const TrackSessionProvider = ({ children }: { children: ReactNode }) => {
         highMid: active.band_highmid_db ?? 0,
         high: active.band_high_db ?? 0,
       },
-      issues: issues.map((i: any) => ({
+      issues: issues.map((i) => ({
         severity: String(i?.severity ?? "info"),
         title: String(i?.title ?? ""),
         detail: String(i?.detail ?? ""),
         recommendation: String(i?.recommendation ?? ""),
       })),
       recommendations: Array.isArray(active.recommendations)
-        ? active.recommendations.map((r: any) => String(r)).filter(Boolean)
+        ? active.recommendations.map((r) => String(r)).filter(Boolean)
         : [],
     };
   }, [active]);

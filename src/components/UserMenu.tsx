@@ -36,7 +36,7 @@ export function UserMenu() {
         )}
         {!isPaid && (
           <DropdownMenuItem onClick={() => nav("/upgrade")}>
-            <Crown className="w-4 h-4 mr-2" /> Upgrade to Paid
+            <Crown className="w-4 h-4 mr-2" /> Upgrade to Pro
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />

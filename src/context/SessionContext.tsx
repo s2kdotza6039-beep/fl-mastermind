@@ -69,7 +69,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
         if (Array.isArray(data.savedAdvice)) setSavedAdvice(data.savedAdvice);
         if (Array.isArray(data.checklist)) setChecklist(data.checklist);
       }
-    } catch {}
+    } catch { /* no-op */ }
   }, []);
 
   useEffect(() => {

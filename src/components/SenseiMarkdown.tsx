@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm";
 import { Check, UploadCloud, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { loadChatChecks, saveChatChecks, type ChatChecks } from "@/lib/chat-checks";
+import { proofLog } from "@/lib/proof-lock";
 
 interface SenseiMarkdownProps {
   content: string;
@@ -37,7 +38,7 @@ export const SenseiMarkdown = ({ content, className, messageId = "msg", scope }:
   // When the final box is ticked, tell the chat to demand proof (a new bounce).
   useEffect(() => {
     if (allDone) {
-      try { console.info("[SenseiProof] proof-required", { messageId, taskTotal, scope }); } catch {}
+      proofLog("proof-required", { messageId, taskTotal, scope });
       window.dispatchEvent(new CustomEvent("sensei:proof-required", { detail: { messageId } }));
     }
   }, [allDone, messageId, taskTotal, scope]);

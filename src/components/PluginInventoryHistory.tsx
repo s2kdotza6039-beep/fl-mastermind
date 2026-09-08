@@ -70,7 +70,7 @@ export function PluginInventoryHistory({ onRestore, reloadKey, current }: Props)
     (async () => {
       setLoading(true);
       const { data, error } = await supabase
-        .from("user_plugin_inventory_history" as any)
+        .from("user_plugin_inventory_history")
         .select("id, user_id, native_plugins, third_party_plugins, custom_plugins, inventory_completed, change_type, created_at")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })

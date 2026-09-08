@@ -31,7 +31,7 @@ export const VocalChainCard = ({ projectName, genre }: { projectName?: string | 
 
   const persist = (next: Record<string, boolean>) => {
     setDone(next);
-    try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch {}
+    try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* no-op */ }
   };
 
   const completed = useMemo(() => STEPS.filter(s => done[s.id]).length, [done]);

@@ -10,8 +10,8 @@ export interface ExportChecklistItem {
 export function parseExportChecklist(raw: unknown): ExportChecklistItem[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .filter((c: any) => c && typeof c.id === "string" && typeof c.label === "string")
-    .map((c: any) => ({ id: c.id, label: c.label, done: !!c.done }));
+    .filter((c) => c && typeof c.id === "string" && typeof c.label === "string")
+    .map((c) => ({ id: c.id, label: c.label, done: !!c.done }));
 }
 
 export function exportFileName(projectName: string): string {
@@ -24,17 +24,29 @@ export function exportFileName(projectName: string): string {
   return `${slug}-studio-sensei-export.json`;
 }
 
+export interface ExportProjectLite {
+  id: string;
+  name: string;
+  description?: string | null;
+  genre?: string | null;
+  status?: string;
+  goal?: string | null;
+  session_notes?: unknown;
+  checklist?: unknown;
+  created_at?: string;
+}
+
 export function buildExportPayload(args: {
-  project: any;
-  versions: any[];
-  scores: any[];
-  issues: any[];
-  plans: any[];
-  advice: any[];
+  project: ExportProjectLite;
+  versions: unknown[];
+  scores: unknown[];
+  issues: unknown[];
+  plans: unknown[];
+  advice: unknown[];
   exportedAt?: string;
 }) {
   const { project } = args;
-  const checklist = parseExportChecklist((project as any).checklist);
+  const checklist = parseExportChecklist(project.checklist);
   return {
     app: "studio-sensei",
     exported_at: args.exportedAt ?? new Date().toISOString(),
@@ -44,8 +56,8 @@ export function buildExportPayload(args: {
       description: project.description ?? null,
       genre: project.genre ?? null,
       status: project.status,
-      goal: (project as any).goal ?? null,
-      session_notes: (project as any).session_notes ?? null,
+      goal: project.goal ?? null,
+      session_notes: project.session_notes ?? null,
       created_at: project.created_at,
       checklist,
       checklist_progress: {

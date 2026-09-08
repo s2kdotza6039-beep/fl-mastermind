@@ -10,7 +10,7 @@ export async function watermarkExport(body: string, kind: string): Promise<strin
       user = data.user.email || data.user.id;
       userId = data.user.id;
     }
-  } catch {}
+  } catch { /* no-op */ }
   const stamp = new Date().toISOString();
   const header = [
     `========================================================`,

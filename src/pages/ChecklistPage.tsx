@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { ListChecks, RotateCcw, Check, FolderOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 
 interface ChecklistItem {
@@ -31,8 +32,8 @@ const DEFAULT_CHECKLIST: ChecklistItem[] = [
 function parseChecklist(raw: unknown): ChecklistItem[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .filter((c: any) => c && typeof c.id === "string" && typeof c.label === "string")
-    .map((c: any) => ({ id: c.id, label: c.label, done: !!c.done }));
+    .filter((c) => c && typeof c.id === "string" && typeof c.label === "string")
+    .map((c) => ({ id: c.id, label: c.label, done: !!c.done }));
 }
 
 export default function ChecklistPage() {
@@ -46,7 +47,7 @@ export default function ChecklistPage() {
     if (!projectId) return;
     supabase
       .from("projects")
-      .update({ checklist: items as any })
+      .update({ checklist: items as unknown as Json })
       .eq("id", projectId)
       .then(({ error }) => {
         if (error) toast.error("Could not save checklist");
@@ -58,7 +59,7 @@ export default function ChecklistPage() {
       setChecklist([]);
       return;
     }
-    const stored = parseChecklist((activeProject as any).checklist);
+    const stored = parseChecklist(activeProject?.checklist);
     if (stored.length === 0) {
       setChecklist(DEFAULT_CHECKLIST);
       persist(DEFAULT_CHECKLIST);

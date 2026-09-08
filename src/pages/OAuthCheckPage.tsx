@@ -35,7 +35,9 @@ async function checkEnv(): Promise<CheckResult> {
   };
 }
 
-async function checkAuthSettings(): Promise<{ provider: CheckResult; redirect: CheckResult; raw: any }> {
+type AuthSettingsRaw = { external?: { google?: unknown } } | null;
+
+async function checkAuthSettings(): Promise<{ provider: CheckResult; redirect: CheckResult; raw: AuthSettingsRaw }> {
   try {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/settings`, {
       headers: { apikey: ANON_KEY },
@@ -86,7 +88,7 @@ async function checkAuthSettings(): Promise<{ provider: CheckResult; redirect: C
         };
 
     return { provider, redirect, raw: data };
-  } catch (e: any) {
+  } catch (e) {
     const fail: CheckResult = {
       id: "settings",
       label: "Reach Cloud auth settings",
@@ -101,8 +103,8 @@ async function checkAuthorizeEndpoint(): Promise<CheckResult> {
   try {
     const url = `${SUPABASE_URL}/auth/v1/authorize?provider=google&skip_http_redirect=true&redirect_to=${encodeURIComponent(window.location.origin)}`;
     const res = await fetch(url, { headers: { apikey: ANON_KEY } });
-    let body: any = null;
-    try { body = await res.json(); } catch {}
+    let body: { error_description?: string; msg?: string; error?: string; url?: string } | null = null;
+    try { body = await res.json(); } catch { /* no-op */ }
     if (res.ok && body?.url) {
       // body.url should point to accounts.google.com — confirms client_id + callback are wired
       const isGoogle = /accounts\.google\.com/i.test(body.url);
@@ -126,7 +128,7 @@ async function checkAuthorizeEndpoint(): Promise<CheckResult> {
         ? "Google client ID/secret missing or invalid in Cloud auth settings."
         : undefined,
     };
-  } catch (e: any) {
+  } catch (e) {
     return {
       id: "authorize",
       label: "Authorize endpoint returns Google redirect",
@@ -146,7 +148,7 @@ function StateIcon({ state }: { state: CheckState }) {
 export default function OAuthCheckPage() {
   const [checks, setChecks] = useState<CheckResult[]>([]);
   const [running, setRunning] = useState(false);
-  const [raw, setRaw] = useState<any>(null);
+  const [raw, setRaw] = useState<AuthSettingsRaw>(null);
 
   async function runAll() {
     setRunning(true);
@@ -159,7 +161,7 @@ export default function OAuthCheckPage() {
     const env = await checkEnv();
     const { provider, redirect, raw } = await checkAuthSettings();
     const authorize = await checkAuthorizeEndpoint();
-    setRaw(raw);
+    setRaw(raw as AuthSettingsRaw);
     setChecks([env, provider, redirect, authorize]);
     setRunning(false);
   }

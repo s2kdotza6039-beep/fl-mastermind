@@ -41,7 +41,7 @@ export const SpeechButton = ({ id, text }: SpeechButtonProps) => {
     if (!pos) return null;
     const total = splitSentences(stripForSpeech(text)).length;
     return pos.total === total ? pos : null;
-  }, [id, text, isMine, state]);
+  }, [id, text, isMine]);
 
   const rateButton = (
     <Button

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { deriveLoopState, type LoopState, type PlanStepStatus, type StoredIssue } from "@/lib/coaching-loop";
+import type { LoopInputs } from "@/lib/coaching-loop";
 import { assessContinuation, isFlaggedForeign, isOverridden } from "@/lib/loop-guard";
 
 export type LockKind = "rebounce" | "foreign" | null;
@@ -61,7 +62,7 @@ export function useLoopLock(projectId: string | null): LoopLock {
       if (cancelled) return;
 
       // 1) SAME-BEAT GUARD — newest report flagged foreign and not overridden.
-      const reports = (reportsRes.data ?? []) as any[];
+      const reports = reportsRes.data ?? [];
       const latest = reports[0] ?? null;
       const prev = reports[1] ?? null;
       if (latest && isFlaggedForeign(latest.detected_issues) && !isOverridden(latest.detected_issues)) {
@@ -90,9 +91,9 @@ export function useLoopLock(projectId: string | null): LoopLock {
       const state = deriveLoopState({
         hasProject: true,
         hasAnalysis: true,
-        latestScore: scoreRes.data as any,
+        latestScore: scoreRes.data as unknown as LoopInputs["latestScore"],
         issues: (issuesRes.data ?? []) as StoredIssue[],
-        plan: planRes.data as any,
+        plan: planRes.data,
         steps,
       });
       setLoop(state);

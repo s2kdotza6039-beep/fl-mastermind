@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, Navigate } from "react-router-dom";
 import { ArrowLeft, FolderOpen, MessageCircle, Trash2, Check, X, CircleDot, Loader2, Music2, AudioLines, TrendingUp, AlertTriangle, AlertCircle, Info, Save, Download, UploadCloud } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ import {
   type Project, type ProjectAdvice, type ProjectTrackVersion, type AdviceStatus,
 } from "@/lib/project-memory";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import type { ScoreBreakdown, StoredIssue } from "@/lib/coaching-loop";
 
@@ -36,11 +38,11 @@ interface AudioReport {
   detected_key: string | null;
   bpm: number | null;
   lufs_estimate: number | null;
-  detected_issues: any;
+  detected_issues: unknown;
   created_at: string;
 }
 
-const STATUS_META: Record<AdviceStatus, { label: string; color: string; icon: any }> = {
+const STATUS_META: Record<AdviceStatus, { label: string; color: string; icon: LucideIcon }> = {
   pending:  { label: "Pending",  color: "text-yellow-500",  icon: CircleDot },
   applied:  { label: "Applied",  color: "text-blue-500",    icon: Check },
   resolved: { label: "Resolved", color: "text-green-500",   icon: Check },
@@ -78,12 +80,12 @@ export default function ProjectDetailPage() {
       const p = await getProject(id);
       if (!p) { setNotFound(true); setLoading(false); return; }
       setProject(p);
-      const sn = (p as any).session_notes ?? {};
+      const sn = (p.session_notes ?? {}) as { tracks_count?: number; mixer_routing?: string; plugin_chains?: string; notes?: string };
       setTracksCount(typeof sn.tracks_count === "number" ? sn.tracks_count : "");
       setMixerRouting(sn.mixer_routing ?? "");
       setPluginChains(sn.plugin_chains ?? "");
       setNotes(sn.notes ?? "");
-      setGoal((p as any).goal ?? "");
+      setGoal(p.goal ?? "");
       const [a, v, r, sc, iss, pl, tg] = await Promise.all([
         listAdvice(p.id),
         listTrackVersions(p.id),
@@ -107,11 +109,11 @@ export default function ProjectDetailPage() {
           master_ready: sc.data[0].master_ready,
         });
       }
-      setIssues(((iss.data ?? []) as any[]).map((row) => ({
-        id: row.id, detector_id: row.detector_id, severity: row.severity, title: row.title,
-        detail: row.detail, metrics: row.metrics, status: row.status,
+      setIssues((iss.data ?? []).map((row) => ({
+        id: row.id, detector_id: row.detector_id, severity: row.severity as StoredIssue["severity"], title: row.title,
+        detail: row.detail ?? "", metrics: row.metrics as unknown as StoredIssue["metrics"], status: row.status as StoredIssue["status"],
       })));
-      const resolved = resolveGenreTarget((tg.data ?? []) as any[], p.genre);
+      const resolved = resolveGenreTarget(tg.data ?? [], p.genre);
       setTargetScore(resolved.profile?.target_score ?? 85);
       setGenericTarget(resolved.generic);
       const pid = pl.data?.[0]?.id ?? null;
@@ -137,13 +139,13 @@ export default function ProjectDetailPage() {
         supabase.from("repair_plans").select("*").eq("project_id", project.id),
         supabase.from("project_advice").select("*").eq("project_id", project.id),
       ]);
-      const plans = (pl.data ?? []) as any[];
+      const plans = pl.data ?? [];
       const planIds = plans.map((p) => p.id);
-      let stepsByPlan: Record<string, any[]> = {};
+      const stepsByPlan: Record<string, unknown[]> = {};
       if (planIds.length > 0) {
         const { data: allSteps } = await supabase
           .from("plan_steps").select("*").in("plan_id", planIds).order("step_order");
-        for (const s of (allSteps ?? []) as any[]) {
+        for (const s of allSteps ?? []) {
           (stepsByPlan[s.plan_id] ||= []).push(s);
         }
       }
@@ -166,7 +168,7 @@ export default function ProjectDetailPage() {
       a.remove();
       URL.revokeObjectURL(url);
       toast.success("Project exported");
-    } catch (e: any) {
+    } catch (e) {
       toast.error(e?.message ?? "Could not export project");
     }
   }
@@ -181,7 +183,7 @@ export default function ProjectDetailPage() {
       notes,
     };
     const { error } = await supabase.from("projects")
-      .update({ session_notes: session_notes as any, goal: goal || null })
+      .update({ session_notes: session_notes as unknown as Json, goal: goal || null })
       .eq("id", project.id);
     setSavingSession(false);
     if (error) toast.error("Could not save session");

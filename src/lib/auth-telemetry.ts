@@ -61,7 +61,6 @@ export async function logAuthRateEvent(
     session_kind_count: counters.kindCount,
   };
 
-  // eslint-disable-next-line no-console
   console.info("[auth-telemetry]", { ...payload, ts: new Date().toISOString() });
 
   // Backend write (RLS allows anon + authenticated inserts of sanitized rows only).

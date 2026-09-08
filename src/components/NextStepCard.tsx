@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useProject } from "@/context/ProjectContext";
 import { supabase } from "@/integrations/supabase/client";
 import { deriveLoopState, type LoopState, type PlanStepStatus, type StoredIssue } from "@/lib/coaching-loop";
+import type { LoopInputs } from "@/lib/coaching-loop";
 
 const LABELS: Record<LoopState, { label: string; instruction: string }> = {
   UPLOADED: { label: "Upload", instruction: "Upload a track to get your first score." },
@@ -43,15 +44,16 @@ export const NextStepCard = () => {
       const loop = deriveLoopState({
         hasProject: true,
         hasAnalysis: true,
-        latestScore: scoreRes.data as any,
+        latestScore: scoreRes.data as unknown as LoopInputs["latestScore"],
         issues: (issuesRes.data ?? []) as StoredIssue[],
-        plan: planRes.data as any,
+        plan: planRes.data,
         steps,
       });
       setState(loop);
       setLoading(false);
     })().catch(() => { if (!cancelled) { setState(null); setLoading(false); } });
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeProject?.id]);
 
   if (!activeProject || loading || !state) return null;

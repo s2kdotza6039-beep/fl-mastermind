@@ -127,7 +127,7 @@ export default function StudioSetupPage() {
       return;
     }
     toast.success("Studio setup saved. Sensei will now tailor advice to your FL Studio version.");
-    navigate("/");
+    navigate("/dashboard");
   };
 
   const field = (
@@ -175,7 +175,7 @@ export default function StudioSetupPage() {
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-2 border-t border-border">
-              <Button variant="ghost" onClick={() => navigate("/")}>Cancel</Button>
+              <Button variant="ghost" onClick={() => navigate("/dashboard")}>Cancel</Button>
               <Button
                 onClick={onSave}
                 disabled={!allFilled || saving}

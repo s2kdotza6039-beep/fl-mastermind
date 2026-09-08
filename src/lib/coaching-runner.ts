@@ -11,6 +11,7 @@
 // ============================================================================
 
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { addTrackVersion, touchLastOpened } from "@/lib/project-memory";
 import {
   computeMixScore, detectIssues, reconcileIssues, buildPlanFromIssues, computeDelta,
@@ -129,8 +130,8 @@ export async function persistAnalyzedUpload(args: {
       band_mid_db: res.metrics.bands.mid,
       band_highmid_db: res.metrics.bands.highMid,
       band_high_db: res.metrics.bands.high,
-      detected_issues: res.issues as unknown as any,
-      recommendations: res.recommendations as unknown as any,
+      detected_issues: res.issues as unknown as Json,
+      recommendations: res.recommendations as unknown as Json,
     })
     .select("id")
     .maybeSingle();
@@ -164,7 +165,7 @@ export async function persistAnalyzedUpload(args: {
     out.kind = "foreign";
     await supabase
       .from("audio_analysis_reports")
-      .update({ detected_issues: [...(res.issues as any[]), flagIssue(prevReport?.file_name ?? null, verdict)] as any })
+      .update({ detected_issues: [...(res.issues as unknown as unknown[]), flagIssue(prevReport?.file_name ?? null, verdict)] as unknown as Json })
       .eq("id", inserted.id);
   } else if (setActiveReport) {
     // Auto-activate this report as the coaching session (never while foreign).
@@ -191,11 +192,11 @@ export async function persistAnalyzedUpload(args: {
       if (!foreign) {
         try {
           out.story = await runCoachingLoop(userId, activeProject.id, activeProject.genre, inserted.id, version.id, res);
-        } catch (loopErr: any) {
+        } catch (loopErr) {
           out.loopError = loopErr?.message ?? String(loopErr);
         }
       }
-    } catch (e: any) {
+    } catch (e) {
       out.linkError = e?.message ?? String(e);
     }
   }
@@ -288,8 +289,8 @@ export async function runCoachingLoop(
     .from("genre_target_profiles")
     .select("*");
   if (gErr || !allTargets || allTargets.length === 0) throw new Error("Genre targets unavailable");
-  const match = allTargets.find((t: any) => (t.genre ?? "").toLowerCase() === wanted);
-  const fallback = allTargets.find((t: any) => (t.genre ?? "").toLowerCase() === "pop");
+  const match = allTargets.find((t) => (t.genre ?? "").toLowerCase() === wanted);
+  const fallback = allTargets.find((t) => (t.genre ?? "").toLowerCase() === "pop");
   const target = ((match ?? fallback) as unknown) as GenreTarget;
 
   // 2. Build audio report snapshot for math.
@@ -343,7 +344,7 @@ export async function runCoachingLoop(
     audio_report_id: audioReportId,
     track_version_id: trackVersionId,
     mix_score: scored.score,
-    breakdown: breakdown as any,
+    breakdown: breakdown as unknown as Json,
     master_ready: scored.master_ready,
   });
 
@@ -353,14 +354,14 @@ export async function runCoachingLoop(
     .from("project_issues")
     .select("*")
     .eq("project_id", projectId);
-  const existing: StoredIssue[] = (existingRows ?? []).map((r: any) => ({
+  const existing: StoredIssue[] = (existingRows ?? []).map((r) => ({
     id: r.id,
     detector_id: r.detector_id,
-    severity: r.severity,
+    severity: r.severity as StoredIssue["severity"],
     title: r.title,
     detail: r.detail,
-    metrics: r.metrics,
-    status: r.status,
+    metrics: r.metrics as unknown as StoredIssue["metrics"],
+    status: r.status as StoredIssue["status"],
     first_seen_at: r.first_seen_at,
     last_seen_at: r.last_seen_at,
     resolved_at: r.resolved_at,
@@ -381,7 +382,7 @@ export async function runCoachingLoop(
       severity: iss.severity,
       title: iss.title,
       detail: iss.detail ?? null,
-      metrics: iss.metrics as any,
+      metrics: iss.metrics as unknown as Json,
       status: iss.status,
       last_seen_at: iss.last_seen_at ?? new Date().toISOString(),
       resolved_at: iss.resolved_at ?? null,

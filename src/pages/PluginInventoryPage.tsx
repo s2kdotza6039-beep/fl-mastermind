@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Boxes, Save, Loader2, Plus, X, Search, CheckSquare, Square, Undo2, Upload, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -67,14 +67,14 @@ export default function PluginInventoryPage() {
     );
   }, [native, third, custom, savedSnapshot]);
 
-  const isDuplicate = (name: string) => {
+  const isDuplicate = useCallback((name: string) => {
     const n = name.trim().toLowerCase();
     return (
       native.some((x) => x.toLowerCase() === n) ||
       third.some((x) => x.toLowerCase() === n) ||
       custom.some((x) => x.toLowerCase() === n)
     );
-  };
+  }, [native, third, custom]);
 
   const toggle = (list: string[], setList: (v: string[]) => void, name: string) => {
     setList(list.includes(name) ? list.filter((n) => n !== name) : [...list, name]);
@@ -132,7 +132,7 @@ export default function PluginInventoryPage() {
     return CUSTOM_PLUGIN_SUGGESTIONS
       .filter((p) => p.toLowerCase().includes(q) && !isDuplicate(p))
       .slice(0, 8);
-  }, [customDraft, native, third, custom]);
+  }, [customDraft, isDuplicate]);
 
   // Reset/clamp active highlight when the suggestion list changes
   useEffect(() => {
@@ -245,7 +245,7 @@ export default function PluginInventoryPage() {
     });
     setSaving(false);
     if (res.error) return toast.error(`Couldn't save inventory: ${res.error}`);
-    navigate("/");
+    navigate("/dashboard");
   };
 
   const onUndo = async (snap?: {
@@ -608,7 +608,7 @@ export default function PluginInventoryPage() {
                 Undo last save
               </Button>
             )}
-            <Button variant="ghost" onClick={() => navigate("/")}>Cancel</Button>
+            <Button variant="ghost" onClick={() => navigate("/dashboard")}>Cancel</Button>
             <Button
               onClick={onSave}
               disabled={saving || undoing}

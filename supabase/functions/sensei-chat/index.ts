@@ -64,6 +64,9 @@ const buckets = new Map<string, { count: number; reset: number }>();
 const RATE_FREE = 12;   // requests per window for free
 const RATE_PAID = 60;
 const RATE_ADMIN = 200;
+// Free tier: lifetime Sensei questions before upgrade. Keep in sync with
+// PRICING.freeQuestions in src/lib/beta-config.ts.
+const FREE_QUESTION_LIMIT = 3;
 const WINDOW_MS = 60_000;
 
 function rateLimit(key: string, limit: number) {
@@ -135,7 +138,7 @@ Deno.serve(async (req) => {
       .from("user_roles")
       .select("role")
       .eq("user_id", user.id);
-    const roles = (roleRows || []).map((r: any) => r.role);
+    const roles = (roleRows || []).map((r) => r.role);
     const isAdmin = roles.includes("admin");
     const isPaid = roles.includes("paid") || isAdmin;
 
@@ -182,6 +185,27 @@ Deno.serve(async (req) => {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // ---------- FREE-TIER QUESTION CAP ----------
+    if (!isPaid) {
+      const { data: usageRow } = await supaAdmin
+        .from("chat_usage")
+        .select("questions_used")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const used = usageRow?.questions_used ?? 0;
+      if (used >= FREE_QUESTION_LIMIT) {
+        return new Response(
+          JSON.stringify({
+            error: `You've used all ${FREE_QUESTION_LIMIT} free questions. Upgrade to Studio Sensei Pro for unlimited questions and full access.`,
+            code: "free_limit_reached",
+            used,
+            limit: FREE_QUESTION_LIMIT,
+          }),
+          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     // ---------- SUSPICIOUS DETECTION ----------
@@ -336,10 +360,10 @@ PLUGIN RECOMMENDATION RULES (MANDATORY):
     if (audio && typeof audio === "object" && typeof audio.fileName === "string") {
       const num = (v: unknown, d = 1) => (typeof v === "number" && isFinite(v) ? v.toFixed(d) : "—");
       const str = (v: unknown, max = 60) => (typeof v === "string" ? v.slice(0, max) : "—");
-      const bands = audio.bands && typeof audio.bands === "object" ? audio.bands as any : null;
+      const bands = audio.bands && typeof audio.bands === "object" ? audio.bands : null;
       const issues = Array.isArray(audio.issues) ? audio.issues.slice(0, 12) : [];
       const recommendations = Array.isArray(audio.recommendations)
-        ? audio.recommendations.filter((r: any) => typeof r === "string").slice(0, 12)
+        ? audio.recommendations.filter((r) => typeof r === "string").slice(0, 12)
         : [];
       system += `\n\nUSER AUDIO ANALYSIS (HIGHEST PRIORITY — diagnose these objective measurements first):
 - File: ${str(audio.fileName, 80)} (${str(audio.fileFormat, 10)})
@@ -350,7 +374,7 @@ PLUGIN RECOMMENDATION RULES (MANDATORY):
 ${bands ? `- Frequency balance (dB rel total): low ${num(bands.low)} | low-mid ${num(bands.lowMid)} | mid ${num(bands.mid)} | high-mid ${num(bands.highMid)} | high ${num(bands.high)}` : ""}
 
 DETECTED PROBLEMS (address in order of severity):
-${issues.length ? issues.map((i: any) => `- [${str(i.severity, 10).toUpperCase()}] ${str(i.title, 120)} — ${str(i.detail, 240)} | Recommendation: ${str(i.recommendation, 240)}`).join("\n") : "- (no issues flagged by the analyzer)"}
+${issues.length ? issues.map((i) => `- [${str(i.severity, 10).toUpperCase()}] ${str(i.title, 120)} — ${str(i.detail, 240)} | Recommendation: ${str(i.recommendation, 240)}`).join("\n") : "- (no issues flagged by the analyzer)"}
 
 ANALYZER TOP-LEVEL RECOMMENDATIONS (weave these into your coaching plan):
 ${recommendations.length ? recommendations.map((r: string) => `- ${str(r, 280)}`).join("\n") : "- (none)"}
@@ -370,10 +394,10 @@ AUDIO COACHING RULES (MANDATORY):
     if (pm && typeof pm === "object" && typeof pm.projectName === "string") {
       const strSafe = (v: unknown, max = 80) => (typeof v === "string" ? v.slice(0, max) : "");
       const pendingList = Array.isArray(pm.pendingAdviceTitles)
-        ? pm.pendingAdviceTitles.filter((t: any) => typeof t === "string").slice(0, 8)
+        ? pm.pendingAdviceTitles.filter((t) => typeof t === "string").slice(0, 8)
         : [];
       const recent = Array.isArray(pm.recentAdvice)
-        ? pm.recentAdvice.filter((r: any) => r && typeof r.title === "string").slice(0, 10)
+        ? pm.recentAdvice.filter((r) => r && typeof r.title === "string").slice(0, 10)
         : [];
       system += `\n\nPROJECT MEMORY (long-term context for THIS song — reference it explicitly to feel like a mentor who remembers):
 - Project name: ${strSafe(pm.projectName, 80)}
@@ -388,7 +412,7 @@ PENDING ADVICE NOT YET ADDRESSED:
 ${pendingList.length ? pendingList.map((t: string) => `- ${strSafe(t, 120)}`).join("\n") : "- (none)"}
 
 RECENT ADVICE HISTORY (newest first, with status):
-${recent.length ? recent.map((r: any) => `- [${strSafe(r.status, 12).toUpperCase()}] ${strSafe(r.title, 120)}`).join("\n") : "- (no prior advice on this project)"}
+${recent.length ? recent.map((r) => `- [${strSafe(r.status, 12).toUpperCase()}] ${strSafe(r.title, 120)}`).join("\n") : "- (no prior advice on this project)"}
 
 MEMORY RULES (MANDATORY):
 - Refer to the project by name when natural ("On ${strSafe(pm.projectName, 60)}…").
@@ -399,7 +423,7 @@ MEMORY RULES (MANDATORY):
 
     // Tier-gated detail level
     if (!isPaid) {
-      system += `\n\nFREE TIER NOTE: Keep responses focused and educational. Mention that advanced multi-stage plug-in chains (Trap, Amapiano, Drill, R&B, Afrobeat full mix templates) are available to paid members and suggest upgrading at /upgrade when relevant.`;
+      system += `\n\nFREE TIER NOTE: The user is on a free trial limited to ${FREE_QUESTION_LIMIT} questions total. Keep responses focused and educational. When it fits naturally, warmly mention that Pro membership ($10/month) unlocks unlimited questions, advanced plug-in chains (Trap, Amapiano, Drill, R&B, Afrobeat full mix templates), and the full mixing & mastering coaches at /upgrade.`;
     }
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -427,6 +451,13 @@ MEMORY RULES (MANDATORY):
       return new Response(JSON.stringify({ error: "AI gateway error" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Count the answered question against the free tier's lifetime cap.
+    if (!isPaid) {
+      try {
+        await supaAdmin.rpc("bump_chat_questions", { _user_id: user.id });
+      } catch { /* never break chat over a counter */ }
     }
 
     return new Response(response.body, {

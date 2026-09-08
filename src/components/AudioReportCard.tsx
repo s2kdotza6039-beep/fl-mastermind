@@ -6,6 +6,7 @@ import {
   Activity, AlertTriangle, AudioLines, Download, Gauge, Headphones, KeyRound, Music2, ShieldCheck, Volume2, Waves,
 } from "lucide-react";
 import type { AudioAnalysisResult, AudioIssue, ConfidenceScore } from "@/lib/audio-analysis";
+import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 
 function severityVariant(s: AudioIssue["severity"]) {
@@ -21,7 +22,7 @@ function ConfidenceBadge({ c }: { c: ConfidenceScore }) {
     c.label === "low" ? "outline" :
     "destructive";
   return (
-    <Badge variant={variant as any} className="text-[9px] uppercase ml-1" title={c.note}>
+    <Badge variant={variant} className="text-[9px] uppercase ml-1" title={c.note}>
       {c.label} · {Math.round(c.value * 100)}%
     </Badge>
   );
@@ -29,7 +30,7 @@ function ConfidenceBadge({ c }: { c: ConfidenceScore }) {
 
 function Stat({
   icon: Icon, label, value, sub, confidence,
-}: { icon: any; label: string; value: string; sub?: string; confidence?: ConfidenceScore }) {
+}: { icon: LucideIcon; label: string; value: string; sub?: string; confidence?: ConfidenceScore }) {
   return (
     <div className="rounded-lg border border-border bg-card/60 p-3">
       <div className="flex items-center justify-between mb-1">

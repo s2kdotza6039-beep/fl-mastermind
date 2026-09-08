@@ -97,7 +97,7 @@ export const UploadAndAskCard = () => {
         SCOPE,
       );
       navigate(`/chat?scope=${SCOPE}`);
-    } catch (err: any) {
+    } catch (err) {
       console.warn("Upload & Ask failed:", err?.message ?? err);
       toast.error(err?.message ?? "Could not analyze that file.");
     } finally {

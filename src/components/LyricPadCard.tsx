@@ -28,7 +28,7 @@ export const LyricPadCard = ({ projectId, projectName, genre }: { projectId?: st
 
   const clear = () => {
     setLyrics("");
-    try { localStorage.removeItem(key); } catch {}
+    try { localStorage.removeItem(key); } catch { /* no-op */ }
     toast.success("Lyric pad cleared.");
   };
 

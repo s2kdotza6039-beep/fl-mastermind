@@ -41,7 +41,7 @@ export interface AudioReportLike {
   band_mid_db: number | null;
   band_highmid_db: number | null;
   band_high_db: number | null;
-  detected_issues?: any;
+  detected_issues?: unknown;
 }
 
 export interface DetectedIssue {
@@ -178,7 +178,7 @@ export function computeMixScore(report: AudioReportLike, target: GenreTarget): M
   // Existing critical detected issues from the analyzer.
   let criticalIssues = 0;
   const arr = Array.isArray(report.detected_issues) ? report.detected_issues : [];
-  const criticals = arr.filter((i: any) => (i?.severity ?? "").toLowerCase() === "critical").length;
+  const criticals = arr.filter((i) => (i?.severity ?? "").toLowerCase() === "critical").length;
   criticalIssues = Math.min(20, criticals * 10);
   score -= criticalIssues;
 
@@ -348,7 +348,7 @@ export function computeDelta(
 // ─────────────────────────────────────────────────────────────
 // Reconcile
 // ─────────────────────────────────────────────────────────────
-export interface ReconciledIssue extends StoredIssue {}
+export type ReconciledIssue = StoredIssue;
 
 export function reconcileIssues(
   existing: StoredIssue[],

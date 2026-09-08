@@ -62,7 +62,7 @@ export function AdminFeedbackTab({ users }: { users: UserLite[] }) {
         <MessageSquare className="w-4 h-4 text-primary" />
         <span className="text-sm font-semibold">Beta Feedback ({rows.length})</span>
         <div className="ml-auto flex gap-2">
-          <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as any)}>
+          <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as "all" | FeedbackRow["type"])}>
             <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All types</SelectItem>
@@ -71,7 +71,7 @@ export function AdminFeedbackTab({ users }: { users: UserLite[] }) {
               <SelectItem value="general">General</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as "all" | FeedbackRow["status"])}>
             <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All statuses</SelectItem>

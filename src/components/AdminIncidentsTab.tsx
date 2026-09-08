@@ -56,7 +56,7 @@ export function AdminIncidentsTab() {
   }
 
   async function update(id: string, patch: Partial<Incident>) {
-    const payload: any = { ...patch };
+    const payload: Partial<Incident> = { ...patch };
     if (patch.status === "resolved" && !patch.resolved_at) payload.resolved_at = new Date().toISOString();
     if (patch.status && patch.status !== "resolved") payload.resolved_at = null;
     const { error } = await supabase.from("incidents").update(payload).eq("id", id);

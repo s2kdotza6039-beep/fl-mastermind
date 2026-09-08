@@ -19,8 +19,14 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+      "react-refresh/only-export-components": "off", // Fast-refresh DX hint only — context/ui files intentionally co-locate exports.
       "@typescript-eslint/no-unused-vars": "off",
     },
+  },
+  {
+    // Vendored shadcn/ui primitives (incl. the Recharts tooltip/legend wrappers)
+    // use loose callback-payload types upstream; keep the explicit-any ban for our own code.
+    files: ["src/components/ui/**"],
+    rules: { "@typescript-eslint/no-explicit-any": "off" },
   },
 );

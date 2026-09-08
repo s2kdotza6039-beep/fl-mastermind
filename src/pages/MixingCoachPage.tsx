@@ -45,7 +45,7 @@ export default function MixingCoachPage() {
         supabase.from("audio_analysis_reports").select("id").eq("project_id", activeProject.id).limit(1),
       ]);
 
-      const resolved = resolveGenreTarget((targetRes.data ?? []) as any[], activeProject.genre);
+      const resolved = resolveGenreTarget(targetRes.data ?? [], activeProject.genre);
       const tScore = resolved.profile?.target_score ?? 85;
       setGenericTarget(resolved.generic);
       setTargetScore(tScore);
@@ -61,9 +61,9 @@ export default function MixingCoachPage() {
         setLatest(null);
       }
 
-      setIssues(((issuesRes.data ?? []) as any[]).map((r) => ({
-        id: r.id, detector_id: r.detector_id, severity: r.severity, title: r.title,
-        detail: r.detail, metrics: r.metrics, status: r.status,
+      setIssues((issuesRes.data ?? []).map((r) => ({
+        id: r.id, detector_id: r.detector_id, severity: r.severity as StoredIssue["severity"], title: r.title,
+        detail: r.detail ?? "", metrics: r.metrics as unknown as StoredIssue["metrics"], status: r.status as StoredIssue["status"],
       })));
 
       const pid = planRes.data?.[0]?.id ?? null;
@@ -80,6 +80,7 @@ export default function MixingCoachPage() {
       setHasAnalysis((reportRes.data?.length ?? 0) > 0);
       setLoading(false);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeProject?.id]);
 
   const state: LoopState = deriveLoopState({

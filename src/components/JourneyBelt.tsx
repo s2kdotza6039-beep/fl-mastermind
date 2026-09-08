@@ -12,6 +12,7 @@ import {
 } from "@/lib/journey";
 import { PRODUCTION_PHASES } from "@/lib/production-phase";
 import { useProductionPhase } from "@/hooks/use-production-phase";
+import type { ProductionPhase } from "@/lib/production-phase";
 import type { LoopInputs } from "@/lib/coaching-loop";
 import { cn } from "@/lib/utils";
 
@@ -145,13 +146,13 @@ export const JourneyBelt = () => {
   ) => {
     if (c.id === "VOCALS") {
       e.preventDefault();
-      void setPhase("VOCALS" as any);
+      void setPhase("VOCALS");
       if (!onProduction) navigate("/production");
       return;
     }
     if (c.id === "PRODUCTION" && onProduction && isVocalsPhase) {
       e.preventDefault();
-      void setPhase("BEAT" as any);
+      void setPhase("BEAT");
       return;
     }
     if (state === "locked") e.preventDefault();
@@ -214,7 +215,7 @@ export const JourneyBelt = () => {
                   type="button"
                   title={p.blurb + (isVocals ? " — Optional. Skip if instrumental." : "")}
                   disabled={phaseSaving}
-                  onClick={() => { void setPhase(p.id as any); }}
+                  onClick={() => { void setPhase(p.id as ProductionPhase); }}
                   aria-current={isCurrent ? "step" : undefined}
                   className={cn(
                     "flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium whitespace-nowrap transition-colors hover:opacity-90 disabled:opacity-50",

@@ -33,7 +33,7 @@ interface UserRow {
   email: string | null;
   roles: string[];
 }
-interface LogRow { id: string; user_id: string | null; event_type: string; metadata: any; created_at: string; }
+interface LogRow { id: string; user_id: string | null; event_type: string; metadata: unknown; created_at: string; }
 interface AlertRow { id: string; user_id: string | null; severity: string; alert_type: string; message: string; resolved: boolean; created_at: string; }
 interface SetupRow {
   user_id: string;
@@ -103,7 +103,7 @@ export default function AdminPage() {
         if (e.email) emailMap.set(e.user_id, e.email);
       });
       const map = new Map<string, UserRow>();
-      profilesQ.data.forEach((p: any) =>
+      profilesQ.data.forEach((p) =>
         map.set(p.user_id, {
           user_id: p.user_id,
           display_name: p.display_name,
@@ -111,7 +111,7 @@ export default function AdminPage() {
           roles: [],
         }),
       );
-      rolesQ.data.forEach((r: any) => {
+      rolesQ.data.forEach((r) => {
         const row = map.get(r.user_id) || {
           user_id: r.user_id,
           display_name: null,
@@ -135,7 +135,7 @@ export default function AdminPage() {
     const { data, error } = await supabase.functions.invoke("admin-set-role", {
       body: { user_id: userId, role, action },
     });
-    const errMsg = error?.message || (data as any)?.error;
+    const errMsg = error?.message || (data as { error?: string } | null)?.error;
     if (errMsg) {
       return toast.error(friendlyRoleAssignmentError(errMsg));
     }
@@ -149,7 +149,7 @@ export default function AdminPage() {
       body: { user_id: target.user_id },
     });
     setDeleting(false);
-    const errMsg = error?.message || (data as any)?.error;
+    const errMsg = error?.message || (data as { error?: string } | null)?.error;
     if (errMsg) return toast.error(errMsg);
     setConfirmDelete(null);
     toast.success("User deleted permanently");
@@ -507,7 +507,7 @@ function SetupsTab({
         if (h === "tier") return esc(tierLabelFor(r.tier));
         if (h === "allowed_plugins") return esc(allowed);
         if (h === "blocked_plugins") return esc(blocked);
-        return esc((r as any)[h]);
+        return esc((r as unknown as Record<string, unknown>)[h]);
       }).join(",");
     });
 

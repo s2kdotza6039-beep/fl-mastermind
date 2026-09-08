@@ -18,3 +18,34 @@ export function friendlyRateLimitMessage(retryAfterSec?: number) {
   const wait = retryAfterSec && retryAfterSec > 0 ? ` Try again in ${retryAfterSec}s.` : "";
   return `Sensei is catching their breath — you've hit the per-minute limit.${wait}`;
 }
+
+/**
+ * Paid membership pricing. Kept in one place so the upgrade page, paywall
+ * cards and docs all quote the same numbers. The Paddle price ID lives
+ * server-side (PADDLE_PRICE_ID secret) — never in the client.
+ */
+export const PRICING = {
+  currency: "USD",
+  monthlyUsd: 10,
+  monthlyLabel: "$10",
+  cadence: "/month",
+  headline: "Studio Sensei Pro",
+  /** Free plan: lifetime Sensei questions before upgrading. Keep in sync with
+   *  FREE_QUESTION_LIMIT in supabase/functions/sensei-chat/index.ts. */
+  freeQuestions: 3,
+  benefits: [
+    "Unlimited Sensei chat with priority queue",
+    "Advanced plugin chains — Trap, Amapiano, Drill, R&B, Afrobeat, Gospel",
+    "Full mixing & mastering coaches with exact settings",
+    "Unlimited key detection & upload analysis",
+    "Watermarked PDF/TXT exports of Sensei advice",
+    "Release paperwork — ISRC, loudness targets, PDF/CSV export",
+  ],
+  freeTier: [
+    "3 free questions to Sensei",
+    "Production coach only",
+    "Basic key detection",
+    "No PDF/CSV exports",
+  ],
+} as const;
+

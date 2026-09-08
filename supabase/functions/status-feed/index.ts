@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
       home_page_url: siteUrl,
       feed_url: `${url.origin}${url.pathname}?format=json`,
       description: "Operational status and incident history for Studio Sensei.",
-      items: rows.map((i: any) => ({
+      items: rows.map((i) => ({
         id: i.id,
         url: `${siteUrl}#${i.id}`,
         title: `[${i.severity.toUpperCase()} · ${i.status}] ${i.title}`,
@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
 
   // Default: RSS 2.0
   const items = rows
-    .map((i: any) => {
+    .map((i) => {
       const link = `${siteUrl}#${i.id}`;
       const pub = new Date(i.updated_at ?? i.started_at).toUTCString();
       const desc = `[${i.severity.toUpperCase()} · ${i.status}] ${i.body ?? ""}`;

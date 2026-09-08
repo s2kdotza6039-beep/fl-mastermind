@@ -110,13 +110,13 @@ export function assessContinuation(
 /** Owner-confirmed "it really is the same beat" marker (persisted on the report). */
 export function isOverridden(detectedIssues: unknown): boolean {
   if (!Array.isArray(detectedIssues)) return false;
-  return detectedIssues.some((i: any) => i?.detector_id === CONTINUITY_OVERRIDE_ID);
+  return detectedIssues.some((i) => i?.detector_id === CONTINUITY_OVERRIDE_ID);
 }
 
 /** True when this report itself was flagged as a foreign beat. */
 export function isFlaggedForeign(detectedIssues: unknown): boolean {
   if (!Array.isArray(detectedIssues)) return false;
-  return detectedIssues.some((i: any) => i?.detector_id === CONTINUITY_FLAG_ID);
+  return detectedIssues.some((i) => i?.detector_id === CONTINUITY_FLAG_ID);
 }
 
 export function flagIssue(prevName: string | null, v: ContinuityVerdict): MarkerIssue {

@@ -19,7 +19,9 @@ import {
   isCaptchaFailure,
   parseRetryAfterSec,
 } from "@/lib/friendly-errors";
+import type { AuthErrLike } from "@/lib/friendly-errors";
 import { logAuthRateEvent } from "@/lib/auth-telemetry";
+import type { AuthRateEventKind } from "@/lib/auth-telemetry";
 import { RateLimitNotice } from "@/components/RateLimitNotice";
 import { ResendConfirmationForm } from "@/components/ResendConfirmationForm";
 import { getRateLimit, setRateLimit as persistRateLimit, clearRateLimit } from "@/lib/rate-limit-store";
@@ -42,14 +44,14 @@ async function probeGoogleProvider(): Promise<ProviderStatus> {
       headers: { apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY },
     });
     if (res.ok) return { google: "enabled", checkedAt: new Date().toLocaleTimeString() };
-    let body: any = null;
-    try { body = await res.json(); } catch {}
+    let body: { error_description?: string; msg?: string; error?: string } | null = null;
+    try { body = await res.json(); } catch { /* no-op */ }
     const msg = body?.error_description || body?.msg || body?.error || `HTTP ${res.status}`;
     if (/not enabled|unsupported provider/i.test(msg)) {
       return { google: "disabled", checkedAt: new Date().toLocaleTimeString(), rawError: msg };
     }
     return { google: "unknown", checkedAt: new Date().toLocaleTimeString(), rawError: msg };
-  } catch (e: any) {
+  } catch (e) {
     return { google: "unknown", checkedAt: new Date().toLocaleTimeString(), rawError: e?.message || String(e) };
   }
 }
@@ -162,7 +164,7 @@ export default function AuthPage() {
   const nav = useNavigate();
   const loc = useLocation();
   const { isAuthed, loading } = useAuth();
-  const from = (loc.state as any)?.from || "/";
+  const from = (loc.state as { from?: string } | null)?.from || "/dashboard";
 
   useEffect(() => {
     if (!loading && isAuthed) nav(from, { replace: true });
@@ -219,7 +221,6 @@ function SignInForm() {
         break;
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function runProbe() {
@@ -243,7 +244,7 @@ function SignInForm() {
   };
 
   async function handleAuthFailure(
-    error: any,
+    error: AuthErrLike,
     surface: "signin" | "password_reset",
     friendly: string,
   ) {
@@ -252,12 +253,12 @@ function SignInForm() {
       // Persist under the actual surface so the countdown survives reloads.
       persistRateLimit(surface, retryAfterSec, friendly);
       if (surface === "signin") setRateLimit({ retryAfterSec, message: friendly });
-      logAuthRateEvent(`${surface === "signin" ? "signin" : "password_reset"}_rate_limited` as any, {
+      logAuthRateEvent(`${surface === "signin" ? "signin" : "password_reset"}_rate_limited` as AuthRateEventKind, {
         retryAfterSec,
         surface,
       });
     } else if (isCaptchaFailure(error)) {
-      logAuthRateEvent(`${surface === "signin" ? "signin" : "password_reset"}_captcha_failed` as any, { surface });
+      logAuthRateEvent(`${surface === "signin" ? "signin" : "password_reset"}_captcha_failed` as AuthRateEventKind, { surface });
       toast.error(friendly);
     } else {
       toast.error(friendly);
@@ -284,7 +285,7 @@ function SignInForm() {
             message: `Failed sign-in for ${ev.data}`,
             metadata: { email: ev.data },
           });
-        } catch {}
+        } catch { /* no-op */ }
       }
     } else {
       dismissRateLimit();
@@ -315,7 +316,7 @@ function SignInForm() {
         setOauthError(msg);
         toast.error(msg);
       }
-    } catch (e: any) {
+    } catch (e) {
       const msg = `${e?.message || "Google sign-in failed"} — pop-ups or the redirect may be blocked by your browser. Allow pop-ups for this site and try again.`;
       setOauthError(msg);
       toast.error(msg);

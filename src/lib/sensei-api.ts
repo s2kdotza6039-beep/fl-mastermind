@@ -65,6 +65,7 @@ export async function streamSenseiChat({
   onDone,
   onError,
   onRateLimit,
+  onFreeLimit,
 }: {
   messages: ChatMsg[];
   context?: ChatContext;
@@ -73,6 +74,8 @@ export async function streamSenseiChat({
   onError: (msg: string) => void;
   /** Optional: invoked instead of onError when the server returns 429. */
   onRateLimit?: (info: { retryAfterSec: number; message: string }) => void;
+  /** Optional: invoked when the free plan's question cap is reached (402). */
+  onFreeLimit?: (info: { used: number; limit: number; message: string }) => void;
 }) {
   // Require an authenticated session — protects content from anonymous scraping.
   const { data: { session } } = await supabase.auth.getSession();
@@ -99,10 +102,16 @@ export async function streamSenseiChat({
 
   if (!resp.ok || !resp.body) {
     let msg = "Sensei is unavailable right now.";
+    let code = "";
+    let used = 0;
+    let limit = 0;
     try {
       const data = await resp.json();
       if (data?.error) msg = data.error;
-    } catch {}
+      if (data?.code) code = data.code;
+      used = typeof data?.used === "number" ? data.used : 0;
+      limit = typeof data?.limit === "number" ? data.limit : 0;
+    } catch { /* no-op */ }
     if (resp.status === 429) {
       const retry = Number(resp.headers.get("Retry-After")) || 30;
       const { friendlyRateLimitMessage } = await import("./beta-config");
@@ -113,7 +122,18 @@ export async function streamSenseiChat({
       }
       msg = friendly;
     }
-    if (resp.status === 402) msg = "AI credits exhausted. Add funds in Lovable Cloud workspace settings.";
+    if (resp.status === 402 && code === "free_limit_reached") {
+      if (onFreeLimit) {
+        onFreeLimit({ used, limit, message: msg });
+        return;
+      }
+      onError(msg);
+      return;
+    }
+    if (resp.status === 402) {
+      onError("AI credits exhausted. Add funds in Lovable Cloud workspace settings.");
+      return;
+    }
     onError(msg);
     return;
   }
@@ -159,7 +179,7 @@ export async function streamSenseiChat({
         const parsed = JSON.parse(json);
         const c = parsed.choices?.[0]?.delta?.content;
         if (c) onDelta(c);
-      } catch {}
+      } catch { /* no-op */ }
     }
   }
 

@@ -3,7 +3,7 @@ import { buildMixChecklistMarkdown, buildReleaseNotesMarkdown } from "@/lib/pape
 import type { ReleasePlan } from "@/lib/release";
 
 const plan: ReleasePlan = {
-  platform: { id: "spotify", label: "Spotify", lufs: -14, ceilingDb: -1, note: "normalizes to -14" } as any,
+  platform: { id: "spotify", label: "Spotify", lufs: -14, ceilingDb: -1, note: "normalizes to -14" },
   gates: [
     { id: "loudness", label: "Loudness", verdict: "pass", detail: "-14.1 LUFS" },
     { id: "peak", label: "True peak", verdict: "fail", detail: "-0.1 dBTP", fix: "Lower the ceiling to -1 dBTP" },
@@ -33,7 +33,7 @@ describe("paperwork", () => {
       dynamic_range_db: 7,
       stereo_width: 0.6,
       detected_issues: [],
-    } as any);
+    });
     expect(md).toContain("# Release notes");
     expect(md).toContain("-9.2 LUFS");
     expect(md).toContain("ISRC:");

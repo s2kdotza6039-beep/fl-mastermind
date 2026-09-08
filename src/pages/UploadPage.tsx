@@ -27,6 +27,7 @@ import {
   formatMetricsForPrompt,
 } from "@/lib/audio-analysis";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/context/AuthContext";
 import { useTrackSession } from "@/context/TrackSessionContext";
 import { useProject } from "@/context/ProjectContext";
@@ -234,7 +235,6 @@ export default function UploadPage() {
     } catch (e) {
       console.warn("Failed to load BPM preset", e);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [file]);
 
   // Auto-save BPM preset when alignment changes (debounced via timer).
@@ -446,17 +446,20 @@ export default function UploadPage() {
         .select("detected_issues")
         .eq("id", hold.reportId)
         .maybeSingle();
-      const issues = Array.isArray((row as any)?.detected_issues) ? ((row as any).detected_issues as any[]) : [];
+      const detected = row?.detected_issues;
+      const issues: { detector_id?: string }[] = Array.isArray(detected)
+        ? (detected as unknown as { detector_id?: string }[])
+        : [];
       await supabase
         .from("audio_analysis_reports")
-        .update({ detected_issues: [...issues, overrideIssue()] as any })
+        .update({ detected_issues: [...issues, overrideIssue()] as unknown as Json })
         .eq("id", hold.reportId);
       setContinuityHold(null);
       setLastReportId(hold.reportId);
       await setActiveReport(hold.reportId);
       await runCoachingLoop(user.id, activeProject.id, activeProject.genre, hold.reportId, hold.versionId, result);
       toast.success("Confirmed — coaching resumed. The override is logged on this report.");
-    } catch (e: any) {
+    } catch (e) {
       console.warn("Override failed:", e?.message ?? e);
       toast.error("Could not confirm the override — try re-uploading.");
     }
@@ -477,7 +480,8 @@ export default function UploadPage() {
     };
     const t0 = performance.now();
     const startedAt = new Date().toISOString();
-    let decodeMs = 0, decodedReused = !!decoded;
+    let decodeMs = 0;
+    const decodedReused = !!decoded;
     trackingPush(2, selection
       ? `Re-analyzing selection (${selection.startSec.toFixed(1)}s–${selection.endSec.toFixed(1)}s)…`
       : decoded ? "Reusing cached decoded buffer — re-running DSP only…" : "Starting full-track analysis…");
@@ -527,7 +531,7 @@ export default function UploadPage() {
       });
       await persistReport(res);
       toast.success(selection ? "Selection analyzed" : "Analysis complete");
-    } catch (e: any) {
+    } catch (e) {
       const msg = e?.message || "Failed to analyze audio";
       console.error("[analysis]", e);
       setError(msg);
@@ -574,7 +578,7 @@ export default function UploadPage() {
           await persistReport(res);
           setError(null);
           toast.success("Analysis complete (recovered from cache)");
-        } catch (e2: any) {
+        } catch (e2) {
           setError(e2?.message || msg);
           toast.error("Analysis failed — see error below");
         }
@@ -634,7 +638,7 @@ export default function UploadPage() {
         ta.remove();
       }
       toast.success("Diagnostics copied to clipboard");
-    } catch (e: any) {
+    } catch (e) {
       toast.error(`Copy failed: ${e?.message || "clipboard unavailable"}`);
     }
   };
@@ -700,7 +704,7 @@ export default function UploadPage() {
         id: toastId,
         description: `${(selection.endSec - selection.startSec).toFixed(2)}s · ${(blob.size / 1024).toFixed(1)} KB`,
       });
-    } catch (e: any) {
+    } catch (e) {
       if (e?.message === "cancelled") {
         toast.info("WAV export cancelled", { id: toastId });
       } else {

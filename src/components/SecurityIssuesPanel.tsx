@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2, ShieldCheck, ShieldAlert, RefreshCw, ExternalLink, Database, Plug, Globe, Bot } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 export interface ScanFinding {
   id: string;
@@ -19,7 +20,7 @@ interface ScanData {
   scanners: Record<string, { status: string; findings: ScanFinding[] }>;
 }
 
-const SCANNER_META: Record<string, { label: string; icon: any }> = {
+const SCANNER_META: Record<string, { label: string; icon: LucideIcon }> = {
   supabase: { label: "Supabase (DB)", icon: Database },
   supabase_lov: { label: "Supabase Lovable Review", icon: Database },
   connector_security_scan: { label: "Connector Scan (Wiz)", icon: Plug },
@@ -57,7 +58,7 @@ export function SecurityIssuesPanel() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as ScanData;
       setData(json);
-    } catch (e: any) {
+    } catch (e) {
       setErr(e?.message || "Failed to load scan results");
     } finally {
       setLoading(false);

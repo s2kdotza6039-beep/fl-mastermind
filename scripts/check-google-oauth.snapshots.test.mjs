@@ -148,7 +148,6 @@ for (const [name, fix] of Object.entries(FIXTURES)) {
 
 if (UPDATE) {
   saveSnapshots(computed);
-  // eslint-disable-next-line no-console
   console.log(`✓ wrote ${Object.keys(computed).length} snapshots to ${SNAPSHOT_PATH}`);
 }
 

@@ -136,7 +136,7 @@ export function isProofDebugEnabled(): boolean {
   if (flag === "on") return true;
   if (flag === "off") return false;
   try {
-    return !(typeof import.meta !== "undefined" && (import.meta as any).env?.PROD);
+    return !(typeof import.meta !== "undefined" && import.meta.env?.PROD);
   } catch {
     return false;
   }
@@ -170,10 +170,16 @@ export function saveProofLock(projectId: string | null, lock: ProofLockState | n
   } catch { /* ignore */ }
 }
 
+declare global {
+  interface Window {
+    senseiProofDebug?: (on?: boolean) => boolean;
+  }
+}
+
 // Dev console helper: window.senseiProofDebug(true|false)
 try {
   if (typeof window !== "undefined") {
-    (window as any).senseiProofDebug = (on = true) => {
+    window.senseiProofDebug = (on = true) => {
       setProofDebug(on);
       console.info(`[SenseiProof] debug logging ${on ? "ENABLED" : "disabled"}`);
       return on;

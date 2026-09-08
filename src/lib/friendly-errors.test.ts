@@ -104,7 +104,7 @@ describe("auth telemetry: logs without sensitive payload", () => {
     const { logAuthRateEvent } = await import("./auth-telemetry");
     await logAuthRateEvent("signin_rate_limited", { retryAfterSec: 12, surface: "signin" });
     expect(spy).toHaveBeenCalled();
-    const [, payload] = spy.mock.calls[0] as any[];
+    const [, payload] = spy.mock.calls[0] as unknown as [string, { kind: string; retry_after_sec?: number | null }];
     const text = JSON.stringify(payload);
     expect(text).not.toMatch(/@/);
     expect(text).not.toMatch(/password/i);

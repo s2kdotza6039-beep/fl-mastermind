@@ -378,7 +378,6 @@ function detectBase64UrlEdgeCase(value) {
   // etc. Check this BEFORE the whitespace branch because JS `\s` matches
   // many unicode space chars (NBSP included), and a paste-artifact NBSP
   // is more diagnostically useful labeled as "non-ASCII" than "whitespace".
-  // eslint-disable-next-line no-control-regex
   if (/[^\x00-\x7F]/.test(value)) {
     return "contains non-ASCII / unicode chars (likely paste artifact: NBSP, smart quotes, ZWSP)";
   }
@@ -389,7 +388,6 @@ function detectBase64UrlEdgeCase(value) {
     if (/\r|\n/.test(value)) kinds.push("newline");
     return `contains whitespace (${kinds.join(", ") || "unknown"}) — strip before sending`;
   }
-  // eslint-disable-next-line no-control-regex
   if (/[\x00-\x1F\x7F]/.test(value)) return "contains ASCII control chars";
   return null;
 }

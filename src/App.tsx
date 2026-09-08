@@ -17,6 +17,9 @@ import { ScrollToTop } from "@/components/ScrollToTop";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { armSenseiBootTone } from "@/lib/sensei-tone";
 import { AudioGlobalBindings } from "@/components/AudioGlobalBindings";
+import Landing from "./pages/Landing";
+import TrustPage from "./pages/TrustPage";
+import RefundPolicyPage from "./pages/RefundPolicyPage";
 import Dashboard from "./pages/Dashboard";
 import ChatPage from "./pages/ChatPage";
 import QuickFixPage from "./pages/QuickFixPage";
@@ -48,8 +51,20 @@ import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
 
-// Pages rendered outside the studio layout (full-screen)
-const BARE_ROUTES = ["/auth", "/reset-password", "/oauth-check"];
+// Pages rendered outside the studio layout (full-screen, public-facing)
+const BARE_ROUTES = [
+  "/",
+  "/auth",
+  "/reset-password",
+  "/oauth-check",
+  "/terms",
+  "/privacy",
+  "/ownership",
+  "/security",
+  "/trust",
+  "/status",
+  "/refund",
+];
 
 function AppShell() {
   const loc = useLocation();
@@ -58,18 +73,21 @@ function AppShell() {
   const routes = (
     <Routes>
       {/* Public */}
+      <Route path="/" element={<Landing />} />
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/oauth-check" element={<OAuthCheckPage />} />
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/refund" element={<RefundPolicyPage />} />
       <Route path="/ownership" element={<OwnershipPage />} />
       <Route path="/security" element={<SecurityPage />} />
       <Route path="/status" element={<StatusPage />} />
+      <Route path="/trust" element={<TrustPage />} />
       <Route path="/feedback" element={<ProtectedRoute><FeedbackPage /></ProtectedRoute>} />
 
       {/* Authed */}
-      <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
       <Route path="/quick" element={<ProtectedRoute><QuickFixPage /></ProtectedRoute>} />
       <Route path="/problems" element={<ProtectedRoute><ProblemsPage /></ProtectedRoute>} />
@@ -81,7 +99,7 @@ function AppShell() {
       <Route path="/checklist" element={<ProtectedRoute><ChecklistPage /></ProtectedRoute>} />
       <Route path="/publish" element={<ProtectedRoute><PublishPage /></ProtectedRoute>} />
       <Route path="/upload" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
-      <Route path="/upgrade" element={<ProtectedRoute><UpgradePage /></ProtectedRoute>} />
+      <Route path="/upgrade" element={<UpgradePage />} />
       <Route path="/studio-setup" element={<ProtectedRoute><StudioSetupPage /></ProtectedRoute>} />
       <Route path="/plugin-inventory" element={<ProtectedRoute><PluginInventoryPage /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />

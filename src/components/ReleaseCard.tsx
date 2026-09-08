@@ -48,10 +48,11 @@ export function ReleaseCard() {
         file_name: reportRes.data.file_name ?? null,
       } : null);
       const wanted = (activeProject.genre ?? "").trim().toLowerCase();
-      const t = (targetsRes.data ?? []).find((g: any) => (g.genre ?? "").toLowerCase() === wanted);
+      const t = (targetsRes.data ?? []).find((g) => (g.genre ?? "").toLowerCase() === wanted);
       setGenreOpts(t ? { drMin: t.dr_min ?? undefined, widthMin: t.width_min ?? undefined, widthMax: t.width_max ?? undefined } : {});
     })().catch(() => { /* the release path stays quiet on error */ });
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeProject?.id, activeProject?.genre, nonce]);
 
   const plan: ReleasePlan | null =

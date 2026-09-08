@@ -1,7 +1,7 @@
 // Map low-level auth/role errors to user-facing messages.
 // Never leak SQL, table names, policy names, or internal guard wording.
 
-type AuthErrLike =
+export type AuthErrLike =
   | string
   | null
   | undefined

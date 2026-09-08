@@ -52,7 +52,7 @@ function ForbiddenCard({ reason }: { reason: string }) {
         <Lock className="w-10 h-10 text-primary mx-auto mb-4" />
         <h2 className="font-display text-xl font-bold mb-2">{reason}</h2>
         <p className="text-sm text-muted-foreground mb-5">You don't have permission to view this page.</p>
-        <Button asChild><Link to="/">Back to Dashboard</Link></Button>
+        <Button asChild><Link to="/dashboard">Back to Dashboard</Link></Button>
       </Card>
     </div>
   );
@@ -65,10 +65,10 @@ function UpgradeCard() {
         <Crown className="w-10 h-10 text-primary mx-auto mb-4" />
         <h2 className="font-display text-xl font-bold mb-2">Paid feature</h2>
         <p className="text-sm text-muted-foreground mb-5">
-          Advanced plug-in chains and pro tools are available for paid members. Contact the studio admin to upgrade your account.
+          Advanced plug-in chains and pro tools are included with the Studio Sensei Pro membership — $10/month. Your first 3 questions are free.
         </p>
         <div className="flex gap-2 justify-center">
-          <Button asChild variant="outline"><Link to="/">Back</Link></Button>
+          <Button asChild variant="outline"><Link to="/dashboard">Back</Link></Button>
           <Button asChild className="bg-gradient-gold text-primary-foreground"><Link to="/upgrade">Upgrade</Link></Button>
         </div>
       </Card>

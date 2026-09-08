@@ -7,6 +7,7 @@ import { buildUploadAdvisePrompt, persistAnalyzedUpload } from "@/lib/coaching-r
 import { CONTINUITY_OVERRIDE_ID, overrideIssue } from "@/lib/loop-guard";
 import { loadProofLock, saveProofLock, shouldUnlockProof, proofLog, describeProofStatus, recordProofAttempt, type ProofLockState } from "@/lib/proof-lock";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -18,11 +19,12 @@ import { CHAPTERS, chapterFromPath, chapterLabel, type ChatChapter } from "@/lib
 import { makeScope, scopeLabel } from "@/lib/chat-scope";
 import { useProductionPhase } from "@/hooks/use-production-phase";
 
-import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock, ThumbsUp, ThumbsDown, Eye, Paperclip, Upload } from "lucide-react";
+import { Send, Loader2, Bookmark, Sparkles, Info, ChevronDown, ChevronUp, Boxes, Lock, ThumbsUp, ThumbsDown, Eye, Paperclip, Upload, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/context/SessionContext";
 import { useAuth } from "@/context/AuthContext";
+import { PRICING } from "@/lib/beta-config";
 import { useStudioSetup } from "@/context/StudioSetupContext";
 import { usePluginInventory } from "@/context/PluginInventoryContext";
 import { useTrackSession } from "@/context/TrackSessionContext";
@@ -33,7 +35,7 @@ import { RateLimitNotice } from "./RateLimitNotice";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { editionToTier, forbiddenPlugins, eligiblePlugins, tierLabel } from "@/lib/fl-plugin-eligibility";
-import { addAdvice, appendChatMessage, buildProjectAiContext, listChatMessages } from "@/lib/project-memory";
+import { addAdvice, appendChatMessage, buildProjectAiContext, listChatMessages, type ProjectContextSummary } from "@/lib/project-memory";
 import { SpeechProvider, messageKey } from "@/lib/speech";
 import { SpeechButton } from "./SpeechButton";
 import { PlanCard } from "./PlanCard";
@@ -95,7 +97,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
   // plus dev logging so lock/unlock transitions are easy to diagnose.
   type ProofLock = ProofLockState;
   const [awaitingProof, setAwaitingProof] = useState<ProofLock | null>(() => loadProofLock(activeProject?.id ?? null));
-  const proofReportId = (active as any)?.id ?? null;
+  const proofReportId = active?.id ?? null;
   const lockedIsCurrentProject = awaitingProof ? (awaitingProof.projectId === (activeProject?.id ?? null)) : true;
   // Re-hydrate when the project resolves/changes (context loads async, component remounts on scope change).
   useEffect(() => {
@@ -126,7 +128,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
         attemptedId: proofReportId,
         lockKind: loopLock.lockKind ?? null,
       });
-      setAwaitingProof((cur) => recordProofAttempt(cur, proofReportId, reason as any));
+      setAwaitingProof((cur) => recordProofAttempt(cur, proofReportId, reason));
     }
   }, [proofReportId, awaitingProof, lockedIsCurrentProject, loopLock.lockKind, activeProject?.id]);
 
@@ -188,18 +190,20 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
         .maybeSingle();
       if (error) throw error;
       if (!data) throw new Error("No bounce to override yet.");
-      const existing = Array.isArray(data.detected_issues) ? (data.detected_issues as any[]) : [];
-      if (!existing.some((i: any) => i?.detector_id === CONTINUITY_OVERRIDE_ID)) {
+      const existing: { detector_id?: string }[] = Array.isArray(data.detected_issues)
+        ? (data.detected_issues as unknown as { detector_id?: string }[])
+        : [];
+      if (!existing.some((i) => i?.detector_id === CONTINUITY_OVERRIDE_ID)) {
         const { error: upErr } = await supabase
           .from("audio_analysis_reports")
-          .update({ detected_issues: [...existing, overrideIssue()] as any })
+          .update({ detected_issues: [...existing, overrideIssue()] as unknown as Json })
           .eq("id", data.id);
         if (upErr) throw upErr;
       }
       setOverrideOpen(false);
       loopLock.refresh();
       toast.success("Override logged — coaching resumed. 🥋");
-    } catch (e: any) {
+    } catch (e) {
       toast.error(e?.message ?? "Couldn't log the override.");
     } finally {
       setOverriding(false);
@@ -250,7 +254,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
       }
       toast.success("Sensei heard it — your new bounce is on record.");
       send(buildUploadAdvisePrompt(f.name, res, outcome.story));
-    } catch (err: any) {
+    } catch (err) {
       console.warn("Option Knob upload failed:", err?.message ?? err);
       toast.error(err?.message ?? "Could not analyze that file.");
     } finally {
@@ -268,6 +272,27 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
   const [loading, setLoading] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [rateLimit, setRateLimit] = useState<{ retryAfterSec: number; message: string; lastInput: string } | null>(null);
+  const [freeLimit, setFreeLimit] = useState<{ used: number; limit: number } | null>(null);
+  const [freeUsed, setFreeUsed] = useState(0);
+
+  // Free plan: load how many Sensei questions this user has already used.
+  useEffect(() => {
+    if (!user || isPaid) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("chat_usage")
+          .select("questions_used")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (!cancelled && data) setFreeUsed(data.questions_used ?? 0);
+      } catch { /* ignore */ }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, isPaid]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentInitial = useRef(false);
 
@@ -324,6 +349,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
       })
       .catch(() => setHistoryLoaded(true));
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeProject?.id, compact, scope]);
 
   useEffect(() => {
@@ -357,6 +383,10 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
       return;
     }
     setRateLimit(null);
+    if (!isPaid && freeUsed >= PRICING.freeQuestions) {
+      setFreeLimit({ used: freeUsed, limit: PRICING.freeQuestions });
+      return;
+    }
     const userMsg: ChatMsg = { role: "user", content: trimmed };
     const next = [...messages, userMsg];
     setMessages(next);
@@ -373,7 +403,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
     }
 
     // Build long-term project memory for the AI (don't block on failure).
-    let projectMemory: any = undefined;
+    let projectMemory: ProjectContextSummary | undefined = undefined;
     if (activeProject) {
       try { projectMemory = await buildProjectAiContext(activeProject); } catch {/* ignore */}
     }
@@ -412,6 +442,7 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
       onDelta: upsert,
       onDone: () => {
         setLoading(false);
+        if (!isPaid) setFreeUsed((n) => n + 1);
         // Persist the assistant turn once streaming finishes.
         if (activeProject && user && acc.trim()) {
           appendChatMessage(user.id, activeProject.id, { role: "assistant", content: acc, source_page: "chat", scope })
@@ -430,6 +461,13 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
         // Roll back the user message so the retry button can resend it cleanly.
         setMessages((prev) => prev.slice(0, -1));
         setRateLimit({ retryAfterSec, message, lastInput: trimmed });
+      },
+      onFreeLimit: ({ used, limit }) => {
+        setLoading(false);
+        // Roll back the user message; show the upgrade wall instead.
+        setMessages((prev) => prev.slice(0, -1));
+        setFreeLimit({ used, limit });
+        setFreeUsed(limit);
       },
     });
   };
@@ -907,7 +945,39 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
           </div>
         </div>
       )}
+      {freeLimit && !isPaid && (
+        <div className="px-4 pb-2">
+          <div className="rounded-lg border border-primary/40 bg-primary/5 p-4">
+            <div className="flex items-center gap-2 font-semibold text-sm">
+              <Crown className="w-4 h-4 text-primary" /> Free plan limit reached
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              You've used all {freeLimit.limit} free questions. Upgrade to {PRICING.headline} for
+              unlimited questions and full access.
+            </p>
+            <div className="flex gap-2 mt-3">
+              <Button asChild className="bg-gradient-gold text-primary-foreground hover:opacity-90">
+                <Link to="/upgrade">Upgrade — {PRICING.monthlyLabel}{PRICING.cadence}</Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link to="/dashboard">Back to dashboard</Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="border-t border-border p-4 bg-card/50 backdrop-blur">
+        {!isPaid && (
+          <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              Free plan · <span className="text-foreground">{freeUsed}</span> of {PRICING.freeQuestions} questions used
+            </span>
+            <Link to="/upgrade" className="text-primary hover:underline">
+              Upgrade — {PRICING.monthlyLabel}{PRICING.cadence}
+            </Link>
+          </div>
+        )}
         <div className="flex gap-2 items-end">
           <select
             value={advisorLang}
@@ -982,14 +1052,14 @@ export const SenseiChat = ({ initialPrompt, compact, audioContext, scope: scopeP
               ? "🔒 Beat not recognized — load the correct bounce above to continue…"
               : loopLock.lockKind === "rebounce"
                 ? "🔒 Waiting for your new bounce — Sensei will verify it…"
-                : projectLoading ? "Restoring project memory…" : "Ask Sensei anything... (Shift+Enter for new line)"}
+                : projectLoading ? "Restoring project memory…" : freeLimit ? "🔒 Upgrade to Pro to keep chatting…" : "Ask Sensei anything... (Shift+Enter for new line)"}
             rows={1}
             className="resize-none bg-input border-border focus-visible:ring-primary min-h-[44px]"
-            disabled={loading || projectLoading || loopLock.lockKind != null || !!awaitingProof}
+            disabled={loading || projectLoading || loopLock.lockKind != null || !!awaitingProof || !!freeLimit}
           />
           <Button
             type="submit"
-            disabled={loading || projectLoading || loopLock.lockKind != null || !!awaitingProof || !input.trim()}
+            disabled={loading || projectLoading || loopLock.lockKind != null || !!awaitingProof || !!freeLimit || !input.trim()}
             className="bg-gradient-gold text-primary-foreground hover:opacity-90 h-[44px] px-4"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

@@ -39,13 +39,13 @@ const PhaseDesk = () => {
 
   const meta = PRODUCTION_PHASES.find((p) => p.id === phase) ?? PRODUCTION_PHASES[0];
   const guess = detectSketch({
-    tonalFlatness: (active as any)?.tonal_flatness ?? null,
+    tonalFlatness: active?.tonal_flatness ?? null,
     stereoWidth: active?.stereo_width ?? null,
   });
   const ctx = {
     projectName: activeProject?.name ?? null,
     genre: activeProject?.genre ?? null,
-    fileName: (active as any)?.file_name ?? null,
+    fileName: active?.file_name ?? null,
     guess,
   };
 

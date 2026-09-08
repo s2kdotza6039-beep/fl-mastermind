@@ -4,6 +4,7 @@ import {
   Wrench, MessageCircle, Disc3, Music2, Sliders, Volume2, Crown, Layers, ListChecks, UploadCloud,
   Mic, Speaker, Sparkles, TrendingUp, Trash2, KeyRound, AudioLines,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useSession } from "@/context/SessionContext";
 import { useAuth } from "@/context/AuthContext";
 import { PageHeader } from "@/components/PageHeader";
@@ -50,7 +51,7 @@ interface RecentAudio {
   bpm: number | null;
   lufs_estimate: number | null;
   peak_db: number | null;
-  detected_issues: any;
+  detected_issues: unknown;
   created_at: string;
 }
 
@@ -82,19 +83,19 @@ export default function Dashboard() {
     listAdvice(activeProject.id)
       .then(setDbAdvice)
       .catch(() => setDbAdvice([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeProject?.id]);
 
-  const projectChecklist: Array<{ id: string; label: string; done: boolean }> = Array.isArray(
-    (activeProject as any)?.checklist,
-  )
-    ? ((activeProject as any).checklist as Array<{ id: string; label: string; done: boolean }>)
+  const rawChecklist = activeProject?.checklist;
+  const projectChecklist: Array<{ id: string; label: string; done: boolean }> = Array.isArray(rawChecklist)
+    ? (rawChecklist as Array<{ id: string; label: string; done: boolean }>)
     : [];
   const tasksDone =
     !activeProject || projectChecklist.length === 0
       ? "—"
       : `${projectChecklist.filter((c) => c.done).length}/${projectChecklist.length}`;
 
-  const stats = [
+  const stats: Array<{ label: string; value: string | number; icon: LucideIcon; title?: string }> = [
     { label: "Genre", value: genre, icon: Music2 },
     { label: "Stage", value: stage, icon: Sliders },
     { label: "Tasks Done", value: tasksDone, icon: ListChecks, title: "Active project checklist" },
@@ -129,14 +130,14 @@ export default function Dashboard() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {stats.map((s) => (
-          <Card key={s.label} className="studio-card p-4" title={(s as any).title}>
+          <Card key={s.label} className="studio-card p-4" title={s.title}>
             <div className="flex items-center justify-between mb-2">
               <span className="text-[10px] uppercase tracking-widest text-muted-foreground">{s.label}</span>
               <s.icon className="w-4 h-4 text-primary/70" />
             </div>
             <div className="text-xl font-bold text-foreground truncate">{s.value}</div>
-            {(s as any).title && (
-              <div className="text-[10px] text-muted-foreground/70 mt-1">{(s as any).title}</div>
+            {s.title && (
+              <div className="text-[10px] text-muted-foreground/70 mt-1">{s.title}</div>
             )}
           </Card>
         ))}
@@ -262,7 +263,7 @@ export default function Dashboard() {
                         await deleteAdvice(a.id);
                         setDbAdvice((prev) => prev.filter((x) => x.id !== a.id));
                         toast.success("Advice deleted");
-                      } catch (e: any) {
+                      } catch (e) {
                         toast.error(e?.message ?? "Could not delete advice");
                       }
                     }}

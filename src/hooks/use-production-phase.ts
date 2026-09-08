@@ -4,11 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useProject } from "@/context/ProjectContext";
 import { readProductionPhase, type ProductionPhase } from "@/lib/production-phase";
+import type { Json } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 
 export function useProductionPhase() {
   const { activeProject, refresh } = useProject();
-  const stored = readProductionPhase((activeProject as any)?.session_notes);
+  const stored = readProductionPhase(activeProject?.session_notes);
   const [phase, setLocalPhase] = useState<ProductionPhase>(stored);
   const [saving, setSaving] = useState(false);
 
@@ -23,15 +24,15 @@ export function useProductionPhase() {
       setLocalPhase(next);
       setSaving(true);
       try {
-        const existing = ((activeProject as any).session_notes ?? {}) as Record<string, unknown>;
+        const existing = (activeProject.session_notes ?? {}) as unknown as Record<string, unknown>;
         const merged = { ...(typeof existing === "object" ? existing : {}), productionPhase: next };
         const { error } = await supabase
           .from("projects")
-          .update({ session_notes: merged as any })
+          .update({ session_notes: merged as unknown as Json })
           .eq("id", activeProject.id);
         if (error) throw error;
         await refresh();
-      } catch (e: any) {
+      } catch (e) {
         setLocalPhase(prev);
         toast.error(e?.message ?? "Could not save the production phase");
       } finally {

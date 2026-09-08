@@ -12,7 +12,7 @@ interface AudioReportRow {
   bpm: number | null;
   lufs_estimate: number | null;
   peak_db: number | null;
-  detected_issues: any;
+  detected_issues: unknown;
   created_at: string;
 }
 

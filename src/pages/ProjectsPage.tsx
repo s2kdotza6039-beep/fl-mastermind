@@ -212,7 +212,7 @@ export default function ProjectsPage() {
                 try {
                   await remove(target.id);
                   toast.success("Project deleted");
-                } catch (e: any) {
+                } catch (e) {
                   toast.error(e?.message ?? "Could not delete project");
                 }
               }}
@@ -248,7 +248,7 @@ export default function ProjectsPage() {
                   await update(renameTarget.id, { name: renameValue.trim().slice(0, 80) });
                   setRenameTarget(null);
                   toast.success("Project renamed");
-                } catch (e: any) {
+                } catch (e) {
                   toast.error(e?.message ?? "Could not rename project");
                 } finally {
                   setRenaming(false);

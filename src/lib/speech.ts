@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 // Voice Reading V1.5 — humanized browser TTS: best-voice selection, sentence-
 // chunked playback (natural cadence + cross-browser progress, no onboundary
 // reliance), and per-message resume so users continue where they stopped.
@@ -170,7 +169,7 @@ export function stripForSpeech(input: string): string {
     .replace(/`[^`]*`/g, " code block ")
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, " ");
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, " ");
 
   const lines = withoutCode.split(/\r?\n/);
   const out: string[] = [];
@@ -487,12 +486,12 @@ export function SpeechProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   });
 
   useEffect(() => {
+    const run = runRef.current;
     return () => {
-      if (runRef.current.timer !== null) window.clearTimeout(runRef.current.timer);
+      if (run.timer !== null) window.clearTimeout(run.timer);
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }

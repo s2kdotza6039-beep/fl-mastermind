@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { RefObject } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   History, Check, Trash2, MessageCircle, Music2, UploadCloud, Eye, Keyboard,
@@ -96,6 +97,8 @@ function BandThumb({ r }: { r: TrackReport }) {
 }
 
 // ---- Tone preview using Web Audio (no stored file). Single instance.
+type HighlightableRef = RefObject<HTMLDivElement> & { _pendingHighlightId?: string; _pendingScrollTop?: number };
+
 type PreviewState = { id: string; stop: () => void };
 let currentPreview: PreviewState | null = null;
 const NOTE_HZ: Record<string, number> = {
@@ -110,7 +113,7 @@ function keyToHz(k: string | null | undefined): number {
 }
 async function playPreviewAsync(r: TrackReport, onEnd: () => void): Promise<PreviewState | null> {
   try {
-    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return null;
     const ctx: AudioContext = new Ctx();
     // AWAIT the resume: scheduling against currentTime while the context is
@@ -157,8 +160,8 @@ async function playPreviewAsync(r: TrackReport, onEnd: () => void): Promise<Prev
     const state: PreviewState = {
       id: r.id,
       stop: () => {
-        try { master.gain.cancelScheduledValues(ctx.currentTime); } catch {}
-        try { master.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.05); } catch {}
+        try { master.gain.cancelScheduledValues(ctx.currentTime); } catch { /* no-op */ }
+        try { master.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.05); } catch { /* no-op */ }
         setTimeout(() => { ctx.close().catch(() => {}); }, 80);
       },
     };
@@ -215,10 +218,10 @@ export const AnalysisHistoryPanel = ({ className }: { className?: string }) => {
       if (typeof s.genreFilter === "string") setGenreFilter(s.genreFilter);
       if (typeof s.highlightId === "string") {
         // Wait until list resolves to find by id (handled by effect below)
-        (sectionRef as any)._pendingHighlightId = s.highlightId;
+        (sectionRef as HighlightableRef)._pendingHighlightId = s.highlightId;
       }
       if (typeof s.scrollTop === "number") {
-        (sectionRef as any)._pendingScrollTop = s.scrollTop;
+        (sectionRef as HighlightableRef)._pendingScrollTop = s.scrollTop;
       }
     } catch {/* ignore */}
   }, [persistKey]);
@@ -243,8 +246,8 @@ export const AnalysisHistoryPanel = ({ className }: { className?: string }) => {
   useEffect(() => {
     if (restoredScrollRef.current) return;
     if (loading || filtered.length === 0) return;
-    const pendingId = (sectionRef as any)._pendingHighlightId as string | undefined;
-    const pendingScroll = (sectionRef as any)._pendingScrollTop as number | undefined;
+    const pendingId = (sectionRef as HighlightableRef)._pendingHighlightId;
+    const pendingScroll = (sectionRef as HighlightableRef)._pendingScrollTop;
     if (pendingId) {
       const idx = filtered.findIndex((r) => r.id === pendingId);
       if (idx >= 0) setHighlightIdx(idx);
@@ -302,6 +305,7 @@ export const AnalysisHistoryPanel = ({ className }: { className?: string }) => {
   useEffect(() => {
     if (!active) return;
     setLiveMessage(`Active coaching track is now ${active.file_name}.`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.id, active?.file_name]);
 
   // Announce highlight changes
@@ -389,7 +393,7 @@ export const AnalysisHistoryPanel = ({ className }: { className?: string }) => {
 
   return (
     <Card
-      ref={sectionRef as any}
+      ref={sectionRef}
       id={ANCHOR_ID}
       tabIndex={-1}
       role="region"

@@ -4,6 +4,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Music2 } from "lucide-react";
 
+type ReportLite = { id: string; file_name: string; detected_key: string | null; bpm: number | null; detected_issues: unknown; created_at: string };
+
 interface SessionRow {
   id: string;
   user_id: string;
@@ -15,7 +17,7 @@ interface SessionRow {
     file_name: string;
     detected_key: string | null;
     bpm: number | null;
-    detected_issues: any;
+    detected_issues: unknown;
     created_at: string;
   } | null;
   user_email?: string | null;
@@ -40,11 +42,11 @@ export const AdminTrackSessionsTab = () => {
             .from("audio_analysis_reports")
             .select("id, file_name, detected_key, bpm, detected_issues, created_at")
             .in("id", reportIds)
-        : { data: [] as any[] };
-      const reportMap = new Map((reports ?? []).map((r: any) => [r.id, r]));
+        : { data: [] as ReportLite[] };
+      const reportMap = new Map((reports ?? []).map((r) => [r.id, r]));
 
       const { data: emails } = await supabase.rpc("admin_list_user_emails");
-      const emailMap = new Map((emails ?? []).map((e: any) => [e.user_id, e.email]));
+      const emailMap = new Map((emails ?? []).map((e) => [e.user_id, e.email]));
 
       setRows(
         list.map((r) => ({

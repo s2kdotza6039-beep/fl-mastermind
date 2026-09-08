@@ -16,6 +16,7 @@ export function Footer() {
           <Link to="/status" className="hover:text-primary">Status</Link>
           <Link to="/privacy" className="hover:text-primary">Privacy (POPIA)</Link>
           <Link to="/terms" className="hover:text-primary">Terms</Link>
+          <Link to="/refund" className="hover:text-primary">Refund Policy</Link>
           <Link to="/feedback" className="hover:text-primary">Feedback</Link>
         </div>
       </div>

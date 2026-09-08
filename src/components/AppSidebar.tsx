@@ -3,6 +3,7 @@ import {
   LayoutDashboard, MessageCircle, Wrench, Disc3, Music2,
   Sliders, Volume2, Layers, ListChecks, UploadCloud, Crown, KeyRound, Shield, Lock, Settings2, Boxes, MessageSquare, FolderOpen,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar,
@@ -13,14 +14,14 @@ import { cn } from "@/lib/utils";
 interface NavItem {
   title: string;
   url: string;
-  icon: any;
+  icon: LucideIcon;
   group: "Studio" | "Coach" | "Tools" | "Admin";
   paid?: boolean;
   adminOnly?: boolean;
 }
 
 const NAV: NavItem[] = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard, group: "Studio" },
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, group: "Studio" },
   { title: "My Projects", url: "/projects", icon: FolderOpen, group: "Studio" },
   { title: "Sensei Chat", url: "/chat", icon: MessageCircle, group: "Studio" },
   { title: "Quick Fixes", url: "/quick", icon: Wrench, group: "Coach" },

@@ -1,6 +1,7 @@
 // Project Memory — DB helpers for the long-term memory system.
 // Keeps Studio Sensei aware of each producer's song between sessions.
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 
 export type ProjectStatus = "active" | "paused" | "completed" | "archived";
 export type AdviceStatus = "pending" | "applied" | "ignored" | "resolved";
@@ -19,7 +20,10 @@ export interface Project {
   created_at: string;
   updated_at: string;
   // R13 — production phase lives here (existing JSONB, no migration).
-  session_notes?: any;
+  session_notes?: Json;
+  // R13 checklist + release goal (existing JSONB/text columns).
+  checklist?: Json;
+  goal?: string | null;
 }
 
 export interface ProjectAdvice {
@@ -54,7 +58,7 @@ export interface ProjectChatMessage {
   user_id: string;
   role: "user" | "assistant" | "system";
   content: string;
-  parts: any | null;
+  parts: unknown | null;
   source_page: string | null;
   scope: string | null;
   created_at: string;

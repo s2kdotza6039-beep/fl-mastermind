@@ -15,7 +15,7 @@ interface LogRow {
   id: string;
   user_id: string | null;
   event_type: string;
-  metadata: any;
+  metadata: Record<string, string | number | boolean | null> | null;
   created_at: string;
 }
 
@@ -347,7 +347,7 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
 
   // Parse sort: "<column>:<dir>". JSON-path columns use "metadata->>key" — PostgREST
   // sorts those as text, which is fine for the small integer values we surface here.
-  const applyOrder = (q: any) => {
+  const applyOrder = <T extends { order: (column: string, opts?: { ascending: boolean }) => T }>(q: T): T => {
     const [colRaw, dirRaw] = sort.split(":");
     const col = colRaw || "created_at";
     const ascending = dirRaw === "asc";
@@ -367,7 +367,7 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
       setRows((data as LogRow[]) ?? []);
       setTotalCount(count ?? 0);
       setPage(targetPage);
-    } catch (e: any) {
+    } catch (e) {
       setError(e?.message ?? "Failed to load activity.");
       setRows([]); setTotalCount(0);
     } finally {
@@ -530,8 +530,8 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
 
     // Retry loop with exponential backoff + AbortController. Cancellation aborts
     // the in-flight request immediately and breaks out of the loop.
-    let data: any = null;
-    let lastErr: any = null;
+    let data: LogRow[] | null = null;
+    let lastErr: Error | null = null;
     let lastAttempt = 0;
     for (let attempt = 1; attempt <= EXPORT_MAX_ATTEMPTS; attempt++) {
       if (cancelRef.current) break;
@@ -546,7 +546,10 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
         const timeout = new Promise<never>((_, rej) =>
           setTimeout(() => rej(new Error(`Export timed out after ${EXPORT_TIMEOUT_MS / 1000}s`)), EXPORT_TIMEOUT_MS),
         );
-        const res = (await Promise.race([queryPromise, timeout])) as any;
+        const res = (await Promise.race([queryPromise, timeout])) as unknown as {
+          error?: { message?: string } | null;
+          data?: LogRow[] | null;
+        };
         if (cancelRef.current) {
           attemptsLog.push({ attempt, ok: false, duration_ms: Date.now() - attemptStart, error: "cancelled" });
           break;
@@ -556,7 +559,7 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
         lastErr = null;
         attemptsLog.push({ attempt, ok: true, duration_ms: Date.now() - attemptStart });
         break;
-      } catch (e: any) {
+      } catch (e) {
         lastErr = e;
         attemptsLog.push({ attempt, ok: false, duration_ms: Date.now() - attemptStart, error: e?.message ?? String(e) });
         if (cancelRef.current) break;
@@ -621,7 +624,7 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
 
     try {
       setExportPhase("generating");
-      const source: LogRow[] = (data as LogRow[]) ?? [];
+      const source: LogRow[] = data ?? [];
       if (source.length === 0) {
         toast.error("No events match these filters.");
         finalize("empty", 0, null);
@@ -630,7 +633,7 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
         return;
       }
 
-      const esc = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+      const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
       const presetLabel = PRESETS[preset]?.label ?? "All time";
       const dateRange = (from || to) ? `${from || "…"} → ${to || "…"}` : presetLabel;
       const now = new Date();
@@ -685,7 +688,7 @@ export function AdminActivityTab({ users }: { users: UserLike[] }) {
       setExportPhase("done");
       toast.success(`Exported ${source.length} event${source.length === 1 ? "" : "s"}.`);
       setTimeout(() => setExportPhase((p) => (p === "done" ? "idle" : p)), 1500);
-    } catch (e: any) {
+    } catch (e) {
       const msg = e?.message ?? "Export failed during CSV generation.";
       setExportError(msg);
       setLastFailedSnapshot(currentFilters());

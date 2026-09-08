@@ -108,7 +108,7 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
       // Per-project track memory: ask the track layer to restore the track
       // this project was last working on (no-op if none was recorded).
       restoreProjectTrack(active);
-    } catch (e: any) {
+    } catch (e) {
       toast.error(e?.message ?? "Failed to load projects");
     } finally {
       setLoading(false);
@@ -147,7 +147,7 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
       await refresh();
       await switchProject(proj.id);
       return proj;
-    } catch (e: any) {
+    } catch (e) {
       toast.error(e?.message ?? "Failed to create project");
       return null;
     }

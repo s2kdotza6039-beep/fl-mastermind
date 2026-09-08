@@ -11,7 +11,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check:oauth": "node scripts/check-google-oauth.mjs"
+    "check:oauth": "node scripts/check-google-oauth.mjs",
+    "typecheck": "tsc -b --noEmit",
+    "lint:fix": "eslint . --fix"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

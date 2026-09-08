@@ -41,6 +41,7 @@ export default function FeedbackPage() {
     setItems((data as FeedbackRow[]) ?? []);
     setLoading(false);
   }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [user]);
 
   async function submit() {
@@ -159,5 +160,5 @@ function StatusBadge({ status }: { status: FeedbackRow["status"] }) {
     resolved: { v: "outline", label: "Resolved" },
   } as const;
   const s = map[status];
-  return <Badge variant={s.v as any}>{s.label}</Badge>;
+  return <Badge variant={s.v}>{s.label}</Badge>;
 }

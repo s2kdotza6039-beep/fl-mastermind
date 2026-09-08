@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useMemo } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 
 export type AppRole = "admin" | "paid" | "free";
 
@@ -24,16 +25,16 @@ async function fetchRoles(userId: string): Promise<AppRole[]> {
     .select("role")
     .eq("user_id", userId);
   if (error || !data) return [];
-  return data.map((r: any) => r.role as AppRole);
+  return data.map((r) => r.role as AppRole);
 }
 
-async function logActivity(userId: string | null, eventType: string, metadata: Record<string, any> = {}) {
+async function logActivity(userId: string | null, eventType: string, metadata: Record<string, unknown> = {}) {
   try {
     if (!userId) return;
     await supabase.from("activity_logs").insert({
       user_id: userId,
       event_type: eventType,
-      metadata,
+      metadata: metadata as unknown as Json,
       user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
     });
   } catch {
