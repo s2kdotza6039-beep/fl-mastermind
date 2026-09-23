@@ -162,8 +162,9 @@ export async function streamSenseiChat({
         const c = parsed.choices?.[0]?.delta?.content;
         if (c) onDelta(c);
       } catch {
-        buffer = line + "\n" + buffer;
-        break;
+        // Line was already newline-terminated, so it's complete; skip malformed
+        // events instead of re-queuing them (which stalled the stream forever).
+        continue;
       }
     }
   }
