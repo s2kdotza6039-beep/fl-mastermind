@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable";
 import { useAuth } from "@/context/AuthContext";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -28,6 +27,7 @@ import { getRateLimit, setRateLimit as persistRateLimit, clearRateLimit } from "
 
 
 const OAUTH_GOOGLE_ENABLED = true; // Google provider configured in cloud auth settings (decision D11)
+const GOOGLE_CALLBACK_URL = "https://fl-mastermind.lovable.app/auth/callback";
 
 type ProviderStatus = {
   google: "enabled" | "disabled" | "unknown";
@@ -306,18 +306,20 @@ function SignInForm() {
 
   async function google() {
     setOauthError(null);
-    await runProbe();
     try {
-      const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: window.location.origin,
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: GOOGLE_CALLBACK_URL,
+        },
       });
-      if (result.error) {
-        const msg = `${result.error.message || "Google sign-in failed"} — pop-ups or the redirect may be blocked by your browser. Allow pop-ups for this site and try again.`;
+      if (error) {
+        const msg = error.message || "Google sign-in failed. Please try again.";
         setOauthError(msg);
         toast.error(msg);
       }
     } catch (e) {
-      const msg = `${e?.message || "Google sign-in failed"} — pop-ups or the redirect may be blocked by your browser. Allow pop-ups for this site and try again.`;
+      const msg = e instanceof Error ? e.message : "Google sign-in failed. Please try again.";
       setOauthError(msg);
       toast.error(msg);
     }

@@ -33,6 +33,7 @@ import KeyDetectionPage from "./pages/KeyDetectionPage";
 import ChecklistPage from "./pages/ChecklistPage";
 import UploadPage from "./pages/UploadPage";
 import AuthPage from "./pages/AuthPage";
+import AuthCallbackPage from "./pages/AuthCallbackPage";
 import OAuthCheckPage from "./pages/OAuthCheckPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import AdminPage from "./pages/AdminPage";
@@ -55,6 +56,7 @@ const queryClient = new QueryClient();
 const BARE_ROUTES = [
   "/",
   "/auth",
+  "/auth/callback",
   "/reset-password",
   "/oauth-check",
   "/terms",
@@ -75,6 +77,7 @@ function AppShell() {
       {/* Public */}
       <Route path="/" element={<Landing />} />
       <Route path="/auth" element={<AuthPage />} />
+      <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/oauth-check" element={<OAuthCheckPage />} />
       <Route path="/terms" element={<TermsPage />} />

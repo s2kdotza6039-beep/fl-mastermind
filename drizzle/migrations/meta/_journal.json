@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1790137247733,
+      "tag": "0000_restrict_public_incident_reads",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790137272521,
+      "tag": "0001_restore_chat_usage_schema",
+      "breakpoints": true
+    }
+  ]
+}
