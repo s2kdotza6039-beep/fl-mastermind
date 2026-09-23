@@ -329,6 +329,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
+          is_public: boolean
           resolved_at: string | null
           severity: Database["public"]["Enums"]["incident_severity"]
           started_at: string
@@ -341,6 +342,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          is_public?: boolean
           resolved_at?: string | null
           severity?: Database["public"]["Enums"]["incident_severity"]
           started_at?: string
@@ -353,6 +355,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          is_public?: boolean
           resolved_at?: string | null
           severity?: Database["public"]["Enums"]["incident_severity"]
           started_at?: string
