@@ -272,7 +272,7 @@ export default function OAuthCheckPage() {
           </dl>
           <p className="text-[10px] text-muted-foreground/80 pt-1 leading-relaxed">
             The <span className="font-mono">Redirect URI sent</span> is what your app passes to{" "}
-            <span className="font-mono">lovable.auth.signInWithOAuth</span>. The{" "}
+            <span className="font-mono">supabase.auth.signInWithOAuth</span>. The{" "}
             <span className="font-mono">OAuth callback URL</span> is what must be listed in your Google
             Cloud OAuth client's "Authorized redirect URIs" (only required if you provide your own
             credentials — managed credentials handle this automatically).

@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import {
   ArrowRight, Crown, MessageCircle, Disc3, Music2, KeyRound, Layers,
   UploadCloud, Sparkles, ShieldCheck, Globe2, Check,
@@ -47,7 +47,8 @@ const STEPS = [
 const GENRES = ["Amapiano", "Trap", "Afrobeat", "Kwaito", "Gospel", "House", "Drill", "R&B", "Lo-fi"];
 
 export default function Landing() {
-  const { isAuthed } = useAuth();
+  const { isAuthed, loading } = useAuth();
+  if (!loading && isAuthed) return <Navigate to="/dashboard" replace />;
   const cta = isAuthed ? "/dashboard" : "/auth";
 
   return (
