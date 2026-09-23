@@ -281,6 +281,24 @@ export type Database = {
         }
         Relationships: []
       }
+      chat_usage: {
+        Row: {
+          questions_used: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          questions_used?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          questions_used?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       genre_target_profiles: {
         Row: {
           band_tolerance: number
@@ -1102,6 +1120,7 @@ export type Database = {
           revoked_count: number
         }[]
       }
+      bump_chat_questions: { Args: { _user_id: string }; Returns: number }
       check_beta_invite: {
         Args: { _code?: string; _email: string }
         Returns: boolean
